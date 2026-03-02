@@ -5308,17 +5308,33 @@ Port Roles:
                 # Example: CCR2216 (sfp28-1..12) -> CCR2004 (sfp28-1..2 + sfp-sfpplus1..12) MUST map, even though both "have sfp28".
                 source_sfp28_idxs = set(int(n) for n in re.findall(r'\bsfp28-(\d+)\b', text))
                 target_sfp28_idxs = set(int(re.search(r'(\d+)', p).group(1)) for p in target_ports if p.startswith('sfp28-') and re.search(r'(\d+)', p))
-                if source_sfp28_idxs and target_sfp28_idxs and source_sfp28_idxs.issubset(target_sfp28_idxs):
+                # HYBRID CHECK: If source has BOTH sfp-sfpplus AND sfp28 (e.g., CCR2004-1G-12S+2XS)
+                # and target has sfp28-only, a naive sfp-sfpplus→sfp28 rename creates COLLISIONS
+                # (sfp-sfpplus1→sfp28-1 stomps on the EXISTING sfp28-1 from the source config).
+                # Must use full policy mapping instead.
+                if source_has_sfp_sfpplus and not target_has_sfp_sfpplus:
+                    print(f"[INTERFACE MAPPING] Hybrid source (sfp-sfpplus + sfp28) → sfp28-only target - full mapping REQUIRED")
+                    mapping_required = True
+                elif source_sfp28_idxs and target_sfp28_idxs and source_sfp28_idxs.issubset(target_sfp28_idxs):
                     print(f"[INTERFACE MAPPING] Source and target both use sfp28- ports and indices match - preserving interface numbers")
-                    if source_has_sfp_sfpplus and not target_has_sfp_sfpplus:
-                        for i in range(1, 13):
-                            text = re.sub(rf"\bsfp-sfpplus{i}\b", f"sfp28-{i}", text)
                     return text
-                print(f"[INTERFACE MAPPING] Target sfp28 indices do not cover source usage - mapping REQUIRED")
-                mapping_required = True
+                else:
+                    print(f"[INTERFACE MAPPING] Target sfp28 indices do not cover source usage - mapping REQUIRED")
+                    mapping_required = True
             elif source_has_sfp_sfpplus and target_has_sfp_sfpplus and not source_has_sfp28 and not target_has_sfp28:
-                print(f"[INTERFACE MAPPING] Source and target both use sfp-sfpplus ports - preserving interface numbers")
-                return text
+                # Verify ALL source sfp-sfpplus indices exist on the target.
+                # e.g., CCR2116 (sfp-sfpplus1-4) → CCR2004-16G-2S+ (sfp-sfpplus1-2) leaves sfp-sfpplus3/4 dangling.
+                source_sfpplus_idxs = set(int(n) for n in re.findall(r'\bsfp-sfpplus(\d+)\b', text))
+                target_sfpplus_idxs = set(int(re.search(r'(\d+)', p).group(1)) for p in target_ports if p.startswith('sfp-sfpplus') and re.search(r'(\d+)', p))
+                if source_sfpplus_idxs and target_sfpplus_idxs and source_sfpplus_idxs.issubset(target_sfpplus_idxs):
+                    print(f"[INTERFACE MAPPING] Source and target both use sfp-sfpplus ports and indices match - preserving interface numbers")
+                    return text
+                elif source_sfpplus_idxs and target_sfpplus_idxs:
+                    print(f"[INTERFACE MAPPING] Source sfp-sfpplus indices {source_sfpplus_idxs} exceed target {target_sfpplus_idxs} - mapping REQUIRED")
+                    mapping_required = True
+                else:
+                    print(f"[INTERFACE MAPPING] Source and target both use sfp-sfpplus ports - preserving interface numbers")
+                    return text
             elif source_has_ethernet and target_has_ethernet and source_ether_count == target_ether_count:
                 # Same ethernet count, both have ethernet - check if port types match
                 if not source_has_sfp28 and not target_has_sfp28 and not source_has_sfp_sfpplus and not target_has_sfp_sfpplus:
@@ -5345,14 +5361,25 @@ Port Roles:
                 tgt_sfp28 = [p for p in (target_ports or []) if p.startswith('sfp28-')]
 
                 def _apply_mapping_everywhere(t: str, mapping: dict) -> str:
-                    # 1) Replace standalone interface tokens (safe: avoids qsfp28-1-1 and sfp28-10 collisions)
+                    # Use temporary placeholders to prevent chain reactions.
+                    # Without this, sfp-sfpplus1→sfp28-1 then sfp28-1→sfp28-7 would
+                    # double-map: the NEW sfp28-1 (from sfp-sfpplus1) gets hit again by
+                    # the sfp28-1→sfp28-7 rule, creating collisions.
+                    placeholders = {}  # marker → final destination
+                    code = 0
                     for src in sorted(mapping.keys(), key=len, reverse=True):
                         dst = mapping[src]
-                        t = re.sub(rf"\b{re.escape(src)}\b", dst, t)
-                    # 2) Replace embedded port tokens in common vlan interface naming patterns (e.g., vlan1000sfp-sfpplus1)
-                    for src in sorted(mapping.keys(), key=len, reverse=True):
-                        dst = mapping[src]
-                        t = re.sub(rf"(?m)\b(vlan\d+[-_]?)" + re.escape(src) + r"(?!\d)\b", rf"\1{dst}", t)
+                        marker = f"\x00IMAP{code:04d}\x00"
+                        placeholders[marker] = dst
+                        code += 1
+                        # 1) standalone interface tokens
+                        t = re.sub(rf"\b{re.escape(src)}\b", marker, t)
+                        # 2) embedded port tokens in vlan naming (e.g., vlan1000sfp-sfpplus1)
+                        t = re.sub(rf"(?m)\b(vlan\d+[-_]?)" + re.escape(src) + r"(?!\d)\b",
+                                   rf"\1{marker}", t)
+                    # Resolve all placeholders → final port names
+                    for marker, dst in placeholders.items():
+                        t = t.replace(marker, dst)
                     return t
 
                 # ── NEXTLINK PORT ASSIGNMENT POLICY ──────────────────────
@@ -5670,12 +5697,20 @@ Port Roles:
                                 policy_mapping[iface] = dst
                                 print(f"[NX POLICY] {iface} → {dst} (TARANA)")
 
-                        # Assign unknown → fill remaining slots
+                        # Assign unknown → fill remaining slots (including QSFP overflow)
                         for iface in by_role.get('unknown', []):
                             dst = _next_from_pool(backhaul_pool) or _next_from_pool(switch_pool) or _next_from_pool(power_pool)
                             if dst:
                                 policy_mapping[iface] = dst
                                 print(f"[NX POLICY] {iface} → {dst} (unknown role)")
+                            else:
+                                # QSFP overflow for excess ports
+                                for qp in [p for p in target_ports if p.startswith('qsfp')]:
+                                    if qp not in used_tgt:
+                                        used_tgt.add(qp)
+                                        policy_mapping[iface] = qp
+                                        print(f"[NX POLICY] {iface} → {qp} (unknown overflow to QSFP)")
+                                        break
 
                     # Remove identity mappings (port already at correct target name)
                     policy_mapping = {k: v for k, v in policy_mapping.items() if k != v}
@@ -5688,6 +5723,37 @@ Port Roles:
                     target_has_qsfp = any(p.startswith('qsfp') for p in (target_ports or []))
                     if not target_has_qsfp:
                         text = re.sub(r"(?m)^\s*set\s+\[\s*find\s+default-name=qsfp[^\]]+\][^\n]*\n?", "", text)
+
+                    # ── PORT EXHAUSTION CLEANUP ──────────────────────
+                    # When source has more ports than target, some remain
+                    # unmapped. Comment out lines that reference non-existent
+                    # target ports to prevent config errors.
+                    valid_ports = set(target_ports or []) | {'loop0'}
+                    _dangling_ifaces = set()
+                    for _di in re.findall(r'\b(ether\d+|sfp28-\d+|sfp-sfpplus\d+|sfp(?!28)(?!-sfpplus)\d+|combo\d+)\b', text):
+                        if _di not in valid_ports:
+                            _dangling_ifaces.add(_di)
+                    if _dangling_ifaces:
+                        print(f"[PORT EXHAUSTION] {len(_dangling_ifaces)} unmapped ports remain: {sorted(_dangling_ifaces)[:5]}")
+                        # Comment-out /interface ethernet set lines for dangling ports
+                        for _dp in _dangling_ifaces:
+                            text = re.sub(
+                                rf"(?m)^(\s*set\s+\[\s*find\s+default-name={re.escape(_dp)}\s*\][^\n]*)",
+                                r"# PORT-EXHAUSTION \1", text
+                            )
+                        # Comment-out /ip address lines referencing dangling ports
+                        for _dp in _dangling_ifaces:
+                            text = re.sub(
+                                rf"(?m)^(\s*add\s+[^\n]*interface={re.escape(_dp)}[^\n]*)",
+                                r"# PORT-EXHAUSTION \1", text
+                            )
+                        # Comment-out OSPF/MPLS/bridge lines referencing dangling ports
+                        for _dp in _dangling_ifaces:
+                            text = re.sub(
+                                rf"(?m)^(\s*add\s+[^\n]*interfaces?={re.escape(_dp)}(?:\s|$)[^\n]*)",
+                                r"# PORT-EXHAUSTION \1", text
+                            )
+
                     return text
              
             # STEP 1: Extract interface comments to detect purpose
@@ -6422,7 +6488,8 @@ Port Roles:
                 Convert them to appropriate optical speeds or remove invalid entries."""
                 sfp28_set = set(p for p in tgt_ports if p.startswith('sfp28-'))
                 sfp_sfpplus_set = set(p for p in tgt_ports if p.startswith('sfp-sfpplus'))
-                optical_ports = sfp28_set | sfp_sfpplus_set
+                qsfp_set = set(p for p in tgt_ports if p.startswith('qsfp'))
+                optical_ports = sfp28_set | sfp_sfpplus_set | qsfp_set
                 if not optical_ports:
                     return text_in
 
