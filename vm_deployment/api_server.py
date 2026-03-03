@@ -3824,8 +3824,10 @@ def format_config_spacing(config_text):
 
         line = _normalize_kv_spacing_outside_quotes(line)
 
-        # Drop exact duplicate lines (outside script sources).
-        if line and not line.lstrip().startswith('/') and not re.search(r'(?i)\bsource\s*=\s*"', line):
+        # Drop exact duplicate lines (outside script sources and IP address lines).
+        # IP address lines are excluded from dedup because each one is semantically
+        # unique even if the text appears identical after interface remapping.
+        if line and not line.lstrip().startswith('/') and not re.search(r'(?i)\bsource\s*=\s*"', line) and not re.search(r'(?i)\baddress=\d', line):
             key = line.strip()
             if key in seen_exact:
                 continue
@@ -5645,13 +5647,21 @@ Port Roles:
                                 policy_mapping[iface] = dst
                                 print(f"[NX POLICY] {iface} → {dst} (SWITCH)")
 
-                        # LTE / Tarana / unknown → reserved then olt_pool
+                        # LTE / Tarana / unknown → reserved then olt_pool, with QSFP overflow
                         for role_key in ('lte', 'tarana', 'unknown'):
                             for iface in by_role.get(role_key, []):
                                 dst = _next_from_pool(reserved_pool) or _next_from_pool(olt_pool)
                                 if dst:
                                     policy_mapping[iface] = dst
                                     print(f"[NX POLICY] {iface} → {dst} ({role_key.upper()})")
+                                else:
+                                    # QSFP overflow — don't strand ports with IPs
+                                    for qp in [p for p in target_ports if p.startswith('qsfp')]:
+                                        if qp not in used_tgt:
+                                            used_tgt.add(qp)
+                                            policy_mapping[iface] = qp
+                                            print(f"[NX POLICY] {iface} → {qp} ({role_key.upper()} overflow to QSFP)")
+                                            break
 
                     else:
                         # ── STANDARD TOWER assignment order ──
@@ -5683,19 +5693,35 @@ Port Roles:
                                         print(f"[NX POLICY] {iface} → {qp} (BACKHAUL overflow to QSFP)")
                                         break
 
-                        # Assign LTE → next available after backhauls
+                        # Assign LTE → next available after backhauls (with QSFP overflow)
                         for iface in by_role.get('lte', []):
                             dst = _next_from_pool(backhaul_pool) or _next_from_pool(switch_pool)
                             if dst:
                                 policy_mapping[iface] = dst
                                 print(f"[NX POLICY] {iface} → {dst} (LTE)")
+                            else:
+                                # QSFP overflow — LTE ports must not be stranded
+                                for qp in [p for p in target_ports if p.startswith('qsfp')]:
+                                    if qp not in used_tgt:
+                                        used_tgt.add(qp)
+                                        policy_mapping[iface] = qp
+                                        print(f"[NX POLICY] {iface} → {qp} (LTE overflow to QSFP)")
+                                        break
 
-                        # Assign tarana → next available
+                        # Assign tarana → next available (with QSFP overflow)
                         for iface in by_role.get('tarana', []):
                             dst = _next_from_pool(backhaul_pool) or _next_from_pool(switch_pool)
                             if dst:
                                 policy_mapping[iface] = dst
                                 print(f"[NX POLICY] {iface} → {dst} (TARANA)")
+                            else:
+                                # QSFP overflow — Tarana ports must not be stranded
+                                for qp in [p for p in target_ports if p.startswith('qsfp')]:
+                                    if qp not in used_tgt:
+                                        used_tgt.add(qp)
+                                        policy_mapping[iface] = qp
+                                        print(f"[NX POLICY] {iface} → {qp} (TARANA overflow to QSFP)")
+                                        break
 
                         # Assign unknown → fill remaining slots (including QSFP overflow)
                         for iface in by_role.get('unknown', []):
@@ -9137,6 +9163,22 @@ def validate_translation(source, translated):
     source_ips = extract_ips(source)
     translated_ips = extract_ips(translated)
     missing_ips = source_ips - translated_ips
+
+    # Extract IPs that are in PORT-EXHAUSTION comment lines (not truly lost,
+    # just unavoidable when target has fewer ports than source).
+    port_exhaustion_ips = set()
+    for line in (translated or '').splitlines():
+        if line.strip().startswith('# PORT-EXHAUSTION'):
+            for m in re.finditer(r'\b(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?\b', line):
+                ip = m.group(0)
+                if ip.startswith('0.0.') or ip.startswith('255.255.255.'):
+                    continue
+                base_ip = ip[:-3] if ip.endswith('/32') else ip
+                try:
+                    ipaddress.ip_address(base_ip.split('/')[0])
+                    port_exhaustion_ips.add(base_ip)
+                except Exception:
+                    pass
     
     # Additional check: Are IPs present but with different CIDR notation?
     # e.g., source has 10.1.1.1/24, translated has 10.1.1.1/32
@@ -9150,12 +9192,19 @@ def validate_translation(source, translated):
             if trans_ip.startswith(base):
                 found = True
                 break
+        # Also check if IP exists in PORT-EXHAUSTION lines (hardware port shortage, not a bug)
+        if not found:
+            for pe_ip in port_exhaustion_ips:
+                if pe_ip.startswith(base) or base == pe_ip.split('/')[0]:
+                    found = True
+                    break
         if not found:
             actually_missing.append(ip)
     
     # Update missing_ips to only include truly missing ones
-    if len(actually_missing) < len(missing_ips):
-        print(f"[VALIDATION] {len(missing_ips) - len(actually_missing)} IPs found with different CIDR notation - not counting as missing")
+    cidr_excluded = len(missing_ips) - len(actually_missing)
+    if cidr_excluded > 0:
+        print(f"[VALIDATION] {cidr_excluded} IPs found with different CIDR or in PORT-EXHAUSTION - not counting as missing")
         missing_ips = set(actually_missing)
     
     # Additional validation: Check for preserved passwords/secrets
@@ -9188,6 +9237,7 @@ def validate_translation(source, translated):
         "source_ip_count": len(source_ips),
         "translated_ip_count": len(translated_ips),
         "missing_ips": sorted(list(missing_ips)),
+        "port_exhaustion_ips": sorted(list(port_exhaustion_ips)),
         "source_secret_count": len(source_secrets),
         "translated_secret_count": len(translated_secrets),
         "missing_secrets": sorted(list(missing_secrets)),
