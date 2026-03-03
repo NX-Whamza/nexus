@@ -3777,6 +3777,41 @@
                                              Download .rsc File
                                         </button>
                                     </div>
+                                    <!-- IP Validation Summary Panel -->
+                                    <div id="validationSummaryPanel" style="display: none; margin-bottom: 15px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border-color);">
+                                        <div style="background: #263238; color: #fff; padding: 10px 15px; font-weight: bold; font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                                            <span id="validationSummaryIcon">&#9989;</span>
+                                            <span id="validationSummaryTitle">IP Validation Summary</span>
+                                        </div>
+                                        <div id="validationSummaryBody" style="padding: 12px 15px; background: var(--container-bg); font-size: 13px; line-height: 1.6;">
+                                            <!-- IP Stats Row -->
+                                            <div id="validationIpStats" style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 8px;">
+                                                <span><strong>Source IPs:</strong> <span id="valSrcIpCount">0</span></span>
+                                                <span><strong>Translated IPs:</strong> <span id="valTgtIpCount">0</span></span>
+                                            </div>
+                                            <!-- Missing IPs (red) -->
+                                            <div id="validationMissingSection" style="display: none; margin-top: 8px; padding: 8px 12px; background: #ffebee; border-left: 4px solid #f44336; border-radius: 4px;">
+                                                <strong style="color: #c62828;">&#9888; Missing IPs (<span id="valMissingCount">0</span>):</strong>
+                                                <div id="valMissingList" style="margin-top: 4px; font-family: 'Courier New', monospace; font-size: 12px; color: #b71c1c;"></div>
+                                            </div>
+                                            <!-- Compliance-Replaced IPs (amber/info) -->
+                                            <div id="validationComplianceSection" style="display: none; margin-top: 8px; padding: 8px 12px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 4px;">
+                                                <strong style="color: #e65100;">&#x1f6c8; Compliance-Replaced IPs (<span id="valComplianceCount">0</span>):</strong>
+                                                <div style="font-size: 11px; color: #bf360c; margin-top: 2px;">These IPs were in source SNMP/firewall address-lists that the compliance template replaces. This is expected behavior.</div>
+                                                <div id="valComplianceList" style="margin-top: 4px; font-family: 'Courier New', monospace; font-size: 12px; color: #e65100;"></div>
+                                            </div>
+                                            <!-- Port Exhaustion IPs (blue/info) -->
+                                            <div id="validationPortExhSection" style="display: none; margin-top: 8px; padding: 8px 12px; background: #e3f2fd; border-left: 4px solid #2196F3; border-radius: 4px;">
+                                                <strong style="color: #0d47a1;">&#x1f6c8; Port-Exhaustion IPs (<span id="valPortExhCount">0</span>):</strong>
+                                                <div style="font-size: 11px; color: #1565c0; margin-top: 2px;">Target device has fewer ports; these IPs are documented in PORT-EXHAUSTION comments.</div>
+                                                <div id="valPortExhList" style="margin-top: 4px; font-family: 'Courier New', monospace; font-size: 12px; color: #0d47a1;"></div>
+                                            </div>
+                                            <!-- All Good message -->
+                                            <div id="validationAllGood" style="display: none; margin-top: 8px; padding: 8px 12px; background: #e8f5e9; border-left: 4px solid #4CAF50; border-radius: 4px;">
+                                                <strong style="color: #2e7d32;">&#10004; All source IPs preserved in translated config.</strong>
+                                            </div>
+                                        </div>
+                                    </div>
                                     <textarea id="upgradeOutput" readonly
                                         style="width: 100%; min-height: 500px; padding: 15px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--output-bg); color: var(--text-color); font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.5; white-space: pre; overflow-x: auto; word-wrap: normal;"
                                         spellcheck="false"></textarea>
@@ -20074,6 +20109,9 @@ show mac address-table | include &lt;mac&gt;</div>
                         document.getElementById('upgradeOutput').value = finalTranslatedConfig;
                         document.getElementById('upgradeOutputSection').style.display = 'block';
 
+                        // ── Populate IP Validation Summary Panel ──
+                        populateValidationSummary(validation);
+
                         // Also put in main output for compatibility
                         document.getElementById('output').value = finalTranslatedConfig;
 
@@ -20253,6 +20291,89 @@ show mac address-table | include &lt;mac&gt;</div>
 
         function hideUpgradeProgress() {
             document.getElementById('upgradeProgressContainer').style.display = 'none';
+        }
+
+        /**
+         * Populate the IP Validation Summary panel with validation results.
+         * Shows: IP counts, missing IPs (red), compliance-replaced (amber),
+         * port-exhaustion (blue), or "all good" (green).
+         */
+        function populateValidationSummary(validation) {
+            const panel = document.getElementById('validationSummaryPanel');
+            if (!panel || !validation) return;
+
+            const missingIPs = validation.missing_ips || [];
+            const complianceIPs = validation.compliance_replaced_ips || [];
+            const portExhIPs = validation.port_exhaustion_ips || [];
+            const srcCount = validation.source_ip_count || 0;
+            const tgtCount = validation.translated_ip_count || 0;
+
+            // IP stats
+            document.getElementById('valSrcIpCount').textContent = srcCount;
+            document.getElementById('valTgtIpCount').textContent = tgtCount;
+
+            // Missing IPs section (red)
+            const missingSection = document.getElementById('validationMissingSection');
+            if (missingIPs.length > 0) {
+                missingSection.style.display = 'block';
+                document.getElementById('valMissingCount').textContent = missingIPs.length;
+                document.getElementById('valMissingList').textContent = missingIPs.join(', ');
+            } else {
+                missingSection.style.display = 'none';
+            }
+
+            // Compliance-replaced IPs section (amber)
+            const complianceSection = document.getElementById('validationComplianceSection');
+            if (complianceIPs.length > 0) {
+                complianceSection.style.display = 'block';
+                document.getElementById('valComplianceCount').textContent = complianceIPs.length;
+                document.getElementById('valComplianceList').textContent = complianceIPs.join(', ');
+            } else {
+                complianceSection.style.display = 'none';
+            }
+
+            // Port-exhaustion IPs section (blue)
+            const portExhSection = document.getElementById('validationPortExhSection');
+            if (portExhIPs.length > 0) {
+                portExhSection.style.display = 'block';
+                document.getElementById('valPortExhCount').textContent = portExhIPs.length;
+                document.getElementById('valPortExhList').textContent = portExhIPs.join(', ');
+            } else {
+                portExhSection.style.display = 'none';
+            }
+
+            // All-good message
+            const allGood = document.getElementById('validationAllGood');
+            if (missingIPs.length === 0 && complianceIPs.length === 0 && portExhIPs.length === 0) {
+                allGood.style.display = 'block';
+            } else if (missingIPs.length === 0) {
+                allGood.style.display = 'block';
+                allGood.innerHTML = '<strong style="color: #2e7d32;">&#10004; All source IPs preserved. ' +
+                    (complianceIPs.length > 0 ? complianceIPs.length + ' IP(s) replaced by compliance template (expected). ' : '') +
+                    (portExhIPs.length > 0 ? portExhIPs.length + ' IP(s) in port-exhaustion comments.' : '') +
+                    '</strong>';
+            } else {
+                allGood.style.display = 'none';
+            }
+
+            // Title icon
+            const icon = document.getElementById('validationSummaryIcon');
+            const title = document.getElementById('validationSummaryTitle');
+            if (missingIPs.length > 0) {
+                icon.innerHTML = '&#9888;';
+                title.textContent = `IP Validation: ${missingIPs.length} Missing`;
+                title.style.color = '#ff8a80';
+            } else if (complianceIPs.length > 0 || portExhIPs.length > 0) {
+                icon.innerHTML = '&#9989;';
+                title.textContent = 'IP Validation: All Preserved (info below)';
+                title.style.color = '#b9f6ca';
+            } else {
+                icon.innerHTML = '&#9989;';
+                title.textContent = 'IP Validation: Perfect';
+                title.style.color = '#b9f6ca';
+            }
+
+            panel.style.display = 'block';
         }
 
         function showUpgradeStatus(message, type) {

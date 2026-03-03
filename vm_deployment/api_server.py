@@ -4219,6 +4219,7 @@ def translate_config():
             translated = format_config_spacing(source_config)
 
             # Apply compliance if requested
+            compliance_stripped = set()
             if apply_compliance and HAS_COMPLIANCE:
                 try:
                     # Extract loopback IP for compliance injection
@@ -4227,11 +4228,11 @@ def translate_config():
                         _loop_m = re.search(r'router-id=([0-9.]+)', source_config)
                     _lip = _loop_m.group(1) if _loop_m else '10.0.0.1'
                     compliance_blocks = _get_dynamic_compliance_blocks(_lip)
-                    translated = inject_compliance_blocks(translated, compliance_blocks, loopback_ip=_lip)
+                    translated = inject_compliance_blocks(translated, compliance_blocks, loopback_ip=_lip, stripped_ips_out=compliance_stripped)
                 except Exception as comp_err:
                     print(f"[FAST MODE] Compliance append failed (non-fatal): {comp_err}")
 
-            validation = validate_translation(source_config, translated)
+            validation = validate_translation(source_config, translated, compliance_replaced_ips=compliance_stripped)
 
             fast_source_info = {
                 'model': source_device_info.get('model', 'unknown'),
@@ -7498,6 +7499,7 @@ Port Roles:
             compliance_validation = None
 
             # Apply compliance in strict mode if requested
+            compliance_stripped = set()
             if apply_compliance and HAS_COMPLIANCE:
                 print("[COMPLIANCE] Applying RFC-09-10-25 compliance standards (strict mode)...")
                 try:
@@ -7514,7 +7516,7 @@ Port Roles:
 
                     _lip = (loopback_ip or "10.0.0.1/32").split("/")[0]
                     compliance_blocks = _get_dynamic_compliance_blocks(loopback_ip or "10.0.0.1/32")
-                    translated = inject_compliance_blocks(translated, compliance_blocks, loopback_ip=_lip)
+                    translated = inject_compliance_blocks(translated, compliance_blocks, loopback_ip=_lip, stripped_ips_out=compliance_stripped)
                     compliance_validation = validate_compliance(translated)
                 except Exception as e:
                     print(f"[COMPLIANCE ERROR] Failed to apply compliance in strict mode: {e}")
@@ -7523,7 +7525,7 @@ Port Roles:
             # Final interface policy enforcement (after compliance injection).
             translated = _enforce_target_interfaces(translated)
             # Re-validate after compliance injection (if any)
-            validation = validate_translation(source_config, translated)
+            validation = validate_translation(source_config, translated, compliance_replaced_ips=compliance_stripped)
             return jsonify({
                 'success': True,
                 'translated_config': translated,
@@ -8106,6 +8108,7 @@ Output (copy every line, update device model to {target_device.upper()}, preserv
         
         # Apply compliance only if requested (optional)
         compliance_validation = None
+        compliance_stripped = set()
         if apply_compliance and HAS_COMPLIANCE:
             print("[COMPLIANCE] Applying RFC-09-10-25 compliance standards (optional)...")
             try:
@@ -8114,7 +8117,7 @@ Output (copy every line, update device model to {target_device.upper()}, preserv
                 compliance_blocks = _get_dynamic_compliance_blocks(loopback_ip or "10.0.0.1/32")
                 
                 # Inject compliance into translated config
-                translated = inject_compliance_blocks(translated, compliance_blocks, loopback_ip=_lip)
+                translated = inject_compliance_blocks(translated, compliance_blocks, loopback_ip=_lip, stripped_ips_out=compliance_stripped)
                 
                 # Validate compliance
                 compliance_validation = validate_compliance(translated)
@@ -8179,6 +8182,12 @@ Output (copy every line, update device model to {target_device.upper()}, preserv
         translated = _postprocess_translated(finalize_metadata(translated))
         translated = _enforce_target_interfaces(translated)
 
+        # Re-validate after compliance injection + finalization so the
+        # validation result reflects the actual output sent to the user.
+        # Pass compliance_stripped so those IPs are excluded from missing.
+        if compliance_stripped:
+            validation = validate_translation(source_config, translated, compliance_replaced_ips=compliance_stripped)
+        
         return jsonify({
             'success': True,
             'translated_config': translated,
@@ -8883,7 +8892,7 @@ def _strip_compliance_managed_sections(
     config: str,
     strip_sections: set = None,
     managed_lists: set = None,
-) -> str:
+) -> tuple:
     """Strip sections from config that the compliance script will replace.
 
     This prevents duplication when the compliance script is appended: the
@@ -8914,6 +8923,7 @@ def _strip_compliance_managed_sections(
     stripped_sections_log = set()
     stripped_lines = 0
     stripped_addr_list_entries = 0
+    compliance_stripped_ips = set()  # Track IPs removed by compliance
 
     # Resolve effective strip sets (dynamic first, hardcoded fallback)
     if strip_sections is not None and strip_sections:
@@ -8952,6 +8962,12 @@ def _strip_compliance_managed_sections(
                     # Check if it's a managed list
                     list_match = re.search(r'\blist=(\S+)', stripped)
                     if list_match and list_match.group(1) in effective_lists:
+                        # Track IPs being stripped by compliance
+                        for ipm in re.finditer(r'\b(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?\b', stripped):
+                            ip = ipm.group(0)
+                            if not ip.startswith('0.0.') and not ip.startswith('255.255.'):
+                                base_ip = ip[:-3] if ip.endswith('/32') else ip
+                                compliance_stripped_ips.add(base_ip)
                         stripped_addr_list_entries += 1
                         continue  # Skip this managed entry
                 result.append(line)
@@ -8981,6 +8997,12 @@ def _strip_compliance_managed_sections(
             if stripped.startswith('add ') or stripped.startswith('rem '):
                 list_match = re.search(r'\blist=(\S+)', stripped)
                 if list_match and list_match.group(1) in effective_lists:
+                    # Track IPs being stripped
+                    for ipm in re.finditer(r'\b(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?\b', stripped):
+                        ip = ipm.group(0)
+                        if not ip.startswith('0.0.') and not ip.startswith('255.255.'):
+                            base_ip = ip[:-3] if ip.endswith('/32') else ip
+                            compliance_stripped_ips.add(base_ip)
                     stripped_addr_list_entries += 1
                     continue  # Skip this managed entry
             result.append(line)
@@ -8995,10 +9017,12 @@ def _strip_compliance_managed_sections(
     if stripped_addr_list_entries:
         print(f"[COMPLIANCE-STRIP] [{source_label}] Stripped {stripped_addr_list_entries} managed address-list entries "
               f"(preserved site-specific lists)")
+    if compliance_stripped_ips:
+        print(f"[COMPLIANCE-STRIP] Tracked {len(compliance_stripped_ips)} unique IPs removed by compliance")
 
-    return '\n'.join(result)
+    return '\n'.join(result), compliance_stripped_ips
 
-def inject_compliance_blocks(config: str, compliance_blocks: dict, loopback_ip: str = "10.0.0.1") -> str:
+def inject_compliance_blocks(config: str, compliance_blocks: dict, loopback_ip: str = "10.0.0.1", stripped_ips_out: set = None) -> str:
     """
     Inject compliance into a RouterOS configuration.
 
@@ -9017,6 +9041,8 @@ def inject_compliance_blocks(config: str, compliance_blocks: dict, loopback_ip: 
         compliance_blocks: Dictionary of compliance blocks (GitLab-sourced;
             used only when verbatim GitLab text is unavailable)
         loopback_ip: Loopback IP for $LoopIP substitutions
+        stripped_ips_out: Optional mutable set; if provided, IPs removed
+            by compliance stripping are added to it (for validation awareness).
         
     Returns:
         Updated configuration with compliance blocks (only if not already present)
@@ -9098,11 +9124,15 @@ def inject_compliance_blocks(config: str, compliance_blocks: dict, loopback_ip: 
     # are removed and replaced by the authoritative compliance version.
     # Uses the dynamically-extracted sections when available, otherwise
     # falls back to the hardcoded list.
-    config = _strip_compliance_managed_sections(
+    config, compliance_stripped_ips = _strip_compliance_managed_sections(
         config,
         strip_sections=dyn_sections,
         managed_lists=dyn_lists,
     )
+    if stripped_ips_out is not None:
+        stripped_ips_out.update(compliance_stripped_ips)
+    if compliance_stripped_ips:
+        print(f"[COMPLIANCE] Tracked {len(compliance_stripped_ips)} IPs removed by compliance stripping")
 
     # ── 3. Append compliance ──
     if raw_text:
@@ -9147,10 +9177,16 @@ def inject_compliance_blocks(config: str, compliance_blocks: dict, loopback_ip: 
     print(f"[COMPLIANCE] Injected GitLab parsed blocks compliance")
     return config.rstrip() + "\n" + compliance_section
 
-def validate_translation(source, translated):
+def validate_translation(source, translated, compliance_replaced_ips=None):
     """Comprehensive validation to ensure all important information is preserved.
     Validates IP addresses, passwords, users, firewall rules, and routing configs.
     Normalizes /32 to bare IP to avoid false negatives on ROS7 fields like remote.address.
+    
+    Args:
+        source: Source configuration text
+        translated: Translated configuration text
+        compliance_replaced_ips: Optional set of IPs removed by compliance stripping.
+            These are excluded from missing_ips (expected removal, not data loss).
     """
 
     def strip_noise(text: str) -> str:
@@ -9239,6 +9275,27 @@ def validate_translation(source, translated):
         print(f"[VALIDATION] {cidr_excluded} IPs found with different CIDR or in PORT-EXHAUSTION - not counting as missing")
         missing_ips = set(actually_missing)
     
+    # Exclude IPs removed by compliance stripping (expected replacement, not data loss).
+    # These IPs were in source address-lists that compliance template replaces entirely.
+    compliance_excluded_ips = set()
+    if compliance_replaced_ips:
+        normalized_compliance = set()
+        for cip in compliance_replaced_ips:
+            base = cip[:-3] if cip.endswith('/32') else cip
+            normalized_compliance.add(base.split('/')[0])
+        
+        still_missing = set()
+        for ip in missing_ips:
+            base = ip.split('/')[0]
+            if base in normalized_compliance:
+                compliance_excluded_ips.add(ip)
+            else:
+                still_missing.add(ip)
+        
+        if compliance_excluded_ips:
+            print(f"[VALIDATION] {len(compliance_excluded_ips)} IPs excluded (compliance-replaced): {sorted(compliance_excluded_ips)[:5]}")
+            missing_ips = still_missing
+    
     # Additional validation: Check for preserved passwords/secrets
     def extract_secrets(text: str) -> set:
         # Extract password=, secret=, auth-key= values (but not the actual values for security)
@@ -9270,6 +9327,7 @@ def validate_translation(source, translated):
         "translated_ip_count": len(translated_ips),
         "missing_ips": sorted(list(missing_ips)),
         "port_exhaustion_ips": sorted(list(port_exhaustion_ips)),
+        "compliance_replaced_ips": sorted(list(compliance_excluded_ips)),
         "source_secret_count": len(source_secrets),
         "translated_secret_count": len(translated_secrets),
         "missing_secrets": sorted(list(missing_secrets)),
