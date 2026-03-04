@@ -10337,6 +10337,193 @@ _NOKIA_DEFAULT_LDP_DENY = [
     '10.248.0.220/32', '10.249.0.220/32', '10.254.247.9/32',
 ]
 
+# ── Out-of-state default management ACL (from Nebraska reference config) ──
+_NOKIA_OOS_DEFAULT_MGMT_ACL = [
+    '10.2.0.0/16', '24.240.243.114/32', '50.63.176.139/32',
+    '52.128.48.29/32', '66.185.162.140/32', '67.219.122.201/32',
+    '107.178.5.97/32', '107.178.15.1/32', '107.178.15.15/32',
+    '142.147.112.18/32', '142.147.116.219/32', '142.147.124.26/32',
+    '199.242.62.162/32', '10.0.172.0/22', '52.128.62.248/29',
+    '67.219.126.240/28',
+]
+
+
+def _nokia_oos_profile(name, ip_octet, tz='CST'):
+    """Factory for out-of-state Nokia deployment profiles."""
+    return {
+        'name': name,
+        'is_instate': False,
+        'ip_octet': ip_octet,
+        'ospf_area': f'0.0.0.{ip_octet}',
+        'ospf_mode': 'dual',         # ospf 0 shutdown + ospf 1 active
+        'ospf_auth': 'md5',          # message-digest per interface
+        'rsvp_shutdown': True,
+        'ldp_mode': 'allow',         # allow-list policy (LDP-IN-BNG-PS)
+        'ldp_policy_name': 'LDP-IN-BNG-PS',
+        'ldp_pfx_name': 'LDP-IN-BNG-PL',
+        'ldp_allow_prefixes': [
+            f'10.{ip_octet}.0.0/24 prefix-length-range 32-32',
+            f'10.{ip_octet}.7.0/24 prefix-length-range 32-32',
+            '10.254.248.0/24 prefix-length-range 32-32',
+            '10.254.249.0/24 prefix-length-range 32-32',
+        ],
+        'sdp_far_ends': ['10.254.249.3', '10.254.249.4', f'10.{ip_octet}.0.200'],
+        'vpls_base': ip_octet,
+        'ntp': ['52.128.59.240', '52.128.59.241', '52.128.59.242', '52.128.59.243'],
+        'mgmt_acl': _NOKIA_OOS_DEFAULT_MGMT_ACL,
+        'acl_dst_port': True,         # dst-port 22 65535 in ACL entries
+        'tz': tz,
+    }
+
+
+# ── Nokia state/region deployment profiles ──
+# In-state (TX) uses OSPF backbone, simple LDP deny-list, single OSPF instance.
+# Out-of-state regions use non-backbone OSPF area, LDP allow-list, dual OSPF instances.
+_NOKIA_STATE_PROFILES = {
+    'TX': {
+        'name': 'Texas (In-State)',
+        'is_instate': True,
+        'ip_octet': 2,
+        'ospf_area': '0.0.0.0',
+        'ospf_mode': 'single',       # ospf 0 only
+        'ospf_auth': 'simple',       # authentication-key on instance
+        'rsvp_shutdown': False,
+        'ldp_mode': 'deny',          # deny-list policy (LDP-FILTER-PS)
+        'ldp_policy_name': 'LDP-FILTER-PS',
+        'ldp_pfx_name': 'LDP-DENY-PL',
+        'sdp_far_ends': ['10.249.0.200'],
+        'vpls_base': 245,
+        'ntp': _NOKIA_DEFAULT_NTP,
+        'mgmt_acl': _NOKIA_DEFAULT_MGMT_ACL,
+        'acl_dst_port': False,        # no dst-port in ACL entries
+        'tz': 'CST',
+    },
+    'NE': _nokia_oos_profile('Nebraska', 249),
+    'KS': _nokia_oos_profile('Kansas', 248),
+    'IL': _nokia_oos_profile('Illinois', 247),
+    'IA': _nokia_oos_profile('Iowa', 254),
+    'OK': _nokia_oos_profile('Oklahoma', 240),
+    'IN': _nokia_oos_profile('Indiana', 243),
+}
+
+
+def _detect_nokia_state(config_text: str) -> dict:
+    """
+    Detect the deployment state/region from a MikroTik configuration.
+    Uses site name prefixes first, then IP address ranges as fallback.
+
+    Returns:
+        dict with state_code, profile_name, confidence, source, has_mpls
+    """
+    upper = (config_text or '').upper()
+
+    # Method 1: State prefix in system identity name (highest confidence)
+    # Extract identity first, then check for state codes like "TX-HALLETTSVILLE"
+    identity_m = re.search(r'(?mi)^\s*/system\s+identity\s*\n\s*set\s+name=(\S+)', config_text or '')
+    if not identity_m:
+        identity_m = re.search(r'(?mi)^\s*/system\s+identity\s+set\s+name=(\S+)', config_text or '')
+    identity_name = (identity_m.group(1) if identity_m else '').upper().strip('"').strip("'")
+
+    # Check for state prefix in identity: RTR-MTCCR2004-1.TX-SITENAME or similar
+    state_codes = ['TX', 'NE', 'KS', 'IL', 'IA', 'OK', 'IN']
+    has_mpls = bool(re.search(r'/MPLS|VPLS|BRIDGE999|BRIDGE600|BRIDGE800', upper))
+
+    for code in state_codes:
+        # Match state code after a dot or dash boundary in identity: .TX- or -TX-
+        if re.search(rf'[.\-]{code}-[A-Z]', identity_name):
+            profile = _NOKIA_STATE_PROFILES.get(code, {})
+            return {
+                'state_code': code,
+                'profile_name': profile.get('name', code),
+                'confidence': 'high',
+                'source': 'site_name',
+                'has_mpls': has_mpls,
+            }
+
+    # Method 2: IP address range detection
+    ip_matches = re.findall(r'\b10\.(\d+)\.\d+\.\d+', config_text or '')
+    octet_counts = {}
+    for octet_str in ip_matches:
+        octet = int(octet_str)
+        if octet in (0, 1, 255):
+            continue
+        octet_counts[octet] = octet_counts.get(octet, 0) + 1
+    # Map known IP octets to states
+    octet_to_state = {2: 'TX', 249: 'NE', 248: 'KS', 247: 'IL', 254: 'IA', 240: 'OK', 243: 'IN'}
+    best_state = None
+    best_count = 0
+    for octet, count in octet_counts.items():
+        if octet in octet_to_state and count > best_count:
+            best_count = count
+            best_state = octet_to_state[octet]
+    if best_state:
+        profile = _NOKIA_STATE_PROFILES.get(best_state, {})
+        return {
+            'state_code': best_state,
+            'profile_name': profile.get('name', best_state),
+            'confidence': 'medium',
+            'source': 'ip_range',
+            'has_mpls': has_mpls,
+        }
+
+    # Default: TX (in-state) with low confidence
+    return {
+        'state_code': 'TX',
+        'profile_name': 'Texas (In-State)',
+        'confidence': 'low',
+        'source': 'default',
+        'has_mpls': has_mpls,
+    }
+
+
+def _generate_nokia_system_name(parsed: dict, state_code: str) -> str:
+    """
+    Generate Nokia system name from MikroTik parsed data.
+
+    Pattern: RTR-NK7250-{N}.{STATE}-{CITY}-{DIR}-{N}
+    Examples:
+        RTR-MTCCR2004-1.BLUEGRASS2 + TX  → RTR-NK7250-1.TX-BLUEGRASS2
+        RTR-MTCCR2116-1.NE-PAWNEECITY-SE → RTR-NK7250-1.NE-PAWNEECITY-SE
+    """
+    identity = (parsed.get('identity') or '').strip()
+    state = (state_code or 'TX').upper()
+
+    # Pattern 1: RTR-MT{model}-{N}.{site}
+    m = re.match(r'RTR-MT\S+-(\d+)\.(.+)', identity, re.IGNORECASE)
+    if m:
+        number = m.group(1)
+        site_part = m.group(2).strip()
+        if re.match(r'^[A-Z]{2}-', site_part, re.IGNORECASE):
+            return f'RTR-NK7250-{number}.{site_part}'
+        return f'RTR-NK7250-{number}.{state}-{site_part}'
+
+    # Pattern 2: {PREFIX}-{model}-{N}.{site}
+    m = re.match(r'(?:RTR|SWT|BNG)[-_]\S+[-_](\d+)\.(.+)', identity, re.IGNORECASE)
+    if m:
+        number = m.group(1)
+        site_part = m.group(2).strip()
+        if re.match(r'^[A-Z]{2}-', site_part, re.IGNORECASE):
+            return f'RTR-NK7250-{number}.{site_part}'
+        return f'RTR-NK7250-{number}.{state}-{site_part}'
+
+    # Pattern 3: Identity with dot separator
+    if '.' in identity:
+        parts = identity.split('.', 1)
+        site_part = parts[1].strip()
+        if re.match(r'^[A-Z]{2}-', site_part, re.IGNORECASE):
+            return f'RTR-NK7250-1.{site_part}'
+        return f'RTR-NK7250-1.{state}-{site_part}'
+
+    # Pattern 4: Strip MT prefix, use identity as site
+    if identity:
+        cleaned = re.sub(r'^RTR-MT\S+-\d+[-.]?', '', identity, flags=re.IGNORECASE).strip()
+        if cleaned:
+            if re.match(r'^[A-Z]{2}-', cleaned, re.IGNORECASE):
+                return f'RTR-NK7250-1.{cleaned}'
+            return f'RTR-NK7250-1.{state}-{cleaned}'
+
+    return f'RTR-NK7250-1.{state}-MIGRATED'
+
 
 def _parse_mikrotik_for_nokia(config_text: str) -> dict:
     """
@@ -10914,31 +11101,48 @@ def _parse_mikrotik_for_nokia(config_text: str) -> dict:
         'port_mapping': port_mapping,
         'warnings': warnings,
         'stats': stats,
+        'detected_state': _detect_nokia_state(config_text),
+        'nokia_system_name': None,  # Populated after state is confirmed
     }
 
 
 def _build_nokia_config(parsed: dict, nokia_params: dict = None) -> str:
     """
     Build Nokia SR OS classic CLI configuration from parsed MikroTik data.
-    Output format is consistent with the IN-STATE Nokia 7250 Configuration Maker.
+    Dynamically selects in-state (TX) or out-of-state profile based on state_code.
 
     Args:
         parsed: Output from _parse_mikrotik_for_nokia()
         nokia_params: Optional overrides dict with:
-            timezone, sdp_far_end, vpls_ids, autonomous_system,
-            card_type, nokia_creds (snmp_community, nlroot_pw, admin_pw, bgp_auth_key),
-            ldp_deny_prefixes, ntp_servers, mgmt_acl
+            state_code, nokia_system_name, timezone, sdp_far_end, vpls_ids,
+            autonomous_system, card_type, nokia_creds, ldp_deny_prefixes,
+            ntp_servers, mgmt_acl
     """
     p = nokia_params or {}
-    identity = parsed.get('identity') or 'RTR-NOKIA-MIGRATED'
+
+    # ── State/region profile ──
+    state_code = (p.get('state_code') or parsed.get('detected_state', {}).get('state_code') or 'TX').upper()
+    profile = _NOKIA_STATE_PROFILES.get(state_code, _NOKIA_STATE_PROFILES['TX'])
+    is_instate = profile.get('is_instate', True)
+
+    # ── System name ──
+    nokia_name = p.get('nokia_system_name') or _generate_nokia_system_name(parsed, state_code)
+
     loopback = parsed.get('loopback_ip') or '10.0.0.1/32'
     router_id = parsed.get('router_id') or loopback.split('/')[0]
     as_num = p.get('autonomous_system') or (parsed.get('bgp', {}).get('as_number')) or 26077
-    tz_key = p.get('timezone', 'CST')
+    tz_key = p.get('timezone') or profile.get('tz', 'CST')
     tz = _NOKIA_TZ_MAP.get(tz_key)
     card_type = p.get('card_type', 'imm24-sfp++8-sfp28+2-qsfp28')
-    sdp_far_end = p.get('sdp_far_end', '10.249.0.200')
-    vpls_ids = p.get('vpls_ids', ['1245', '2245', '3245', '4245'])
+
+    # SDP far-ends from profile (allow single override for backward compat)
+    sdp_far_ends = profile.get('sdp_far_ends', ['10.249.0.200'])
+    if p.get('sdp_far_end'):
+        sdp_far_ends = [p['sdp_far_end']]  # User override → single SDP
+
+    # VPLS IDs from profile vpls_base or user override
+    vpls_base = profile.get('vpls_base', 245)
+    vpls_ids = p.get('vpls_ids', [f'1{vpls_base}', f'2{vpls_base}', f'3{vpls_base}', f'4{vpls_base}'])
     vpls_vlans = ['1000', '2000', '3000', '4000']
 
     # Credentials from env (server-side) or overrides
@@ -10948,11 +11152,16 @@ def _build_nokia_config(parsed: dict, nokia_params: dict = None) -> str:
     admin_pw = creds.get('admin_pw') or os.getenv('NOKIA7250_ADMIN_PW', 'changeme')
     bgp_key = creds.get('bgp_auth_key') or os.getenv('NOKIA7250_BGP_AUTH_KEY', 'changeme')
 
-    ntp_servers = p.get('ntp_servers') or parsed.get('ntp_servers') or _NOKIA_DEFAULT_NTP
-    # Prefer config-extracted LDP deny prefixes, then user overrides, then defaults
+    ntp_servers = p.get('ntp_servers') or parsed.get('ntp_servers') or profile.get('ntp', _NOKIA_DEFAULT_NTP)
+    # For in-state: LDP deny prefixes; for out-of-state: LDP allow prefixes come from profile
     ldp_deny = parsed.get('ldp_deny_prefixes') or p.get('ldp_deny_prefixes') or _NOKIA_DEFAULT_LDP_DENY
-    mgmt_acl = p.get('mgmt_acl') or _NOKIA_DEFAULT_MGMT_ACL
+    mgmt_acl = p.get('mgmt_acl') or profile.get('mgmt_acl', _NOKIA_DEFAULT_MGMT_ACL)
+    acl_dst_port = profile.get('acl_dst_port', False)
     ospf_auth = parsed.get('ospf', {}).get('auth_key')
+
+    # OSPF area: use profile default, but allow parser-detected area or user override
+    ospf_area_override = p.get('ospf_area')
+    profile_ospf_area = profile.get('ospf_area', '0.0.0.0')
 
     # Merge source managerIP entries into management ACL
     source_mgmt = parsed.get('firewall_address_lists', {}).get('managerIP', [])
@@ -11042,6 +11251,7 @@ def _build_nokia_config(parsed: dict, nokia_params: dict = None) -> str:
     L.append('# ================================================')
     L.append(f'# Nokia SR OS Configuration — Migrated from MikroTik')
     L.append(f'# Source: {parsed.get("source_device", {}).get("model", "unknown")} ({parsed.get("identity", "unknown")})')
+    L.append(f'# Profile: {profile.get("name", state_code)} ({"In-State" if is_instate else "Out-of-State"})')
     L.append(f'# Generated by NOC Config Maker — Nokia Migration')
     L.append('# ================================================')
     L.append('')
@@ -11063,7 +11273,7 @@ def _build_nokia_config(parsed: dict, nokia_params: dict = None) -> str:
     # ── SYSTEM ──
     echo('System Configuration')
     L.append('    system')
-    L.append(f'        name "{identity}"')
+    L.append(f'        name "{nokia_name}"')
     L.append(f'        location "Migrated from MikroTik {parsed.get("source_device", {}).get("model", "")}"')
     L.append('        rollback')
     L.append('            rollback-location "cf3:/checkpoint_db"')
@@ -11097,7 +11307,8 @@ def _build_nokia_config(parsed: dict, nokia_params: dict = None) -> str:
     for i, acl_ip in enumerate(merged_acl):
         L.append(f'                    entry {i + 1}')
         L.append(f'                        src-ip {acl_ip}')
-        L.append('                        dst-port 22 65535')
+        if acl_dst_port:
+            L.append('                        dst-port 22 65535')
         L.append('                        action permit')
         L.append('                    exit')
     L.append('                    no shutdown')
@@ -11275,44 +11486,92 @@ def _build_nokia_config(parsed: dict, nokia_params: dict = None) -> str:
 
     # ── OSPF ──
     if ospf.get('found') or ospf.get('interfaces'):
-        echo('OSPFv2 Configuration')
-        L.append(f'        ospf 0 {router_id}')
-        if ospf_auth:
-            L.append(f'            authentication-key "{ospf_auth}"')
+        # Determine OSPF area: user override > parser-detected > profile default
         areas_used = set()
         for oi in ospf.get('interfaces', []):
             area = oi.get('area', 'backbone')
             areas_used.add(_normalize_area(area))
         if not areas_used:
-            areas_used.add('0.0.0.0')
-        for area_id in sorted(areas_used):
-            L.append(f'            area {area_id}')
-            L.append('                interface "system"')
-            L.append('                    no shutdown')
-            L.append('                exit')
-            for ri in router_ifaces:
-                if not ri.get('port') or ri['port'] == 'A/1':
-                    continue
-                # Only include interfaces explicitly in OSPF
-                mt_iface = ri.get('mt_iface', '')
-                matching_ospf = [
-                    o for o in ospf.get('interfaces', [])
-                    if o['interface'] == mt_iface and _normalize_area(o.get('area', 'backbone')) == area_id
-                ]
-                if matching_ospf:
-                    oi = matching_ospf[0]
-                    itype = oi.get('type', '')
-                    L.append(f'                interface "{ri["name"]}"')
-                    if 'point-to-point' in itype:
-                        L.append('                    interface-type point-to-point')
-                    cost = oi.get('cost')
-                    if cost:
-                        L.append(f'                    metric {cost}')
-                    L.append('                    no shutdown')
-                    L.append('                exit')
-            L.append('            exit')
-        L.append('            no shutdown')
-        L.append('        exit')
+            areas_used.add(profile_ospf_area)
+        if ospf_area_override:
+            areas_used = {ospf_area_override}
+
+        if is_instate:
+            # ── IN-STATE: single OSPF instance 0 ──
+            echo('OSPFv2 Configuration')
+            L.append(f'        ospf 0 {router_id}')
+            if ospf_auth:
+                L.append(f'            authentication-key "{ospf_auth}"')
+            for area_id in sorted(areas_used):
+                L.append(f'            area {area_id}')
+                L.append('                interface "system"')
+                L.append('                    no shutdown')
+                L.append('                exit')
+                for ri in router_ifaces:
+                    if not ri.get('port') or ri['port'] == 'A/1':
+                        continue
+                    mt_iface = ri.get('mt_iface', '')
+                    matching_ospf = [
+                        o for o in ospf.get('interfaces', [])
+                        if o['interface'] == mt_iface and _normalize_area(o.get('area', 'backbone')) == area_id
+                    ]
+                    if matching_ospf:
+                        oi = matching_ospf[0]
+                        itype = oi.get('type', '')
+                        L.append(f'                interface "{ri["name"]}"')
+                        if 'point-to-point' in itype:
+                            L.append('                    interface-type point-to-point')
+                        cost = oi.get('cost')
+                        if cost:
+                            L.append(f'                    metric {cost}')
+                        L.append('                    no shutdown')
+                        L.append('                exit')
+                L.append('            exit')
+            L.append('            no shutdown')
+            L.append('        exit')
+        else:
+            # ── OUT-OF-STATE: dual OSPF instances (0=shutdown, 1=active) ──
+            echo('OSPFv2 Configuration')
+            L.append('        ospf 0')
+            L.append('            shutdown')
+            for area_id in sorted(areas_used):
+                L.append(f'            area {area_id}')
+                L.append('            exit')
+            L.append('        exit')
+
+            echo('OSPFv2 (Inst: 1) Configuration')
+            L.append(f'        ospf 1 {router_id}')
+            for area_id in sorted(areas_used):
+                L.append(f'            area {area_id}')
+                L.append('                interface "system"')
+                L.append('                    no shutdown')
+                L.append('                exit')
+                for ri in router_ifaces:
+                    if not ri.get('port') or ri['port'] == 'A/1':
+                        continue
+                    mt_iface = ri.get('mt_iface', '')
+                    matching_ospf = [
+                        o for o in ospf.get('interfaces', [])
+                        if o['interface'] == mt_iface and _normalize_area(o.get('area', 'backbone')) == area_id
+                    ]
+                    if matching_ospf:
+                        oi = matching_ospf[0]
+                        itype = oi.get('type', '')
+                        L.append(f'                interface "{ri["name"]}"')
+                        if 'point-to-point' in itype:
+                            L.append('                    interface-type point-to-point')
+                        cost = oi.get('cost')
+                        if cost:
+                            L.append(f'                    metric {cost}')
+                        # Out-of-state uses message-digest auth per interface
+                        if ospf_auth:
+                            L.append('                    authentication-type message-digest')
+                            L.append(f'                    message-digest-key 1 md5 "{ospf_auth}"')
+                        L.append('                    no shutdown')
+                        L.append('                exit')
+                L.append('            exit')
+            L.append('            no shutdown')
+            L.append('        exit')
 
     # ── MPLS ──
     echo('MPLS Configuration')
@@ -11335,6 +11594,8 @@ def _build_nokia_config(parsed: dict, nokia_params: dict = None) -> str:
     # ── RSVP ──
     echo('RSVP Configuration')
     L.append('        rsvp')
+    if profile.get('rsvp_shutdown'):
+        L.append('            shutdown')
     L.append('            interface "system"')
     L.append('                no shutdown')
     L.append('            exit')
@@ -11348,7 +11609,8 @@ def _build_nokia_config(parsed: dict, nokia_params: dict = None) -> str:
         L.append(f'            interface "{ri["name"]}"')
         L.append('                no shutdown')
         L.append('            exit')
-    L.append('            no shutdown')
+    if not profile.get('rsvp_shutdown'):
+        L.append('            no shutdown')
     L.append('        exit')
 
     # ── MPLS LSP ──
@@ -11358,13 +11620,15 @@ def _build_nokia_config(parsed: dict, nokia_params: dict = None) -> str:
     L.append('        exit')
 
     # ── LDP ──
+    ldp_policy = profile.get('ldp_policy_name', 'LDP-FILTER-PS')
     echo('LDP Configuration')
     L.append('        ldp')
-    L.append('            import "LDP-FILTER-PS"')
+    L.append(f'            import "{ldp_policy}"')
     L.append('            import-pmsi-routes')
     L.append('            exit')
-    L.append('            tcp-session-parameters')
-    L.append('            exit')
+    if is_instate:
+        L.append('            tcp-session-parameters')
+        L.append('            exit')
     L.append('            interface-parameters')
     seen_ldp = set()
     for ri in router_ifaces:
@@ -11391,14 +11655,19 @@ def _build_nokia_config(parsed: dict, nokia_params: dict = None) -> str:
     if has_bridge:
         echo('Service Configuration')
         L.append('    service')
-        L.append('        sdp 101 mpls create')
-        L.append(f'            far-end {sdp_far_end}')
-        L.append('            ldp')
-        L.append('            keep-alive')
-        L.append('                shutdown')
-        L.append('            exit')
-        L.append('            no shutdown')
-        L.append('        exit')
+        # Create SDPs — in-state: 1 SDP, out-of-state: multiple SDPs
+        mesh_sdp_id = 101  # default for in-state
+        for idx, far_end in enumerate(sdp_far_ends):
+            sdp_num = 101 + idx
+            L.append(f'        sdp {sdp_num} mpls create')
+            L.append(f'            far-end {far_end}')
+            L.append('            ldp')
+            L.append('            keep-alive')
+            L.append('                shutdown')
+            L.append('            exit')
+            L.append('            no shutdown')
+            L.append('        exit')
+            mesh_sdp_id = sdp_num  # VPLS mesh-sdp uses the last SDP
         L.append('        customer 1 name "1" create')
         L.append('            description "Default customer"')
         L.append('        exit')
@@ -11407,7 +11676,6 @@ def _build_nokia_config(parsed: dict, nokia_params: dict = None) -> str:
             L.append('        exit')
         for i, vid in enumerate(vpls_ids):
             vlan = vpls_vlans[i] if i < len(vpls_vlans) else str(1000 + i * 1000)
-            # Use per-bridge LAG if we have multiple bridges
             lag_id = min(i + 1, len(bridges)) if bridges else 1
             L.append(f'        vpls {vid} name "{vid}" customer {vid} create')
             L.append('            service-mtu 1594')
@@ -11418,7 +11686,7 @@ def _build_nokia_config(parsed: dict, nokia_params: dict = None) -> str:
             L.append(f'            sap lag-{lag_id}:{vlan} create')
             L.append('                no shutdown')
             L.append('            exit')
-            L.append(f'            mesh-sdp 101:{vid} create')
+            L.append(f'            mesh-sdp {mesh_sdp_id}:{vid} create')
             L.append('                no shutdown')
             L.append('            exit')
             L.append('            no shutdown')
@@ -11441,43 +11709,80 @@ def _build_nokia_config(parsed: dict, nokia_params: dict = None) -> str:
 
     # ── OSPF SERVICE SIDE ──
     if ospf.get('found'):
-        echo('OSPFv2 Configuration')
-        L.append(f'        ospf 0 {router_id}')
-        L.append('            no shutdown')
-        L.append('        exit')
+        if is_instate:
+            echo('OSPFv2 Configuration')
+            L.append(f'        ospf 0 {router_id}')
+            L.append('            no shutdown')
+            L.append('        exit')
+        else:
+            echo('OSPFv2 Configuration')
+            L.append('        ospf 0')
+            L.append('            shutdown')
+            L.append('        exit')
+            echo('OSPFv2 (Inst: 1) Configuration')
+            L.append(f'        ospf 1 {router_id}')
+            L.append('            no shutdown')
+            L.append('        exit')
 
     # ── POLICY ──
     echo('Policy Configuration')
     L.append('        policy-options')
     L.append('            begin')
-    L.append('            prefix-list "LDP-DENY-PL"')
-    for prefix in ldp_deny:
-        L.append(f'                prefix {prefix} exact')
-    L.append('            exit')
-    L.append('            prefix-list "LDP-ALLOW-PL"')
-    L.append('                prefix 10.0.0.0/8 prefix-length-range 32-32')
-    L.append('            exit')
-    L.append('            policy-statement "LDP-FILTER-PS"')
-    L.append('                entry 10')
-    L.append('                    from')
-    L.append('                        prefix-list "LDP-DENY-PL"')
-    L.append('                    exit')
-    L.append('                    action drop')
-    L.append('                    exit')
-    L.append('                exit')
-    L.append('                entry 20')
-    L.append('                    from')
-    L.append('                        prefix-list "LDP-ALLOW-PL"')
-    L.append('                    exit')
-    L.append('                    action accept')
-    L.append('                    exit')
-    L.append('                exit')
-    L.append('                entry 30')
-    L.append('                    description "drop-rest"')
-    L.append('                    action drop')
-    L.append('                    exit')
-    L.append('                exit')
-    L.append('            exit')
+    if is_instate:
+        # IN-STATE: deny-list approach — deny specific, allow 10.0.0.0/8, drop rest
+        pfx_name = profile.get('ldp_pfx_name', 'LDP-DENY-PL')
+        pol_name = profile.get('ldp_policy_name', 'LDP-FILTER-PS')
+        L.append(f'            prefix-list "{pfx_name}"')
+        for prefix in ldp_deny:
+            L.append(f'                prefix {prefix} exact')
+        L.append('            exit')
+        L.append('            prefix-list "LDP-ALLOW-PL"')
+        L.append('                prefix 10.0.0.0/8 prefix-length-range 32-32')
+        L.append('            exit')
+        L.append(f'            policy-statement "{pol_name}"')
+        L.append('                entry 10')
+        L.append('                    from')
+        L.append(f'                        prefix-list "{pfx_name}"')
+        L.append('                    exit')
+        L.append('                    action drop')
+        L.append('                    exit')
+        L.append('                exit')
+        L.append('                entry 20')
+        L.append('                    from')
+        L.append('                        prefix-list "LDP-ALLOW-PL"')
+        L.append('                    exit')
+        L.append('                    action accept')
+        L.append('                    exit')
+        L.append('                exit')
+        L.append('                entry 30')
+        L.append('                    description "drop-rest"')
+        L.append('                    action drop')
+        L.append('                    exit')
+        L.append('                exit')
+        L.append('            exit')
+    else:
+        # OUT-OF-STATE: allow-list approach — allow specific prefixes, drop rest
+        pfx_name = profile.get('ldp_pfx_name', 'LDP-IN-BNG-PL')
+        pol_name = profile.get('ldp_policy_name', 'LDP-IN-BNG-PS')
+        allow_prefixes = profile.get('ldp_allow_prefixes', [])
+        L.append(f'            prefix-list "{pfx_name}"')
+        for prefix in allow_prefixes:
+            L.append(f'                prefix {prefix}')
+        L.append('            exit')
+        L.append(f'            policy-statement "{pol_name}"')
+        L.append('                entry 10')
+        L.append('                    from')
+        L.append(f'                        prefix-list "{pfx_name}"')
+        L.append('                    exit')
+        L.append('                    action accept')
+        L.append('                    exit')
+        L.append('                exit')
+        L.append('                entry 20')
+        L.append('                    description "drop-rest"')
+        L.append('                    action drop')
+        L.append('                    exit')
+        L.append('                exit')
+        L.append('            exit')
     L.append('            commit')
     L.append('        exit')
 
@@ -11556,7 +11861,19 @@ def parse_mikrotik_for_nokia_endpoint():
             return jsonify({'error': 'Source configuration is required'}), 400
 
         parsed = _parse_mikrotik_for_nokia(source_config)
-        return jsonify({'success': True, 'parsed': parsed})
+
+        # Generate Nokia system name based on detected state
+        state_info = parsed.get('detected_state', {})
+        state_code = state_info.get('state_code', 'TX')
+        parsed['nokia_system_name'] = _generate_nokia_system_name(parsed, state_code)
+
+        # Include available state profiles for frontend dropdown
+        state_options = [
+            {'code': code, 'name': prof.get('name', code), 'is_instate': prof.get('is_instate', False)}
+            for code, prof in _NOKIA_STATE_PROFILES.items()
+        ]
+
+        return jsonify({'success': True, 'parsed': parsed, 'state_options': state_options})
     except Exception as e:
         print(f"[NOKIA PARSE] Error: {e}")
         return jsonify({'error': str(e)}), 500

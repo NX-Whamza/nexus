@@ -6351,6 +6351,30 @@
                     <!-- ====== STEP 3: NOKIA SETTINGS ====== -->
                     <div id="nokia_migration_settings" style="display: none; background: var(--container-bg); padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 1px solid var(--border-color);">
                         <h2 style="color: var(--accent-color); margin: 0 0 16px 0; font-size: 17px;">&#9314; Nokia Settings &amp; Overrides</h2>
+
+                        <!-- State / Region & System Name row -->
+                        <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 14px; margin-bottom: 14px;">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="nokia_mig_state" style="font-size: 13px;">State / Region:</label>
+                                <select id="nokia_mig_state" onchange="onNokiaStateChange()" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-color); font-size: 13px;">
+                                    <option value="TX">TX &ndash; Texas (In-State)</option>
+                                    <option value="OK">OK &ndash; Oklahoma</option>
+                                    <option value="NE">NE &ndash; Nebraska</option>
+                                    <option value="KS">KS &ndash; Kansas</option>
+                                    <option value="IL">IL &ndash; Illinois</option>
+                                    <option value="IA">IA &ndash; Iowa</option>
+                                    <option value="IN">IN &ndash; Indiana</option>
+                                </select>
+                                <div id="nokia_state_badge" style="margin-top: 4px; font-size: 11px; color: var(--text-muted);"></div>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="nokia_mig_system_name" style="font-size: 13px;">Nokia System Name:</label>
+                                <input type="text" id="nokia_mig_system_name" placeholder="RTR-NK7250-1.TX-SITENAME-DIR-1" value=""
+                                    style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-color); font-size: 13px;">
+                                <div style="margin-top: 3px; font-size: 11px; color: var(--text-muted);">Auto-generated from MikroTik identity &mdash; editable</div>
+                            </div>
+                        </div>
+
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label for="nokia_mig_timezone" style="font-size: 13px;">Timezone:</label>
@@ -23488,6 +23512,60 @@ Ready for translation!`);
                 return `<span style="display:inline-flex;align-items:center;gap:5px;background:${color || '#333'};color:#fff;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;">${label}: <strong>${value}</strong></span>`;
             }
 
+            // ── Nokia state profiles (frontend mirror for auto-fill) ──
+            const _NOKIA_FE_STATE_PROFILES = {
+                TX: { label: 'Texas (In-State)', tz: 'CST', sdp_far_end: '10.249.0.200', vpls_base: 245, is_instate: true },
+                OK: { label: 'Oklahoma',         tz: 'CST', sdp_far_end: '10.254.0.200', vpls_base: 340, is_instate: false },
+                NE: { label: 'Nebraska',          tz: 'CST', sdp_far_end: '10.254.249.3', vpls_base: 249, is_instate: false },
+                KS: { label: 'Kansas',            tz: 'CST', sdp_far_end: '10.254.248.3', vpls_base: 248, is_instate: false },
+                IL: { label: 'Illinois',          tz: 'CST', sdp_far_end: '10.254.247.3', vpls_base: 247, is_instate: false },
+                IA: { label: 'Iowa',              tz: 'CST', sdp_far_end: '10.254.254.3', vpls_base: 254, is_instate: false },
+                IN: { label: 'Indiana',           tz: 'EST', sdp_far_end: '10.254.243.3', vpls_base: 243, is_instate: false }
+            };
+
+            // ── State change handler: auto-update related fields ──
+            window.onNokiaStateChange = function () {
+                const stateCode = document.getElementById('nokia_mig_state')?.value || 'TX';
+                const profile = _NOKIA_FE_STATE_PROFILES[stateCode];
+                if (!profile) return;
+
+                // Update timezone
+                const tzSel = document.getElementById('nokia_mig_timezone');
+                if (tzSel) tzSel.value = profile.tz;
+
+                // Update SDP far-end
+                const sdpInput = document.getElementById('nokia_mig_sdp_far_end');
+                if (sdpInput) sdpInput.value = profile.sdp_far_end;
+
+                // Update VPLS IDs
+                const vplsInput = document.getElementById('nokia_mig_vpls_ids');
+                if (vplsInput) {
+                    const b = profile.vpls_base;
+                    vplsInput.value = `1${b},2${b},3${b},4${b}`;
+                }
+
+                // Update state badge
+                const badge = document.getElementById('nokia_state_badge');
+                if (badge) {
+                    badge.innerHTML = profile.is_instate
+                        ? '<span style="color:#4CAF50;">&#9679; In-State deployment</span>'
+                        : '<span style="color:#FF9800;">&#9679; Out-of-State deployment</span>';
+                }
+
+                // Regenerate system name if parsed data exists
+                if (window._nokiaMigrationParsed) {
+                    const nameInput = document.getElementById('nokia_mig_system_name');
+                    if (nameInput && window._nokiaMigrationParsed.nokia_system_name) {
+                        // Replace the state code portion in the generated name
+                        const currentName = nameInput.value;
+                        const nameMatch = currentName.match(/^(RTR-NK7250-\d+\.)[A-Z]{2}(-.*)/);
+                        if (nameMatch) {
+                            nameInput.value = nameMatch[1] + stateCode + nameMatch[2];
+                        }
+                    }
+                }
+            };
+
             // ── Helper: render detail card ──
             function _nokiaDetailCard(title, lines) {
                 const body = lines.length ? lines.map(l => `<div style="padding:3px 0;font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--text-color);">${l}</div>`).join('') : '<div style="color:var(--text-color-secondary);font-size:12px;font-style:italic;">None detected</div>';
@@ -23643,12 +23721,6 @@ Ready for translation!`);
                 }
 
                 detailDiv.innerHTML = cards.join('');
-
-                // Populate Nokia settings from parsed data
-                if (parsed.bgp && parsed.bgp.as_number) {
-                    const asInput = document.getElementById('nokia_mig_as');
-                    if (!asInput.value) asInput.value = parsed.bgp.as_number;
-                }
             }
 
             // ── ANALYZE: Parse MikroTik config and show preview ──
@@ -23681,6 +23753,30 @@ Ready for translation!`);
                     if (data.parsed) {
                         window._nokiaMigrationParsed = data.parsed;
                         _renderNokiaMappingPreview(data.parsed);
+
+                        // ── Auto-fill state dropdown from detection ──
+                        const detected = data.parsed.detected_state;
+                        if (detected && detected.state_code) {
+                            const stateSel = document.getElementById('nokia_mig_state');
+                            if (stateSel) {
+                                stateSel.value = detected.state_code;
+                            }
+                        }
+
+                        // ── Auto-fill Nokia system name ──
+                        if (data.parsed.nokia_system_name) {
+                            const nameInput = document.getElementById('nokia_mig_system_name');
+                            if (nameInput) nameInput.value = data.parsed.nokia_system_name;
+                        }
+
+                        // ── Trigger state handler to auto-fill TZ, SDP, VPLS, badge ──
+                        if (window.onNokiaStateChange) window.onNokiaStateChange();
+
+                        // ── Auto-fill AS from parsed BGP ──
+                        if (data.parsed.bgp && data.parsed.bgp.as_number) {
+                            const asInput = document.getElementById('nokia_mig_as');
+                            if (asInput && !asInput.value) asInput.value = data.parsed.bgp.as_number;
+                        }
 
                         // Show preview, settings, and generate sections
                         document.getElementById('nokia_migration_preview').style.display = 'block';
@@ -23805,6 +23901,10 @@ Ready for translation!`);
 
                 // Collect Nokia overrides
                 const nokiaParams = {};
+                const stateCode = document.getElementById('nokia_mig_state')?.value;
+                if (stateCode) nokiaParams.state_code = stateCode;
+                const sysName = document.getElementById('nokia_mig_system_name')?.value?.trim();
+                if (sysName) nokiaParams.nokia_system_name = sysName;
                 const tz = document.getElementById('nokia_mig_timezone')?.value;
                 if (tz) nokiaParams.timezone = tz;
                 const asVal = document.getElementById('nokia_mig_as')?.value;

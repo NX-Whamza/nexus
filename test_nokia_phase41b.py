@@ -15,6 +15,12 @@ _NOKIA_DEFAULT_MGMT_ACL = ['10.10.103.91/32', '192.168.128.0/21', '10.0.0.0/8']
 _NOKIA_DEFAULT_NTP = ['52.128.59.240', '52.128.59.241']
 _NOKIA_DEFAULT_LDP_DENY = ['10.2.0.14/32', '10.2.0.21/32']
 
+# Extract state profiles and helpers (Phase 41c dependencies)
+# Find the block from _NOKIA_OOS_DEFAULT_MGMT_ACL through _generate_nokia_system_name
+helpers_start = src.index('_NOKIA_OOS_DEFAULT_MGMT_ACL')
+helpers_end = src.index('\ndef _parse_mikrotik_for_nokia(', helpers_start)
+exec(compile(src[helpers_start:helpers_end], '<helpers>', 'exec'))
+
 # Extract _parse_mikrotik_for_nokia function
 fn_start = src.index('def _parse_mikrotik_for_nokia(')
 fn_end = src.index('\ndef _build_nokia_config(', fn_start)
@@ -23,7 +29,8 @@ exec(compile(src[fn_start:fn_end], '<parser>', 'exec'))
 # Extract _build_nokia_config function
 fn2_start = src.index('def _build_nokia_config(')
 fn2_end = src.index("\n@app.route('/api/parse-mikrotik-for-nokia'", fn2_start)
-exec(compile(src[fn2_start:fn2_end], '<builder>', 'exec'))
+# Inject 'import os' so os.getenv calls work inside exec'd builder
+exec(compile('import os\n' + src[fn2_start:fn2_end], '<builder>', 'exec'))
 
 # Test config (simulated BLUEGRASS2 CCR2004)
 test_config = """

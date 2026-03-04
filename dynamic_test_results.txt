@@ -1,0 +1,8 @@
+
+=== TEST SET 1: Same-Device (Fast-Mode) — every model ===
+
+=== TEST SET 2: Cross-Device Migrations ===
+
+=== TEST SET 3: Edge Cases ===
+
+RESULTS: 44/44 passed, 0 failed
