@@ -10995,11 +10995,14 @@ def _parse_mikrotik_for_nokia(config_text: str) -> dict:
         r'P[-_ ]LINK|RING|MPLS|AGGREGATE)', re.IGNORECASE
     )
 
-    # ── Detect VLAN parent interfaces ──
-    # If a physical interface is the parent of VLANs (e.g., /interface vlan add
-    # interface=sfp-sfpplus8 vlan-id=1000), it carries customer/service VLANs
-    # and should NOT become a Nokia transport port.
+    # ── Detect VLAN interfaces and their parents ──
+    # Track BOTH:
+    #   - vlan_iface_names: the VLAN sub-interface names (e.g., 'vlan1000-sfp-sfpplus8')
+    #     These are NOT physical ports — they must NEVER get Nokia port assignments.
+    #   - vlan_parent_ifaces: the physical parent interfaces carrying VLANs
+    #     These carry customer/service VLANs and should be excluded from Nokia.
     vlan_parent_ifaces = set()
+    vlan_iface_names = set()   # VLAN sub-interfaces — NOT physical ports
     in_vlan_section = False
     for raw_line in text.splitlines():
         line = raw_line.strip()
@@ -11008,6 +11011,11 @@ def _parse_mikrotik_for_nokia(config_text: str) -> dict:
             continue
         if not in_vlan_section or not line.startswith('add '):
             continue
+        # Collect the VLAN sub-interface name
+        nm = re.search(r'\bname=(\S+)', line)
+        if nm:
+            vlan_iface_names.add(_clean(nm.group(1)))
+        # Collect the parent physical interface
         pim = re.search(r'\binterface=(\S+)', line)
         if pim:
             parent = _clean(pim.group(1))
@@ -11025,6 +11033,8 @@ def _parse_mikrotik_for_nokia(config_text: str) -> dict:
             continue
         if iface_name == mgmt_port:
             continue  # management port handled separately
+        if iface_name in vlan_iface_names:
+            continue  # VLAN sub-interfaces are NOT physical ports
         comment = iface_comments.get(iface_name, '').upper()
         role = 'unknown'  # default → will be EXCLUDED from Nokia
 
@@ -11055,19 +11065,23 @@ def _parse_mikrotik_for_nokia(config_text: str) -> dict:
     # All non-transport (access + unknown) are excluded
     excluded_ifaces = {k for k, v in interface_roles.items() if v != 'transport'}
 
-    # Collect only PHYSICAL TRANSPORT interfaces (not bridges, not loop0, not excluded)
+    # ── Non-physical interface set: VLAN sub-interfaces, bridges, loopback, management ──
+    # These must NEVER receive Nokia 1/1/X port assignments.
+    _non_physical = bridge_names | vlan_iface_names | {'loop0', mgmt_port}
+
+    # Collect only PHYSICAL TRANSPORT interfaces (not bridges, VLANs, loop0, mgmt, or excluded)
     all_physical_ifaces = set()
     for ip_entry in ip_addresses:
         iface = ip_entry['interface']
-        if iface not in bridge_names and iface != 'loop0' and iface in transport_ifaces:
+        if iface not in _non_physical and iface in transport_ifaces:
             all_physical_ifaces.add(iface)
     for iface_name in iface_comments:
-        if iface_name not in bridge_names and iface_name != 'loop0' and iface_name in transport_ifaces:
+        if iface_name not in _non_physical and iface_name in transport_ifaces:
             all_physical_ifaces.add(iface_name)
     for o in ospf.get('interfaces', []):
         iface = o['interface']
-        if iface not in bridge_names and iface != 'loop0':
-            all_physical_ifaces.add(iface)  # OSPF → always transport
+        if iface not in _non_physical:
+            all_physical_ifaces.add(iface)  # OSPF → always transport (but only physical ports)
     # NOTE: Bridge member ports are NOT added to all_physical_ifaces.
     # Nokia 7250 is a transport router — bridge member ports stay on the
     # co-located MikroTik that handles DHCP/LAN.  We track them in
@@ -11202,6 +11216,7 @@ def _parse_mikrotik_for_nokia(config_text: str) -> dict:
         'bgp': bgp,
         'bridges': bridges,
         'bridge_names': sorted(bridge_names),
+        'vlan_iface_names': sorted(vlan_iface_names),
         'static_routes': static_routes,
         'ntp_servers': ntp_servers,
         'snmp_communities': snmp_communities,
@@ -11324,7 +11339,7 @@ def _build_nokia_config(parsed: dict, nokia_params: dict = None) -> str:
             continue
         if not nokia_port.startswith(('1/1/', 'A/')):
             continue  # Skip non-Nokia ports (e.g. '— (not on Nokia)', '— (on MikroTik)')
-        if pm.get('type') in ('access', 'bridge-member'):
+        if pm.get('type') in ('access', 'bridge-member', 'management'):
             continue
         desc = entry.get('comment') or parsed.get('interfaces', {}).get(iface, '') or iface
         speed = pm.get('speed', '10000')
