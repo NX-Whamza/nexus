@@ -6239,117 +6239,182 @@
 
             <!-- NOKIA MIGRATION TAB -->
             <div class="content-pane" id="mikrotik-to-nokia-pane">
-                <div class="container">
-                    <div
-                        style="background: #2196F3; color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #1565C0;">
-                        <strong>TESTING</strong>
-                        <p style="margin: 10px 0 0 0; font-size: 14px;">This feature is currently undergoing testing.
-                            Please review all generated configurations before deploying to production.</p>
+                <div class="container" style="max-width: 1100px;">
+                    <!-- Header -->
+                    <div style="margin-bottom: 24px;">
+                        <h1 style="color: var(--text-color); margin-bottom: 6px; font-size: 26px;">Nokia Migration</h1>
+                        <p style="color: var(--text-color-secondary); margin: 0; font-size: 14px;">
+                            MikroTik RouterOS &rarr; Nokia 7250 IXR SR OS &mdash; Classic CLI format consistent with IN-STATE Nokia maker
+                        </p>
                     </div>
-                    <h1 style="color: var(--text-color); margin-bottom: 30px;"> NOKIA MIGRATION</h1>
-                    <p style="color: var(--text-color-secondary); margin-bottom: 30px;">
-                        Convert MikroTik RouterOS configurations to Nokia SR OS syntax. Use SSH to fetch config directly
-                        from device, or paste manually.
-                    </p>
 
-                    <div class="section"
-                        style="background: var(--container-bg); padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-                        <h2 style="color: var(--text-color); margin-top: 0;">Source Configuration</h2>
+                    <!-- ====== STEP 1: SOURCE CONFIG ====== -->
+                    <div style="background: var(--container-bg); padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 1px solid var(--border-color);">
+                        <h2 style="color: var(--accent-color); margin: 0 0 16px 0; font-size: 17px;">&#9312; Source Configuration</h2>
 
-                        <!-- SSH Fetch Option (Primary) -->
-                        <div
-                            style="background: var(--card-bg); padding: 15px; border-radius: 6px; margin-bottom: 20px; border: 2px solid var(--accent-color);">
-                            <h3 style="color: var(--accent-color); margin-top: 0; margin-bottom: 15px;"> SSH into
-                                Device (Recommended)</h3>
-                            <div class="form-group">
-                                <label for="nokia_migration_device_ip">Device IP Address:</label>
-                                <input type="text" id="nokia_migration_device_ip" placeholder="10.1.1.1"
-                                    style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-color);">
+                        <!-- SSH Fetch -->
+                        <details open style="margin-bottom: 14px;">
+                            <summary style="cursor: pointer; font-weight: 600; color: var(--text-color); font-size: 14px; padding: 8px 0;">SSH Fetch from Device (Recommended)</summary>
+                            <div style="padding: 12px; background: var(--card-bg); border-radius: 6px; margin-top: 6px; border: 1px solid var(--border-color);">
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label for="nokia_migration_device_ip" style="font-size: 13px;">Device IP:</label>
+                                        <input type="text" id="nokia_migration_device_ip" placeholder="10.1.1.1"
+                                            style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-color); font-size: 13px;">
+                                    </div>
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label for="nokia_migration_ros_version" style="font-size: 13px;">ROS Version:</label>
+                                        <select id="nokia_migration_ros_version"
+                                            style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-color); font-size: 13px;">
+                                            <option value="7">RouterOS 7.x</option>
+                                            <option value="6">RouterOS 6.x</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label for="nokia_ssh_username" style="font-size: 13px;">Username:</label>
+                                        <input type="text" id="nokia_ssh_username" placeholder="admin"
+                                            style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-color); font-size: 13px;">
+                                    </div>
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label for="nokia_ssh_password" style="font-size: 13px;">Password:</label>
+                                        <input type="password" id="nokia_ssh_password" placeholder="password"
+                                            style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-color); font-size: 13px;">
+                                    </div>
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label for="nokia_ssh_ports" style="font-size: 13px;">Ports:</label>
+                                        <input type="text" id="nokia_ssh_ports" placeholder="22,5022"
+                                            style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-color); font-size: 13px;">
+                                    </div>
+                                </div>
+                                <button onclick="fetchMikrotikConfigForNokiaMigration()"
+                                    style="background: var(--accent-color); color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; width: 100%;">
+                                    Fetch Config via SSH
+                                </button>
+                                <div id="nokia_migration_ssh_status" style="margin-top: 8px; padding: 8px 12px; border-radius: 4px; display: none; font-size: 13px;"></div>
                             </div>
-                            <div class="form-group">
-                                <label for="nokia_migration_ros_version">RouterOS Version:</label>
-                                <select id="nokia_migration_ros_version"
-                                    style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-color);">
-                                    <option value="7">RouterOS 7.x</option>
-                                    <option value="6">RouterOS 6.x</option>
+                        </details>
+
+                        <!-- Manual Paste -->
+                        <details style="margin-bottom: 14px;">
+                            <summary style="cursor: pointer; font-weight: 600; color: var(--text-color-secondary); font-size: 14px; padding: 8px 0;">Or Paste Configuration Manually</summary>
+                            <div style="padding: 12px; background: var(--card-bg); border-radius: 6px; margin-top: 6px; border: 1px dashed var(--border-color);">
+                                <textarea id="mikrotik_nokia_source"
+                                    style="width: 100%; min-height: 180px; padding: 12px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-color); font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 12px; line-height: 1.5; resize: vertical;"
+                                    placeholder="Paste full MikroTik RouterOS export here..."></textarea>
+                            </div>
+                        </details>
+
+                        <!-- Analyze Button -->
+                        <button onclick="analyzeMikrotikForNokia()"
+                            style="background: #2196F3; color: white; padding: 12px 28px; border: none; border-radius: 6px; cursor: pointer; font-weight: 700; font-size: 15px; width: 100%; margin-top: 4px;">
+                            &#9654; Analyze &amp; Preview Mapping
+                        </button>
+                    </div>
+
+                    <!-- ====== STEP 2: EXTRACTION PREVIEW ====== -->
+                    <div id="nokia_migration_preview" style="display: none; background: var(--container-bg); padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 1px solid var(--border-color);">
+                        <h2 style="color: var(--accent-color); margin: 0 0 16px 0; font-size: 17px;">&#9313; Extraction Preview</h2>
+
+                        <!-- Summary badges -->
+                        <div id="nokia_migration_summary" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;"></div>
+
+                        <!-- Warnings -->
+                        <div id="nokia_migration_warnings" style="display: none; background: #fff3cd; color: #856404; padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; font-size: 13px; border-left: 4px solid #ffc107;"></div>
+
+                        <!-- Port Mapping Table -->
+                        <div style="margin-bottom: 16px;">
+                            <h3 style="color: var(--text-color); margin: 0 0 10px 0; font-size: 14px;">Port Mapping (MikroTik &rarr; Nokia)</h3>
+                            <div style="overflow-x: auto; border-radius: 6px; border: 1px solid var(--border-color);">
+                                <table id="nokia_migration_port_table" style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                                    <thead>
+                                        <tr style="background: var(--card-bg);">
+                                            <th style="padding: 8px 12px; text-align: left; border-bottom: 2px solid var(--border-color); color: var(--text-color);">MikroTik Interface</th>
+                                            <th style="padding: 8px 12px; text-align: left; border-bottom: 2px solid var(--border-color); color: var(--text-color);">Nokia Port</th>
+                                            <th style="padding: 8px 12px; text-align: left; border-bottom: 2px solid var(--border-color); color: var(--text-color);">Type</th>
+                                            <th style="padding: 8px 12px; text-align: left; border-bottom: 2px solid var(--border-color); color: var(--text-color);">Description / Comment</th>
+                                            <th style="padding: 8px 12px; text-align: left; border-bottom: 2px solid var(--border-color); color: var(--text-color);">IP Address</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="nokia_migration_port_tbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Extracted sections detail -->
+                        <div id="nokia_migration_detail" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                            <!-- Dynamic content filled by JS -->
+                        </div>
+                    </div>
+
+                    <!-- ====== STEP 3: NOKIA SETTINGS ====== -->
+                    <div id="nokia_migration_settings" style="display: none; background: var(--container-bg); padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 1px solid var(--border-color);">
+                        <h2 style="color: var(--accent-color); margin: 0 0 16px 0; font-size: 17px;">&#9314; Nokia Settings &amp; Overrides</h2>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="nokia_mig_timezone" style="font-size: 13px;">Timezone:</label>
+                                <select id="nokia_mig_timezone" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-color); font-size: 13px;">
+                                    <option value="CST" selected>CST (Central)</option>
+                                    <option value="EST">EST (Eastern)</option>
+                                    <option value="MST">MST (Mountain)</option>
+                                    <option value="PST">PST (Pacific)</option>
                                 </select>
                             </div>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
-                                <div class="form-group" style="margin-bottom: 0;">
-                                    <label for="nokia_ssh_username">SSH Username:</label>
-                                    <input type="text" id="nokia_ssh_username" placeholder="e.g., admin"
-                                        style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-color);">
-                                </div>
-                                <div class="form-group" style="margin-bottom: 0;">
-                                    <label for="nokia_ssh_password">SSH Password:</label>
-                                    <input type="password" id="nokia_ssh_password" placeholder="Enter password"
-                                        style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-color);">
-                                </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="nokia_mig_as" style="font-size: 13px;">Autonomous System:</label>
+                                <input type="number" id="nokia_mig_as" placeholder="26077" value=""
+                                    style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-color); font-size: 13px;">
                             </div>
-                            <div class="form-group" style="margin-bottom: 12px;">
-                                <label for="nokia_ssh_ports">SSH Ports (optional):</label>
-                                <input type="text" id="nokia_ssh_ports" placeholder="22,5022"
-                                    style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-color);">
-                                <div style="margin-top: 6px; font-size: 12px; color: var(--text-color-secondary);">
-                                    Comma-separated. Default is <code>22</code>, then <code>5022</code>. You can add
-                                    custom ports.
-                                </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="nokia_mig_sdp_far_end" style="font-size: 13px;">SDP Far-End IP:</label>
+                                <input type="text" id="nokia_mig_sdp_far_end" placeholder="10.249.0.200" value=""
+                                    style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-color); font-size: 13px;">
                             </div>
-                            <button onclick="fetchMikrotikConfigForNokiaMigration()"
-                                style="background: var(--accent-color); color: white; padding: 12px 24px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%;">
-                                 Fetch Config via SSH (Port 22, then 5022)
-                            </button>
-                            <div id="nokia_migration_ssh_status"
-                                style="margin-top: 10px; padding: 10px; border-radius: 4px; display: none;"></div>
-                        </div>
-
-                        <!-- Manual Paste Option (Optional) -->
-                        <div
-                            style="background: var(--card-bg); padding: 15px; border-radius: 6px; border: 1px dashed var(--border-color);">
-                            <h3
-                                style="color: var(--text-color-secondary); margin-top: 0; margin-bottom: 15px; font-size: 14px;">
-                                 Or Paste Manually (Optional)</h3>
-                            <div class="form-group">
-                                <label for="mikrotik_nokia_source">Paste MikroTik RouterOS Configuration:</label>
-                                <textarea id="mikrotik_nokia_source"
-                                    style="width: 100%; min-height: 200px; padding: 15px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-color); font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.5;"
-                                    placeholder="Paste your RouterOS configuration here (if not using SSH)..."></textarea>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="nokia_mig_card_type" style="font-size: 13px;">Card Type:</label>
+                                <input type="text" id="nokia_mig_card_type" value="imm24-sfp++8-sfp28+2-qsfp28" readonly
+                                    style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-color); font-size: 13px; opacity: 0.8;">
                             </div>
                         </div>
-
-                        <div class="form-group" style="margin-top: 15px;">
-                            <label>
-                                <input type="checkbox" id="mikrotik_nokia_preserve_ips" checked
-                                    style="margin-right: 8px;">
-                                Preserve all IP addresses and network settings
+                        <div style="margin-top: 14px;">
+                            <label style="font-size: 13px; font-weight: 600; color: var(--text-color);">VPLS Service IDs (comma-separated):</label>
+                            <input type="text" id="nokia_mig_vpls_ids" placeholder="1245,2245,3245,4245" value=""
+                                style="width: 100%; padding: 8px; margin-top: 4px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-color); font-size: 13px;">
+                        </div>
+                        <div style="margin-top: 12px;">
+                            <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-color); cursor: pointer;">
+                                <input type="checkbox" id="nokia_mig_preserve_ips" checked> Preserve all IP addresses
                             </label>
                         </div>
                     </div>
 
-                    <div style="margin-top: 30px;">
+                    <!-- ====== STEP 4: GENERATE ====== -->
+                    <div id="nokia_migration_generate_section" style="display: none; margin-bottom: 20px;">
                         <button onclick="convertMikrotikToNokia()"
-                            style="background: var(--accent-color); color: white; padding: 15px 40px; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold;">
-                             Convert to Nokia Syntax
+                            style="background: #4CAF50; color: white; padding: 14px 36px; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 700; width: 100%; letter-spacing: 0.3px;">
+                            &#9654; Generate Nokia SR OS Configuration
                         </button>
-                        <p style="color: var(--text-color-secondary); font-size: 13px; margin-top: 10px;">
-                            <strong>Note:</strong> Use SSH to fetch config automatically, or paste manually if needed.
-                        </p>
                     </div>
 
-                    <div id="mikrotik_nokia_output" style="margin-top: 30px; display: none;">
-                        <div class="section"
-                            style="background: var(--container-bg); padding: 20px; border-radius: 8px; border: 2px solid var(--accent-color);">
-                            <h3 style="color: var(--accent-color); margin-top: 0;">Converted Nokia Configuration</h3>
-                            <div style="margin-bottom: 15px;">
-                                <button onclick="copyMikrotikNokiaConfig()"
-                                    style="background: #2196F3; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">
-                                    Copy</button>
-                                <button onclick="downloadMikrotikNokiaConfig()"
-                                    style="background: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">
-                                    Download</button>
+                    <!-- ====== OUTPUT ====== -->
+                    <div id="mikrotik_nokia_output" style="margin-top: 0; display: none;">
+                        <div style="background: var(--container-bg); padding: 20px; border-radius: 10px; border: 2px solid var(--accent-color);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+                                <h2 style="color: var(--accent-color); margin: 0; font-size: 17px;">&#9315; Nokia SR OS Configuration</h2>
+                                <div style="display: flex; gap: 8px;">
+                                    <button onclick="copyMikrotikNokiaConfig()"
+                                        style="background: #2196F3; color: white; padding: 8px 18px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600;">
+                                        Copy</button>
+                                    <button onclick="downloadMikrotikNokiaConfig()"
+                                        style="background: #4CAF50; color: white; padding: 8px 18px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600;">
+                                        Download</button>
+                                </div>
                             </div>
+                            <!-- Stats row -->
+                            <div id="nokia_migration_stats" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;"></div>
                             <textarea id="mikrotik_nokia_config_output" readonly
-                                style="width: 100%; min-height: 500px; padding: 15px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--output-bg); color: var(--text-color); font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.5; white-space: pre; overflow-x: auto;"></textarea>
+                                style="width: 100%; min-height: 500px; padding: 15px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--output-bg, #1a1a2e); color: var(--text-color); font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 12px; line-height: 1.5; white-space: pre; overflow-x: auto; resize: vertical;"></textarea>
                         </div>
                     </div>
                 </div>
@@ -23415,6 +23480,168 @@ Ready for translation!`);
             // NOKIA MIGRATION FUNCTIONS
             // ========================================
 
+            // ── Shared state for Nokia migration ──
+            window._nokiaMigrationParsed = null;
+
+            // ── Helper: render a badge ──
+            function _nokiaBadge(label, value, color) {
+                return `<span style="display:inline-flex;align-items:center;gap:5px;background:${color || '#333'};color:#fff;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;">${label}: <strong>${value}</strong></span>`;
+            }
+
+            // ── Helper: render detail card ──
+            function _nokiaDetailCard(title, lines) {
+                const body = lines.length ? lines.map(l => `<div style="padding:3px 0;font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--text-color);">${l}</div>`).join('') : '<div style="color:var(--text-color-secondary);font-size:12px;font-style:italic;">None detected</div>';
+                return `<div style="background:var(--card-bg);padding:12px;border-radius:6px;border:1px solid var(--border-color);">
+                    <div style="font-weight:600;font-size:13px;color:var(--accent-color);margin-bottom:6px;">${title}</div>
+                    ${body}</div>`;
+            }
+
+            // ── Render the extraction preview ──
+            function _renderNokiaMappingPreview(parsed) {
+                const summaryDiv = document.getElementById('nokia_migration_summary');
+                const warningsDiv = document.getElementById('nokia_migration_warnings');
+                const tbody = document.getElementById('nokia_migration_port_tbody');
+                const detailDiv = document.getElementById('nokia_migration_detail');
+                const stats = parsed.stats || {};
+
+                // Summary badges
+                const badges = [];
+                badges.push(_nokiaBadge('Device', stats.source_model || 'unknown', '#5c6bc0'));
+                badges.push(_nokiaBadge('ROS', stats.ros_version || '?', '#7e57c2'));
+                if (parsed.identity) badges.push(_nokiaBadge('Identity', parsed.identity, '#26a69a'));
+                if (parsed.loopback_ip) badges.push(_nokiaBadge('Loopback', parsed.loopback_ip, '#42a5f5'));
+                badges.push(_nokiaBadge('Interfaces', stats.interfaces_found || 0, stats.interfaces_found > 0 ? '#66bb6a' : '#ef5350'));
+                badges.push(_nokiaBadge('OSPF', stats.ospf_interfaces || 0, stats.ospf_interfaces > 0 ? '#66bb6a' : '#bdbdbd'));
+                badges.push(_nokiaBadge('BGP Peers', stats.bgp_peers || 0, stats.bgp_peers > 0 ? '#66bb6a' : '#bdbdbd'));
+                badges.push(_nokiaBadge('Routes', stats.static_routes || 0, stats.static_routes > 0 ? '#ffa726' : '#bdbdbd'));
+                badges.push(_nokiaBadge('MPLS', stats.mpls_interfaces > 0 ? 'Yes' : 'No', stats.mpls_interfaces > 0 ? '#66bb6a' : '#bdbdbd'));
+                summaryDiv.innerHTML = badges.join('');
+
+                // Warnings
+                const warns = parsed.warnings || [];
+                if (warns.length) {
+                    warningsDiv.style.display = 'block';
+                    warningsDiv.innerHTML = '<strong>Warnings:</strong><ul style="margin:4px 0 0 16px;padding:0;">' +
+                        warns.map(w => `<li>${w}</li>`).join('') + '</ul>';
+                } else {
+                    warningsDiv.style.display = 'none';
+                }
+
+                // Port mapping table
+                const portMap = parsed.port_mapping || {};
+                const ipLookup = {};
+                (parsed.ip_addresses || []).forEach(e => { ipLookup[e.interface] = e.address; });
+                const ifaceComments = parsed.interfaces || {};
+                let rows = '';
+                for (const [mtIface, pm] of Object.entries(portMap)) {
+                    const typeColor = pm.type === 'loopback' ? '#7e57c2' :
+                                      pm.type === 'management' ? '#ef5350' :
+                                      pm.type === 'connector-100g' ? '#ff9800' : '#42a5f5';
+                    rows += `<tr style="border-bottom:1px solid var(--border-color);">
+                        <td style="padding:6px 12px;font-family:'JetBrains Mono',monospace;font-size:12px;">${mtIface}</td>
+                        <td style="padding:6px 12px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;">${pm.nokia_port || '—'}</td>
+                        <td style="padding:6px 12px;"><span style="background:${typeColor};color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;">${pm.type || '?'}</span></td>
+                        <td style="padding:6px 12px;font-size:12px;color:var(--text-color-secondary);">${ifaceComments[mtIface] || ''}</td>
+                        <td style="padding:6px 12px;font-family:'JetBrains Mono',monospace;font-size:12px;">${ipLookup[mtIface] || ''}</td>
+                    </tr>`;
+                }
+                tbody.innerHTML = rows || '<tr><td colspan="5" style="padding:12px;text-align:center;color:var(--text-color-secondary);">No interfaces found</td></tr>';
+
+                // Detail cards
+                const cards = [];
+
+                // OSPF detail
+                const ospfLines = [];
+                if (parsed.ospf && parsed.ospf.found) {
+                    ospfLines.push(`Router-ID: ${parsed.ospf.router_id || '—'}`);
+                    ospfLines.push(`Areas: ${(parsed.ospf.areas || []).join(', ') || 'backbone'}`);
+                    (parsed.ospf.interfaces || []).forEach(o => {
+                        ospfLines.push(`  ${o.interface} → area ${o.area}${o.type ? ' (' + o.type + ')' : ''}`);
+                    });
+                }
+                cards.push(_nokiaDetailCard('OSPF', ospfLines));
+
+                // BGP detail
+                const bgpLines = [];
+                if (parsed.bgp && parsed.bgp.found) {
+                    bgpLines.push(`AS: ${parsed.bgp.as_number || '—'}`);
+                    (parsed.bgp.peers || []).forEach(p => {
+                        bgpLines.push(`  ${p.name}: ${p.address} (AS ${p.remote_as})`);
+                    });
+                }
+                cards.push(_nokiaDetailCard('BGP', bgpLines));
+
+                // Static routes
+                const rtLines = (parsed.static_routes || []).map(r => `${r.dst} → ${r.gateway}`);
+                cards.push(_nokiaDetailCard('Static Routes', rtLines));
+
+                // Bridges / VPLS candidates
+                const brLines = [];
+                (parsed.bridges || []).forEach(b => {
+                    brLines.push(`${b.name}: ports=[${b.ports.join(',')}] vlans=[${b.vlans.join(',')}]`);
+                });
+                cards.push(_nokiaDetailCard('Bridges (VPLS candidates)', brLines));
+
+                detailDiv.innerHTML = cards.join('');
+
+                // Populate Nokia settings from parsed data
+                if (parsed.bgp && parsed.bgp.as_number) {
+                    const asInput = document.getElementById('nokia_mig_as');
+                    if (!asInput.value) asInput.value = parsed.bgp.as_number;
+                }
+            }
+
+            // ── ANALYZE: Parse MikroTik config and show preview ──
+            window.analyzeMikrotikForNokia = async function () {
+                const sourceConfig = document.getElementById('mikrotik_nokia_source').value.trim();
+                if (!sourceConfig) {
+                    alert('Please fetch config via SSH or paste a MikroTik RouterOS configuration first.');
+                    return;
+                }
+
+                try {
+                    if (window.showProgressTracker) window.showProgressTracker('Analyzing MikroTik Config');
+                    if (window.updateProgressStep) window.updateProgressStep('Parsing MikroTik configuration...');
+                    if (window.updateProgressPercent) window.updateProgressPercent(20);
+
+                    const response = await fetch(`${AI_API_BASE}/parse-mikrotik-for-nokia`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ source_config: sourceConfig })
+                    });
+
+                    if (!response.ok) {
+                        const err = await response.json().catch(() => ({ error: 'Unknown error' }));
+                        throw new Error(err.error || `HTTP ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    if (window.updateProgressPercent) window.updateProgressPercent(80);
+
+                    if (data.parsed) {
+                        window._nokiaMigrationParsed = data.parsed;
+                        _renderNokiaMappingPreview(data.parsed);
+
+                        // Show preview, settings, and generate sections
+                        document.getElementById('nokia_migration_preview').style.display = 'block';
+                        document.getElementById('nokia_migration_settings').style.display = 'block';
+                        document.getElementById('nokia_migration_generate_section').style.display = 'block';
+
+                        // Scroll to preview
+                        document.getElementById('nokia_migration_preview').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+
+                    if (window.updateProgressPercent) window.updateProgressPercent(100);
+                    if (window.updateProgressStep) window.updateProgressStep('Analysis complete!');
+                    if (window.completeProgressTracker) window.completeProgressTracker(true);
+                } catch (error) {
+                    console.error('Error analyzing config:', error);
+                    alert('Error analyzing configuration: ' + error.message);
+                    if (window.completeProgressTracker) window.completeProgressTracker(false);
+                }
+            };
+
+            // ── SSH FETCH ──
             window.fetchMikrotikConfigForNokiaMigration = async function () {
                 const deviceIP = document.getElementById('nokia_migration_device_ip').value.trim();
                 const rosVersion = document.getElementById('nokia_migration_ros_version').value;
@@ -23432,19 +23659,14 @@ Ready for translation!`);
                     statusDiv.style.display = 'block';
                     statusDiv.style.background = '#dc3545';
                     statusDiv.style.color = 'white';
-                    statusDiv.style.padding = '10px';
-                    statusDiv.style.borderRadius = '4px';
-                    statusDiv.textContent = ' Please enter device IP address';
+                    statusDiv.textContent = 'Please enter device IP address';
                     return;
                 }
-
                 if (!sshUsername || !sshPassword) {
                     statusDiv.style.display = 'block';
                     statusDiv.style.background = '#dc3545';
                     statusDiv.style.color = 'white';
-                    statusDiv.style.padding = '10px';
-                    statusDiv.style.borderRadius = '4px';
-                    statusDiv.textContent = ' SSH credentials required. Enter username/password or configure NEXTLINK_SSH_USERNAME and NEXTLINK_SSH_PASSWORD on the server.';
+                    statusDiv.textContent = 'SSH credentials required. Enter username/password or configure NEXTLINK_SSH_USERNAME and NEXTLINK_SSH_PASSWORD on the server.';
                     return;
                 }
 
@@ -23452,9 +23674,7 @@ Ready for translation!`);
                     statusDiv.style.display = 'block';
                     statusDiv.style.background = '#2196F3';
                     statusDiv.style.color = 'white';
-                    statusDiv.style.padding = '10px';
-                    statusDiv.style.borderRadius = '4px';
-                    statusDiv.textContent = ` Connecting via SSH (trying ports: ${sshPorts.join(', ')})...`;
+                    statusDiv.textContent = `Connecting via SSH (trying ports: ${sshPorts.join(', ')})...`;
 
                     if (window.showProgressTracker) window.showProgressTracker('Fetching Config for Nokia Migration');
                     if (window.updateProgressStep) window.updateProgressStep('Connecting to device via SSH...');
@@ -23481,11 +23701,8 @@ Ready for translation!`);
                         } catch (e) {
                             try {
                                 const errorText = await response.text();
-                                if (errorText && errorText.trim()) {
-                                    errorMessage = errorText.trim();
-                                } else {
-                                    errorMessage = `${errorMessage} ${response.statusText || ''}`.trim();
-                                }
+                                if (errorText && errorText.trim()) errorMessage = errorText.trim();
+                                else errorMessage = `${errorMessage} ${response.statusText || ''}`.trim();
                             } catch (e2) {
                                 errorMessage = `${errorMessage} ${response.statusText || ''}`.trim();
                             }
@@ -23494,14 +23711,15 @@ Ready for translation!`);
                     }
 
                     const data = await response.json();
-
                     if (data.config) {
-                        // Normalize and set the config in the textarea
                         const normalizedConfig = data.config.replace(/\\\s*\n/g, '\n');
+                        // Open the paste details and set text
+                        const pasteDetails = document.getElementById('mikrotik_nokia_source').closest('details');
+                        if (pasteDetails) pasteDetails.open = true;
                         document.getElementById('mikrotik_nokia_source').value = normalizedConfig;
 
                         statusDiv.style.background = '#4CAF50';
-                        statusDiv.textContent = ` Config fetched successfully from ${deviceIP}:${data.port || '22/5022'}`;
+                        statusDiv.textContent = `Config fetched successfully from ${deviceIP}:${data.port || '22/5022'} — Click "Analyze & Preview Mapping" to continue`;
 
                         if (window.updateProgressPercent) window.updateProgressPercent(100);
                         if (window.updateProgressStep) window.updateProgressStep('Config fetched successfully!');
@@ -23512,36 +23730,50 @@ Ready for translation!`);
                 } catch (error) {
                     console.error('Error fetching config:', error);
                     statusDiv.style.background = '#dc3545';
-                    statusDiv.textContent = ' Error: ' + error.message;
+                    statusDiv.textContent = 'Error: ' + error.message;
                     if (window.completeProgressTracker) window.completeProgressTracker(false);
                 }
             };
 
+            // ── CONVERT: Generate Nokia config ──
             window.convertMikrotikToNokia = async function () {
                 const sourceConfig = document.getElementById('mikrotik_nokia_source').value.trim();
-                const preserveIPs = document.getElementById('mikrotik_nokia_preserve_ips').checked;
-
                 if (!sourceConfig) {
-                    alert(' Please fetch config via SSH or paste a MikroTik RouterOS configuration');
+                    alert('Please fetch config via SSH or paste a MikroTik RouterOS configuration');
                     return;
                 }
 
+                // Collect Nokia overrides
+                const nokiaParams = {};
+                const tz = document.getElementById('nokia_mig_timezone')?.value;
+                if (tz) nokiaParams.timezone = tz;
+                const asVal = document.getElementById('nokia_mig_as')?.value;
+                if (asVal) nokiaParams.autonomous_system = parseInt(asVal, 10);
+                const sdp = document.getElementById('nokia_mig_sdp_far_end')?.value?.trim();
+                if (sdp) nokiaParams.sdp_far_end = sdp;
+                const cardType = document.getElementById('nokia_mig_card_type')?.value?.trim();
+                if (cardType) nokiaParams.card_type = cardType;
+                const vplsRaw = document.getElementById('nokia_mig_vpls_ids')?.value?.trim();
+                if (vplsRaw) nokiaParams.vpls_ids = vplsRaw.split(',').map(v => v.trim()).filter(Boolean);
+
+                const preserveIPs = document.getElementById('nokia_mig_preserve_ips')?.checked !== false;
+
                 try {
-                    if (window.showProgressTracker) window.showProgressTracker('Converting MikroTik to Nokia');
-                    if (window.updateProgressStep) window.updateProgressStep('Analyzing source configuration...');
-                    if (window.updateProgressPercent) window.updateProgressPercent(10);
+                    if (window.showProgressTracker) window.showProgressTracker('Generating Nokia Configuration');
+                    if (window.updateProgressStep) window.updateProgressStep('Building Nokia SR OS config...');
+                    if (window.updateProgressPercent) window.updateProgressPercent(20);
 
                     const response = await fetch(`${AI_API_BASE}/migrate-mikrotik-to-nokia`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             source_config: sourceConfig,
-                            preserve_ips: preserveIPs
+                            preserve_ips: preserveIPs,
+                            nokia_params: nokiaParams
                         })
                     });
 
-                    if (window.updateProgressPercent) window.updateProgressPercent(50);
-                    if (window.updateProgressStep) window.updateProgressStep('Converting syntax and commands...');
+                    if (window.updateProgressPercent) window.updateProgressPercent(60);
 
                     if (!response.ok) {
                         const error = await response.json().catch(() => ({ error: 'Unknown error' }));
@@ -23550,24 +23782,36 @@ Ready for translation!`);
 
                     const data = await response.json();
                     if (window.updateProgressPercent) window.updateProgressPercent(90);
-                    if (window.updateProgressStep) window.updateProgressStep('Finalizing conversion...');
+                    if (window.updateProgressStep) window.updateProgressStep('Finalizing...');
 
                     if (data.nokia_config) {
                         document.getElementById('mikrotik_nokia_config_output').value = data.nokia_config;
                         document.getElementById('mikrotik_nokia_output').style.display = 'block';
-                        if (data.warning) {
-                            console.warn('[NOKIA MIGRATION] Warning:', data.warning);
-                            alert(`Note: ${data.warning}`);
+
+                        // Update stats row
+                        const statsDiv = document.getElementById('nokia_migration_stats');
+                        if (data.parsed && data.parsed.stats) {
+                            const s = data.parsed.stats;
+                            const chips = [];
+                            chips.push(_nokiaBadge('Lines', data.nokia_config.split('\n').length, '#5c6bc0'));
+                            chips.push(_nokiaBadge('Interfaces', s.interfaces_found || 0, '#42a5f5'));
+                            chips.push(_nokiaBadge('OSPF', s.ospf_interfaces || 0, '#66bb6a'));
+                            chips.push(_nokiaBadge('BGP', s.bgp_peers || 0, '#66bb6a'));
+                            chips.push(_nokiaBadge('Routes', s.static_routes || 0, '#ffa726'));
+                            statsDiv.innerHTML = chips.join('');
                         }
+
+                        document.getElementById('mikrotik_nokia_output').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
                         if (window.updateProgressPercent) window.updateProgressPercent(100);
-                        if (window.updateProgressStep) window.updateProgressStep('Conversion completed successfully!');
+                        if (window.updateProgressStep) window.updateProgressStep('Nokia config generated!');
                         if (window.completeProgressTracker) window.completeProgressTracker(true);
                     } else {
                         throw new Error('No Nokia configuration returned from backend');
                     }
                 } catch (error) {
                     console.error('Error converting MikroTik to Nokia:', error);
-                    alert(' Error converting configuration: ' + error.message);
+                    alert('Error converting configuration: ' + error.message);
                     if (window.completeProgressTracker) window.completeProgressTracker(false);
                 }
             };
@@ -23575,38 +23819,24 @@ Ready for translation!`);
             window.copyMikrotikNokiaConfig = function () {
                 const textarea = document.getElementById('mikrotik_nokia_config_output');
                 const text = textarea.value;
-                if (!text) {
-                    alert('No configuration to copy!');
-                    return;
-                }
+                if (!text) { alert('No configuration to copy!'); return; }
                 if (navigator.clipboard && window.isSecureContext) {
                     navigator.clipboard.writeText(text).then(() => {
-                        alert(' Configuration copied to clipboard');
-                    }).catch(() => {
-                        textarea.select();
-                        document.execCommand('copy');
-                        alert('Copied to clipboard.');
-                    });
-                } else {
-                    textarea.select();
-                    document.execCommand('copy');
-                    alert('Copied to clipboard.');
-                }
+                        alert('Configuration copied to clipboard');
+                    }).catch(() => { textarea.select(); document.execCommand('copy'); alert('Copied.'); });
+                } else { textarea.select(); document.execCommand('copy'); alert('Copied.'); }
             };
 
             window.downloadMikrotikNokiaConfig = function () {
-                const textarea = document.getElementById('mikrotik_nokia_config_output');
-                const config = textarea.value;
-                if (!config) {
-                    alert('No configuration to download!');
-                    return;
-                }
+                const config = document.getElementById('mikrotik_nokia_config_output').value;
+                if (!config) { alert('No configuration to download!'); return; }
+                const identity = window._nokiaMigrationParsed?.identity || 'nokia-migrated';
                 const ts = new Date().toISOString().split('T')[0];
                 const blob = new Blob([config.replace(/\r?\n/g, '\n')], { type: 'text/plain;charset=utf-8' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `nokia-migrated-${ts}.txt`;
+                a.download = `${identity}-${ts}.txt`;
                 a.click();
                 URL.revokeObjectURL(url);
             };
