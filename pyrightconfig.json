@@ -1,0 +1,19 @@
+{
+    "exclude": [
+        "test_nokia_phase41b.py",
+        "test_nokia_phase41c.py",
+        "test_nokia_phase41d.py",
+        "test_nokia_phase41e.py",
+        "test_nokia_loopback_choice.py",
+        "test_nokia_ether1_vlan_fix.py",
+        "test_gitlab_compliance.py",
+        "test_all_generators.py",
+        "__pycache__",
+        "node_modules",
+        "ros-migration-trainer-v3",
+        "external"
+    ],
+    "reportMissingImports": "warning",
+    "reportMissingModuleSource": "none",
+    "pythonVersion": "3.11"
+}
