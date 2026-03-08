@@ -8,13 +8,20 @@ set name={{ tower_name }}
 add name=loop0 protocol-mode=none
 {% if use_lan_bridge %}
 add name=lan-bridge protocol-mode=none comment=LAN-BRIDGE
-{% if is_6ghz or is_ub_wave or is_tarana or is_326 %}
+{% if is_6ghz or is_ub_wave or is_326 %}
 add name=bridge3000 protocol-mode=none comment=FEATURE-MGMT
 {% endif %}
+{% if is_6ghz %}
+add name=bridge4000 protocol-mode=none comment=CPE
+{% endif %}
 {% else %}
+add name=bridge1000 protocol-mode=none comment=DYNAMIC
 add name=bridge2000 protocol-mode=none comment=CGNAT-PRIVATE
 add name=bridge3000 protocol-mode=none comment=UNAUTH
 add name=bridge4000 protocol-mode=none comment=CPE
+{% endif %}
+{% if is_tarana %}
+add name=UNICORNMGMT comment=UNICORN
 {% endif %}
 add name=nat-public-bridge protocol-mode=none comment=CGNAT-PUBLIC
 
@@ -25,6 +32,12 @@ set [ find default-name={{ sw.port }} ] comment="{{ sw.comment or sw.name }}"{% 
 {% endfor %}
 {% for bh in backhauls %}
 set [ find default-name={{ bh.port }} ] comment="{{ bh.bhname }}"{% if bh.interface_bandwidth and (bh.interface_bandwidth|lower) != 'auto' %} auto-negotiation=no speed={{ bh.interface_bandwidth }}{% endif %}
+{% endfor %}
+{% endif %}
+{% if is_tarana %}
+/interface ethernet
+{% for s in tarana_sectors %}
+set [ find default-name={{ s.port }} ] auto-negotiation=no comment="{{ s.name }}" l2mtu=1580
 {% endfor %}
 {% endif %}
 
@@ -51,6 +64,38 @@ add bridge=bridge4000 interface=vlan4000-{{ sw.port }}
 {% endif %}
 {% endif %}
 
+{% if is_tarana %}
+/interface vlan
+{% for s in tarana_sectors %}
+add interface={{ s.port }} name=vlan1000-{{ s.port }} vlan-id=1000
+add interface={{ s.port }} name=vlan2000-{{ s.port }} vlan-id=2000
+add interface={{ s.port }} name=vlan3000-{{ s.port }} vlan-id=3000
+{% endfor %}
+
+/interface bridge port
+{% for s in tarana_sectors %}
+add bridge=UNICORNMGMT ingress-filtering=no interface=vlan3000-{{ s.port }}
+{% if use_lan_bridge %}
+add bridge=lan-bridge ingress-filtering=no interface=vlan1000-{{ s.port }}
+{% else %}
+add bridge=bridge1000 ingress-filtering=no interface=vlan1000-{{ s.port }}
+{% endif %}
+add bridge=bridge2000 ingress-filtering=no interface=vlan2000-{{ s.port }}
+{% endfor %}
+{% endif %}
+
+{% if is_tarana %}
+/interface bridge filter
+{% for s in tarana_sectors %}
+add action=mark-packet chain=forward comment="Mark traffic from {{ s.name }}" disabled=yes new-packet-mark=traffic-{{ s.port }} out-interface=vlan1000-{{ s.port }}
+{% endfor %}
+
+/queue simple
+{% for s in tarana_sectors %}
+add comment=OUTAGE disabled=yes max-limit=200M/200M name=Limit-{{ s.name }} packet-marks=traffic-{{ s.port }} target=""
+{% endfor %}
+{% endif %}
+
 /ip address
 add address={{ loopback.ip }}/{{ loopback.prefixlen }} interface=loop0 network={{ loopback_net }} comment=Loopback
 {% for bh in backhauls %}
@@ -60,11 +105,17 @@ add address={{ cpe_ip }}/{{ cpe_ip_sub }} interface={% if use_lan_bridge %}lan-b
 add address={{ unauth_ip }}/{{ unauth_ip_sub }} interface={% if use_lan_bridge %}lan-bridge{% else %}bridge3000{% endif %} network={{ unauth_net.network }} comment=UNAUTH
 add address={{ cgn_priv_ip }}/{{ cgn_priv_sub }} interface={% if use_lan_bridge %}lan-bridge{% else %}bridge2000{% endif %} network={{ cgn_priv_net.network }} comment=CGN-PRIVATE
 add address={{ cgn_pub_ip }}/{{ cgn_pub_sub }} interface=nat-public-bridge network={{ cgn_pub_network }} comment=CGN-PUBLIC
+{% if is_tarana %}
+add address={{ unicorn_mgmt_ip }}/{{ unicorn_mgmt_prefix }} comment="UNICORN MGMT" interface=UNICORNMGMT network={{ unicorn_mgmt_network }}
+{% endif %}
 {% if is_6ghz %}
-add address={{ six_ghz_address }}/{{ six_ghz_prefixlen }} interface=bridge3000 network={{ six_ghz_network }} comment=6GHZ
+add address={{ six_ghz_address }}/{{ six_ghz_prefixlen }} interface=bridge3000 network={{ six_ghz_network }} comment="6Ghz Equipment"
 {% endif %}
 {% if is_ub_wave %}
 add address={{ ub_wave_address }}/{{ ub_wave_prefixlen }} interface=bridge3000 network={{ ub_wave_network }} comment=UB-WAVE
+{% endif %}
+{% if is_326 %}
+add address={{ crs_326_mgmt_address.ip }}/{{ crs_326_mgmt_mask_bits }} interface=bridge3000 network={{ crs_326_mgmt_network }} comment=CRS326-MGMT
 {% endif %}
 
 /ip pool
@@ -82,9 +133,12 @@ add name=ub-wave ranges={{ ub_wave_range_low }}-{{ ub_wave_range_high }}
 {% if use_lan_bridge %}
 add address-pool=cust interface=lan-bridge lease-time=1h name=server1 use-radius=yes
 {% else %}
-add address-pool=cust interface={% if use_lan_bridge %}lan-bridge{% else %}bridge2000{% endif %} lease-time=1h name=server-cust use-radius=yes
-add address-pool=unauth interface={% if use_lan_bridge %}lan-bridge{% else %}bridge3000{% endif %} lease-time=1h name=server-unauth
-add address-pool=cpe interface={% if use_lan_bridge %}lan-bridge{% else %}bridge4000{% endif %} lease-time=1h name=server-cpe
+add address-pool=cust interface=bridge2000 lease-time=1h name=server-cust use-radius=yes
+add address-pool=unauth interface=bridge3000 lease-time=1h name=server-unauth
+add address-pool=cpe interface=bridge4000 lease-time=1h name=server-cpe
+{% endif %}
+{% if is_6ghz and use_lan_bridge %}
+add address-pool=cpe interface=bridge4000 lease-time=1h name=bridge4000
 {% endif %}
 
 /ip dhcp-server network
@@ -112,6 +166,16 @@ add area=backbone-v2 cost=10 disabled=no interfaces=lan-bridge networks={{ cpe_n
 {% for bh in backhauls %}
 add area=backbone-v2 auth=md5 auth-id=1 auth-key={{ ospf_md5_key }} comment="{{ bh.bhname }}" cost=10 disabled=no interfaces={{ bh.port }} networks={{ bh.bh_cidr }} priority=1 type=ptp
 {% endfor %}
+{% if is_tarana %}
+add area=backbone-v2 disabled=no interfaces=UNICORNMGMT networks={{ unicorn_mgmt_network }}/{{ unicorn_mgmt_prefix }} priority=1
+{% endif %}
+{% if is_6ghz %}
+add area=backbone-v2 comment="6Ghz Equipment" cost=10 disabled=no interfaces=bridge3000 networks={{ six_ghz_network }}/{{ six_ghz_prefixlen }} priority=1
+add area=backbone-v2 comment="6GHz CPE" cost=10 disabled=no interfaces=bridge4000 networks={{ cpe_network }}/{{ cpe_mask_bits }} priority=1
+{% endif %}
+{% if is_ub_wave %}
+add area=backbone-v2 comment="UB WAVE" cost=10 disabled=no interfaces=bridge3000 networks={{ ub_wave_network }}/{{ ub_wave_prefixlen }} priority=1
+{% endif %}
 
 /routing bgp template
 set default as={{ asn }} disabled=no multihop=yes output.network=bgp-networks router-id={{ loopback.ip }} routing-table=main
@@ -136,21 +200,6 @@ set max-udp-packet-size=512 servers=142.147.112.3,142.147.112.19
 
 /snmp
 set enabled=yes location="{{ gps }}" src-address={{ loopback.ip }}
-
-{% if is_326 %}
-# CRS326 management subnet
-/ip address
-add address={{ crs_326_mgmt_address.ip }}/{{ crs_326_mgmt_mask_bits }} interface=bridge3000 network={{ crs_326_mgmt_network }} comment=CRS326-MGMT
-{% endif %}
-
-{% if is_tarana %}
-# Tarana gateway
-/ip address
-add address={{ tarana_gateway }}/{{ tarana_netmask_bits }} interface=bridge3000 network={{ tarana_network }} comment=TARANA-GW
-{% for s in tarana_sectors %}
-# Tarana {{ s.name }} {{ s.azimuth }} deg on {{ s.port }}
-{% endfor %}
-{% endif %}
 
 {% if enable_contractor_login %}
 /user group add name=CONTRACTOR policy=local,ssh,read,test,winbox,!ftp,!write,!policy,!password,!web,!api,!romon

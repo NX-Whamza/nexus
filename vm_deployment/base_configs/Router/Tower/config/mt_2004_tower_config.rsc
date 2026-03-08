@@ -15,6 +15,7 @@ add name=bridge3000 protocol-mode=none comment=FEATURE-MGMT
 add name=bridge4000 protocol-mode=none comment=CPE
 {% endif %}
 {% else %}
+add name=bridge1000 protocol-mode=none comment=DYNAMIC
 add name=bridge2000 protocol-mode=none comment=CGNAT-PRIVATE
 add name=bridge3000 protocol-mode=none comment=UNAUTH
 add name=bridge4000 protocol-mode=none comment=CPE
@@ -82,6 +83,18 @@ add bridge=bridge2000 ingress-filtering=no interface=vlan2000-{{ s.port }}
 {% endfor %}
 {% endif %}
 
+{% if is_tarana %}
+/interface bridge filter
+{% for s in tarana_sectors %}
+add action=mark-packet chain=forward comment="Mark traffic from {{ s.name }}" disabled=yes new-packet-mark=traffic-{{ s.port }} out-interface=vlan1000-{{ s.port }}
+{% endfor %}
+
+/queue simple
+{% for s in tarana_sectors %}
+add comment=OUTAGE disabled=yes max-limit=200M/200M name=Limit-{{ s.name }} packet-marks=traffic-{{ s.port }} target=""
+{% endfor %}
+{% endif %}
+
 /ip address
 add address={{ loopback.ip }}/{{ loopback.prefixlen }} interface=loop0 network={{ loopback_net }} comment=Loopback
 {% for bh in backhauls %}
@@ -108,6 +121,12 @@ add address={{ crs_326_mgmt_address.ip }}/{{ crs_326_mgmt_mask_bits }} interface
 add name=unauth ranges={{ unauth_range_low }}-{{ unauth_range_high }}
 add name=cpe ranges={{ cpe_range_low }}-{{ cpe_range_high }}
 add name=cust ranges={{ cgn_priv_range_low }}-{{ cgn_priv_range_high }}
+{% if is_6ghz %}
+add name=sixghz ranges={{ six_ghz_range_low }}-{{ six_ghz_range_high }}
+{% endif %}
+{% if is_ub_wave %}
+add name=ub-wave ranges={{ ub_wave_range_low }}-{{ ub_wave_range_high }}
+{% endif %}
 
 /ip dhcp-server
 {% if use_lan_bridge %}
@@ -125,6 +144,12 @@ add address-pool=cpe interface=bridge4000 lease-time=1h name=bridge4000
 add address={{ cpe_network }}/{{ cpe_mask_bits }} dns-server=142.147.112.3,142.147.112.19 gateway={{ cpe_gateway }} netmask={{ cpe_mask_bits }}
 add address={{ unauth_net.network }}/{{ unauth_ip_sub }} dns-server=142.147.112.3,142.147.112.19 gateway={{ unauth_ip }} netmask={{ unauth_ip_sub }}
 add address={{ cgn_priv_net.network }}/{{ cgn_priv_sub }} dhcp-option-set=optset dns-server=142.147.112.3,142.147.112.19 gateway={{ cgn_priv_ip }} netmask={{ cgn_priv_sub }}
+{% if is_6ghz %}
+add address={{ six_ghz_network }}/{{ six_ghz_prefixlen }} dns-server=142.147.112.3,142.147.112.19 gateway={{ six_ghz_address }} netmask={{ six_ghz_prefixlen }}
+{% endif %}
+{% if is_ub_wave %}
+add address={{ ub_wave_network }}/{{ ub_wave_prefixlen }} dns-server=142.147.112.3,142.147.112.19 gateway={{ ub_wave_address }} netmask={{ ub_wave_prefixlen }}
+{% endif %}
 
 /routing ospf instance
 add name=default-v2 router-id={{ loopback.ip }}

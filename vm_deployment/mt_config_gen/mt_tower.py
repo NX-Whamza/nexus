@@ -74,11 +74,45 @@ PORT_POLICY = {
     },
 }
 
-TARANA_SECTORS = [
-    {"name": "Alpha", "port": "sfp-sfpplus8", "address_offset": 2},
-    {"name": "Beta", "port": "sfp-sfpplus9", "address_offset": 3},
-    {"name": "Gamma", "port": "sfp-sfpplus10", "address_offset": 4},
-    {"name": "Delta", "port": "sfp-sfpplus11", "address_offset": 5},
+TARANA_SECTORS = {
+    "MT1009": [
+        {"name": "Alpha", "port": "ether7", "address_offset": 2},
+        {"name": "Beta", "port": "ether8", "address_offset": 3},
+        {"name": "Gamma", "port": "ether9", "address_offset": 4},
+        {"name": "Delta", "port": "ether10", "address_offset": 5},
+    ],
+    "MT1036": [
+        {"name": "Alpha", "port": "ether9", "address_offset": 2},
+        {"name": "Beta", "port": "ether10", "address_offset": 3},
+        {"name": "Gamma", "port": "ether11", "address_offset": 4},
+        {"name": "Delta", "port": "ether12", "address_offset": 5},
+    ],
+    "MT1072": [
+        {"name": "Alpha", "port": "ether9", "address_offset": 2},
+        {"name": "Beta", "port": "ether10", "address_offset": 3},
+        {"name": "Gamma", "port": "ether11", "address_offset": 4},
+        {"name": "Delta", "port": "ether12", "address_offset": 5},
+    ],
+    "MT2004": [
+        {"name": "Alpha", "port": "sfp-sfpplus8", "address_offset": 2},
+        {"name": "Beta", "port": "sfp-sfpplus9", "address_offset": 3},
+        {"name": "Gamma", "port": "sfp-sfpplus10", "address_offset": 4},
+        {"name": "Delta", "port": "sfp-sfpplus11", "address_offset": 5},
+    ],
+    "MT2216": [
+        {"name": "Alpha", "port": "sfp28-8", "address_offset": 2},
+        {"name": "Beta", "port": "sfp28-9", "address_offset": 3},
+        {"name": "Gamma", "port": "sfp28-10", "address_offset": 4},
+        {"name": "Delta", "port": "sfp28-11", "address_offset": 5},
+    ],
+}
+
+# Fallback for any router type not explicitly listed
+TARANA_SECTORS_DEFAULT = [
+    {"name": "Alpha", "port": "port-8", "address_offset": 2},
+    {"name": "Beta", "port": "port-9", "address_offset": 3},
+    {"name": "Gamma", "port": "port-10", "address_offset": 4},
+    {"name": "Delta", "port": "port-11", "address_offset": 5},
 ]
 
 
@@ -159,7 +193,10 @@ class MTTowerConfig:
 
             self.is_326 = params.get("is_326", False)
             if self.is_326:
-                self.crs_326_mgmt_subnet = IPNetwork(params["326_mgmt_subnet"])
+                raw_326 = params.get("326_mgmt_subnet") or params.get("crs326_mgmt_subnet") or ""
+                if not raw_326:
+                    raise ValueError("CRS326 is enabled but no 326_mgmt_subnet was provided.")
+                self.crs_326_mgmt_subnet = IPNetwork(raw_326)
 
             self.is_tachyon = params.get("is_tachyon", False)
 
@@ -232,12 +269,21 @@ class MTTowerConfig:
                 raise ValueError(f"Port collision detected on {port}")
             used.add(port)
 
-        # MT2004 tower policy (Engineering):
-        # ether1 = management, sfp-sfpplus1-2 = switch, sfp-sfpplus4+ = backhaul
-        if self.router_type == "MT2004":
+        # Reserve feature-specific ports to prevent collisions
+        if policy:
+            sectors_for_type = TARANA_SECTORS.get(self.router_type, TARANA_SECTORS_DEFAULT)
             reserved = set()
+            lte_port_map = {
+                "MT1009": "sfp-sfpplus1",
+                "MT1036": "sfp3",
+                "MT1072": "sfp3",
+                "MT2004": "sfp-sfpplus6",
+                "MT2216": "sfp28-6",
+            }
             if getattr(self, "is_lte", False):
-                reserved.add("sfp-sfpplus6")
+                lte_port = lte_port_map.get(self.router_type)
+                if lte_port:
+                    reserved.add(lte_port)
             if getattr(self, "is_tarana", False):
                 # Reserve the actual Tarana sector ports (custom or default)
                 custom = getattr(self, "_custom_sectors", None)
@@ -245,13 +291,13 @@ class MTTowerConfig:
                     reserved.update(normalize_port_name(s.get("port", "")) for s in custom if s.get("port"))
                 else:
                     count = getattr(self, "tarana_sector_count", 3)
-                    for i in range(min(count, len(TARANA_SECTORS))):
-                        reserved.add(TARANA_SECTORS[i]["port"])
+                    for i in range(min(count, len(sectors_for_type))):
+                        reserved.add(sectors_for_type[i]["port"])
 
             violations = sorted(set(backhaul_ports).intersection(reserved))
             if violations:
                 raise ValueError(
-                    "Backhaul port policy violation for MT2004. "
+                    f"Backhaul port policy violation for {self.router_type}. "
                     f"Reserved by enabled features: {violations}."
                 )
 
@@ -262,20 +308,24 @@ class MTTowerConfig:
             for x in range(self.tarana_sector_count)
         ]
 
+        # Use router-type-aware defaults
+        sectors_for_type = TARANA_SECTORS.get(self.router_type, TARANA_SECTORS_DEFAULT)
+
         # Use custom sector ports from frontend if provided
         custom = getattr(self, "_custom_sectors", None)
         result = []
         for i in range(self.tarana_sector_count):
+            default_sector = sectors_for_type[i] if i < len(sectors_for_type) else TARANA_SECTORS_DEFAULT[i]
             if custom and i < len(custom) and custom[i].get("port"):
                 port = normalize_port_name(custom[i]["port"])
-                name = custom[i].get("name", TARANA_SECTORS[i]["name"])
+                name = custom[i].get("name", default_sector["name"])
             else:
-                port = TARANA_SECTORS[i]["port"]
-                name = TARANA_SECTORS[i]["name"]
+                port = default_sector["port"]
+                name = default_sector["name"]
             result.append({
                 "name": name,
                 "port": port,
-                "address_offset": TARANA_SECTORS[i]["address_offset"],
+                "address_offset": default_sector["address_offset"],
                 "azimuth": azimuths[i],
             })
         return result
@@ -505,7 +555,7 @@ class MTTowerConfig:
         config_text = _normalize_block_spacing(config_text)
 
         # Compatibility guard: if external templates omit feature stanzas, append them.
-        if self.is_6ghz and "comment=6GHZ" not in config_text:
+        if self.is_6ghz and "6Ghz Equipment" not in config_text and "comment=6GHZ" not in config_text:
             config_text += (
                 f"\n\n# 6GHz management network (auto-appended)\n"
                 f"/ip address\n"

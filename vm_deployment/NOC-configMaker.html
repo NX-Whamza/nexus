@@ -3521,14 +3521,27 @@
                                     <label for="mtUnicornMgmtSubnet">Unicorn Mgmt Subnet (optional)</label>
                                     <input type="text" id="mtUnicornMgmtSubnet" placeholder="10.248.249.16/29">
                                 </div>
+                                <div id="mtTaranaSectorCountRow" style="display:none;">
+                                    <label for="mtTaranaSectorCount">Sector Count</label>
+                                    <input type="number" id="mtTaranaSectorCount" value="3" min="1" max="4">
+                                </div>
                                 <div id="mt6ghzSubnetRow" style="display:none;">
                                     <label for="mt6ghzSubnet">6 GHz Subnet</label>
-                                    <input type="text" id="mt6ghzSubnet" placeholder="10.246.22.224/29">
+                                    <input type="text" id="mt6ghzSubnet" placeholder="10.246.22.224/28">
                                 </div>
                                 <div id="mtUbWaveSubnetRow" style="display:none;">
                                     <label for="mtUbWaveSubnet">UB WAVE Subnet</label>
                                     <input type="text" id="mtUbWaveSubnet" placeholder="10.246.39.160/29">
                                 </div>
+                                <div id="mtCrs326SubnetRow" style="display:none;">
+                                    <label for="mtCrs326Subnet">CRS326 Mgmt Subnet</label>
+                                    <input type="text" id="mtCrs326Subnet" placeholder="10.246.35.0/29">
+                                </div>
+                            </div>
+                            <div id="mtTaranaSectorPortsRow" style="display:none; margin-top: 10px;">
+                                <h4 style="margin:8px 0 4px;">Tarana Sector Ports</h4>
+                                <p style="font-size:0.85em;color:#999;margin:0 0 6px;">Assign each sector to a physical port. Port names auto-adapt to your router model.</p>
+                                <div id="mtTaranaSectorPortGrid" class="device-selection-grid"></div>
                             </div>
                         </div>
 
@@ -13844,23 +13857,98 @@ show mac address-table | include &lt;mac&gt;</div>
                 const is6 = !!document.getElementById('mtFeature6ghz')?.checked;
                 const isTachyon = !!document.getElementById('mtFeatureTachyon')?.checked;
                 const isUbWave = !!document.getElementById('mtFeatureUbWave')?.checked;
+                const is326 = !!document.getElementById('mtFeatureCrs326')?.checked;
 
                 const section = document.getElementById('mtTowerFeatureSubnets');
                 const taranaRow = document.getElementById('mtTaranaSubnetRow');
                 const unicornRow = document.getElementById('mtUnicornMgmtSubnetRow');
+                const sectorCountRow = document.getElementById('mtTaranaSectorCountRow');
+                const sectorPortsRow = document.getElementById('mtTaranaSectorPortsRow');
                 const sixRow = document.getElementById('mt6ghzSubnetRow');
                 const ubRow = document.getElementById('mtUbWaveSubnetRow');
+                const crs326Row = document.getElementById('mtCrs326SubnetRow');
 
                 const showTarana = isTower && isTarana;
                 const showSix = isTower && (is6 || isTachyon);
                 const showUb = isTower && isUbWave;
-                const showSection = showTarana || showSix || showUb;
+                const show326 = isTower && is326;
+                const showSection = showTarana || showSix || showUb || show326;
 
                 if (section) section.style.display = showSection ? 'block' : 'none';
                 if (taranaRow) taranaRow.style.display = showTarana ? 'block' : 'none';
                 if (unicornRow) unicornRow.style.display = showTarana ? 'block' : 'none';
+                if (sectorCountRow) sectorCountRow.style.display = showTarana ? 'block' : 'none';
+                if (sectorPortsRow) sectorPortsRow.style.display = showTarana ? 'block' : 'none';
                 if (sixRow) sixRow.style.display = showSix ? 'block' : 'none';
                 if (ubRow) ubRow.style.display = showUb ? 'block' : 'none';
+                if (crs326Row) crs326Row.style.display = show326 ? 'block' : 'none';
+
+                if (showTarana) buildTaranaSectorPortGrid();
+            }
+
+            /* ---- Dynamic Tarana Sector Port Grid ---- */
+            function getTaranaSectorDefaults() {
+                const model = (document.getElementById('mtRouterModel')?.value || 'mt2004').trim().toUpperCase();
+                if (model.includes('2216')) {
+                    return [
+                        {name:'Alpha', port:'sfp28-8'},
+                        {name:'Beta',  port:'sfp28-9'},
+                        {name:'Gamma', port:'sfp28-10'},
+                        {name:'Delta', port:'sfp28-11'}
+                    ];
+                }
+                if (model.includes('1009')) {
+                    return [
+                        {name:'Alpha', port:'ether7'},
+                        {name:'Beta',  port:'ether8'},
+                        {name:'Gamma', port:'ether9'},
+                        {name:'Delta', port:'ether10'}
+                    ];
+                }
+                if (model.includes('1036') || model.includes('1072')) {
+                    return [
+                        {name:'Alpha', port:'ether9'},
+                        {name:'Beta',  port:'ether10'},
+                        {name:'Gamma', port:'ether11'},
+                        {name:'Delta', port:'ether12'}
+                    ];
+                }
+                return [
+                    {name:'Alpha', port:'sfp-sfpplus8'},
+                    {name:'Beta',  port:'sfp-sfpplus9'},
+                    {name:'Gamma', port:'sfp-sfpplus10'},
+                    {name:'Delta', port:'sfp-sfpplus11'}
+                ];
+            }
+
+            function buildTaranaSectorPortGrid() {
+                const grid = document.getElementById('mtTaranaSectorPortGrid');
+                if (!grid) return;
+                const count = parseInt(document.getElementById('mtTaranaSectorCount')?.value || '3', 10);
+                const defaults = getTaranaSectorDefaults();
+                // Keep existing values if possible
+                const existing = [];
+                grid.querySelectorAll('.tarana-sector-row').forEach(row => {
+                    existing.push({
+                        name: row.querySelector('.ts-name')?.value || '',
+                        port: row.querySelector('.ts-port')?.value || ''
+                    });
+                });
+                grid.innerHTML = '';
+                for (let i = 0; i < Math.min(count, 4); i++) {
+                    const d = defaults[i] || {name: `Sector${i+1}`, port: ''};
+                    const prevName = existing[i]?.name || d.name;
+                    const prevPort = existing[i]?.port || d.port;
+                    const row = document.createElement('div');
+                    row.className = 'tarana-sector-row';
+                    row.style.cssText = 'display:flex;gap:8px;margin-bottom:4px;align-items:center;';
+                    row.innerHTML = `
+                        <label style="min-width:60px;font-size:0.85em;color:#aaa;">Sector ${i+1}</label>
+                        <input class="ts-name" type="text" value="${prevName}" placeholder="Name" style="width:90px;">
+                        <input class="ts-port" type="text" value="${prevPort}" placeholder="Port" style="width:140px;">
+                    `;
+                    grid.appendChild(row);
+                }
             }
 
             function syncBng2FeatureVisibility() {
@@ -14566,7 +14654,7 @@ show mac address-table | include &lt;mac&gt;</div>
                     });
                     zipDownloadBtn.dataset.bound = '1';
                 }
-                ['mtFeatureTachyon', 'mtFeature6ghz', 'mtFeatureUbWave', 'mtFeatureTarana'].forEach((id) => {
+                ['mtFeatureTachyon', 'mtFeature6ghz', 'mtFeatureUbWave', 'mtFeatureTarana', 'mtFeatureCrs326'].forEach((id) => {
                     const cb = document.getElementById(id);
                     if (cb && !cb.dataset.bound) {
                         cb.addEventListener('change', () => {
@@ -14576,6 +14664,20 @@ show mac address-table | include &lt;mac&gt;</div>
                         cb.dataset.bound = '1';
                     }
                 });
+                // Rebuild Tarana sector port grid when sector count changes
+                const sectorCountEl = document.getElementById('mtTaranaSectorCount');
+                if (sectorCountEl && !sectorCountEl.dataset.bound) {
+                    sectorCountEl.addEventListener('change', () => buildTaranaSectorPortGrid());
+                    sectorCountEl.dataset.bound = '1';
+                }
+                // Rebuild Tarana sector port defaults when router model changes
+                const routerModelEl = document.getElementById('mtRouterModel');
+                if (routerModelEl && !routerModelEl.dataset.bound2) {
+                    routerModelEl.addEventListener('change', () => {
+                        if (document.getElementById('mtFeatureTarana')?.checked) buildTaranaSectorPortGrid();
+                    });
+                    routerModelEl.dataset.bound2 = '1';
+                }
 
                 const rows = document.querySelectorAll('#mtBackhaulRows .mt-backhaul-row');
                 if (rows.length === 0) {
@@ -14740,8 +14842,9 @@ show mac address-table | include &lt;mac&gt;</div>
                 const isUbWave = !!document.getElementById('mtFeatureUbWave')?.checked;
                 const taranaSubnet = ensureCIDR((document.getElementById('mtTaranaSubnet')?.value || '').trim(), 29);
                 const unicornMgmtSubnet = ensureCIDR((document.getElementById('mtUnicornMgmtSubnet')?.value || '').trim(), 29);
-                const sixGhzSubnet = ensureCIDR((document.getElementById('mt6ghzSubnet')?.value || '').trim(), 29);
+                const sixGhzSubnet = ensureCIDR((document.getElementById('mt6ghzSubnet')?.value || '').trim(), 28);
                 const ubWaveSubnet = ensureCIDR((document.getElementById('mtUbWaveSubnet')?.value || '').trim(), 29);
+                const crs326Subnet = ensureCIDR((document.getElementById('mtCrs326Subnet')?.value || '').trim(), 29);
 
                 if (isTarana && !taranaSubnet) {
                     throw new Error('Tarana is enabled. Please provide a valid Tarana Subnet.');
@@ -14751,6 +14854,9 @@ show mac address-table | include &lt;mac&gt;</div>
                 }
                 if (isUbWave && !ubWaveSubnet) {
                     throw new Error('UB WAVE is enabled. Please provide a valid UB WAVE Subnet.');
+                }
+                if (is326 && !crs326Subnet) {
+                    throw new Error('CRS326 is enabled. Please provide a valid CRS326 Mgmt Subnet.');
                 }
 
                 const payload = {
@@ -14782,8 +14888,23 @@ show mac address-table | include &lt;mac&gt;</div>
                 };
                 if (isTarana) payload["tarana_subnet"] = taranaSubnet;
                 if (isTarana && unicornMgmtSubnet) payload["unicorn_mgmt_subnet"] = unicornMgmtSubnet;
+                if (isTarana) {
+                    payload["tarana_sector_count"] = parseInt(document.getElementById('mtTaranaSectorCount')?.value || '3', 10);
+                    // Collect custom sector port assignments from the dynamic grid
+                    const sectorRows = document.querySelectorAll('#mtTaranaSectorPortGrid .tarana-sector-row');
+                    if (sectorRows.length > 0) {
+                        const sectors = [];
+                        sectorRows.forEach(row => {
+                            const name = row.querySelector('.ts-name')?.value?.trim() || '';
+                            const port = row.querySelector('.ts-port')?.value?.trim() || '';
+                            if (port) sectors.push({name, port});
+                        });
+                        if (sectors.length > 0) payload["tarana_sectors"] = sectors;
+                    }
+                }
                 if (is6ghz || isTachyon) payload["6ghz_subnet"] = sixGhzSubnet;
                 if (isUbWave) payload["ub_wave_subnet"] = ubWaveSubnet;
+                if (is326) payload["326_mgmt_subnet"] = crs326Subnet;
                 return payload;
             }
 

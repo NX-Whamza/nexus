@@ -15,6 +15,7 @@ add name=bridge3000 protocol-mode=none comment=FEATURE-MGMT
 add name=bridge4000 protocol-mode=none comment=CPE
 {% endif %}
 {% else %}
+add name=bridge1000 protocol-mode=none comment=DYNAMIC
 add name=bridge2000 protocol-mode=none comment=CGNAT-PRIVATE
 add name=bridge3000 protocol-mode=none comment=UNAUTH
 add name=bridge4000 protocol-mode=none comment=CPE
@@ -80,6 +81,18 @@ add bridge=lan-bridge ingress-filtering=no interface=vlan1000-{{ s.port }}
 add bridge=bridge1000 ingress-filtering=no interface=vlan1000-{{ s.port }}
 {% endif %}
 add bridge=bridge2000 ingress-filtering=no interface=vlan2000-{{ s.port }}
+{% endfor %}
+{% endif %}
+
+{% if is_tarana %}
+/interface bridge filter
+{% for s in tarana_sectors %}
+add action=mark-packet chain=forward comment="Mark traffic from {{ s.name }}" disabled=yes new-packet-mark=traffic-{{ s.port }} out-interface=vlan1000-{{ s.port }}
+{% endfor %}
+
+/queue simple
+{% for s in tarana_sectors %}
+add comment=OUTAGE disabled=yes max-limit=200M/200M name=Limit-{{ s.name }} packet-marks=traffic-{{ s.port }} target=""
 {% endfor %}
 {% endif %}
 
