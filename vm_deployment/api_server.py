@@ -14733,6 +14733,7 @@ def _aviat_should_log(result):
     return status in ("success", "error")
 
 def _log_aviat_activity(result):
+    conn = None
     try:
         if not _aviat_should_log(result):
             return
@@ -14755,9 +14756,14 @@ def _log_aviat_activity(result):
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
                   (username, activity_type, device, site_name, routeros, success, ts_iso, ts_unix))
         conn.commit()
-        conn.close()
     except Exception as e:
         safe_print(f"[AVIAT] Failed to log activity: {e}")
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 def _aviat_result_dict(result, username=None):
     payload = {
@@ -15427,18 +15433,24 @@ def aviat_fix_stp():
     def log_cb(message, level):
         _aviat_broadcast_log(message, level)
 
+    client = None
     try:
         client = _aviat_connect_with_fallback(ip, callback=log_cb)
         client.send_command("config terminal", timeout=8)
         client.send_command("spanning-tree administrative-status down", timeout=8)
         client.send_command("commit", timeout=10)
         client.send_command("exit", timeout=5)
-        client.close()
         _aviat_broadcast_log(f"[{ip}] STP administrative-status set to down.", "success")
         return jsonify({"status": "ok"})
     except Exception as exc:
         _aviat_broadcast_log(f"[{ip}] STP fix failed: {exc}", "error")
         return jsonify({"error": str(exc)}), 500
+    finally:
+        if client:
+            try:
+                client.close()
+            except Exception:
+                pass
 
 
 @app.route('/api/aviat/abort/<task_id>', methods=['POST'])

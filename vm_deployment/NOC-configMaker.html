@@ -13834,6 +13834,7 @@ show mac address-table | include &lt;mac&gt;</div>
                 setCheck('enableTachyon', document.getElementById('mtFeatureTachyon')?.checked);
                 setCheck('enableTarana', document.getElementById('mtFeatureTarana')?.checked);
                 setCheck('enable6GHz', document.getElementById('mtFeature6ghz')?.checked);
+                setCheck('enableUbWave', document.getElementById('mtFeatureUbWave')?.checked);
                 setCheck('enableContractorLogin', document.getElementById('mtFeatureContractor')?.checked);
             }
 
@@ -26294,34 +26295,22 @@ Ready for translation!`);
             }
 
             async function aviatRecheckPrecheck(ip) {
-                const response = await aviatFetchWithTimeout('/check-status', {
+                const response = await aviatFetchWithTimeout('/precheck/recheck', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ips: [ip] })
+                    body: JSON.stringify({ ip })
                 }, 20000);
                 const data = await parseAviatJson(response);
                 if (!response.ok) {
                     throw new Error(data.error || `Precheck recheck failed (${response.status})`);
                 }
-                const first = (data.results || [])[0] || {};
-                const updates = {
-                    status: (first.error || !first.reachable) ? 'pending' : 'pending',
-                    firmwareStatus: (first.firmware && /^6\./.test(String(first.firmware))) ? 'success' : 'pending',
-                    snmpStatus: first.snmp_ok ? 'success' : 'pending',
-                    bufferStatus: first.buffer_ok ? 'success' : 'pending',
-                    sopStatus: (first.firmware && /^6\./.test(String(first.firmware)) && first.snmp_ok && first.buffer_ok) ? 'success' : 'pending',
-                    licenseStatus: first.license_ok === true ? 'success' : (first.license_ok === false ? 'error' : 'pending'),
-                    stpStatus: first.stp_ok === true ? 'success' : (first.stp_ok === false ? 'error' : 'pending'),
-                    subnetStatus: first.subnet_ok === true ? 'success' : (first.subnet_ok === false ? 'error' : 'pending'),
-                    licenseDetail: first.license_detail,
-                    stpDetail: first.stp_detail,
-                    subnetDetail: first.subnet_actual
-                };
+                // Backend returns { ip, reachable, result, updates, precheck_clear }
+                // directly — no need to recompute client-side
                 const payload = {
-                    ip,
-                    result: first,
-                    updates,
-                    precheck_clear: updates.stpStatus !== 'error' && updates.licenseStatus !== 'error' && updates.subnetStatus !== 'error'
+                    ip: data.ip || ip,
+                    result: data.result || {},
+                    updates: data.updates || {},
+                    precheck_clear: data.precheck_clear !== undefined ? data.precheck_clear : true
                 };
                 aviatApplyRecheckResult(ip, payload);
                 return payload;
