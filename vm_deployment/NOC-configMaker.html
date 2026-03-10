@@ -3386,6 +3386,42 @@
                         </div>
                     </div>
 
+                    <!-- Maintenance Tracking -->
+                    <div class="activity-section" style="margin-top:0">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+                            <h2 style="margin:0"> Maintenance Tracking</h2>
+                            <button onclick="window.navigateToTab && window.navigateToTab('maintenance')" style="background:var(--accent-color);color:#fff;border:none;padding:6px 16px;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:600"> View All</button>
+                        </div>
+                        <div class="metrics-row" id="homeMaintMetrics">
+                            <div class="metric-card" style="cursor:pointer" onclick="window.navigateToTab && window.navigateToTab('maintenance')">
+                                <span class="metric-icon"></span>
+                                <span class="metric-value" id="homeMaintTotal">0</span>
+                                <span class="metric-label">Total Windows</span>
+                            </div>
+                            <div class="metric-card" style="border-left:3px solid #3498db">
+                                <span class="metric-icon"></span>
+                                <span class="metric-value" id="homeMaintScheduled">0</span>
+                                <span class="metric-label">Scheduled</span>
+                            </div>
+                            <div class="metric-card" style="border-left:3px solid #f39c12">
+                                <span class="metric-icon"></span>
+                                <span class="metric-value" id="homeMaintRunning">0</span>
+                                <span class="metric-label">In Progress</span>
+                            </div>
+                            <div class="metric-card" style="border-left:3px solid #27ae60">
+                                <span class="metric-icon"></span>
+                                <span class="metric-value" id="homeMaintCompleted">0</span>
+                                <span class="metric-label">Completed</span>
+                            </div>
+                            <div class="metric-card" style="border-left:3px solid #e74c3c">
+                                <span class="metric-icon"></span>
+                                <span class="metric-value" id="homeMaintFailed">0</span>
+                                <span class="metric-label">Failed</span>
+                            </div>
+                        </div>
+                        <div id="homeUpcomingMaint" style="margin-top:12px"></div>
+                    </div>
+
                     <!-- Quick Actions -->
                     <div class="activity-section">
                         <h2>Quick Actions</h2>
@@ -6307,6 +6343,10 @@
                                     <option value="migration">Migration</option>
                                     <option value="upgrade">Upgrade</option>
                                     <option value="aviat-upgrade">Aviat Backhaul Upgrade</option>
+                                    <option value="maintenance-scheduled">Maintenance Scheduled</option>
+                                    <option value="maintenance-started">Maintenance Started</option>
+                                    <option value="maintenance-completed">Maintenance Completed</option>
+                                    <option value="maintenance-failed">Maintenance Failed</option>
                                 </select>
                             </div>
                             <div>
@@ -8202,11 +8242,21 @@ show mac address-table | include &lt;mac&gt;</div>
                         <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-color);cursor:pointer"><input type="checkbox" name="maintTasks" value="credentials"> Credential Rotation</label>
                         <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-color);cursor:pointer"><input type="checkbox" name="maintTasks" value="snmp"> SNMP Config</label>
                         <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-color);cursor:pointer"><input type="checkbox" name="maintTasks" value="reboot"> Reboot</label>
+                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-color);cursor:pointer"><input type="checkbox" name="maintTasks" value="monitoring"> Monitoring Check</label>
+                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-color);cursor:pointer"><input type="checkbox" name="maintTasks" value="patching"> Security Patching</label>
+                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-color);cursor:pointer"><input type="checkbox" name="maintTasks" value="backup"> Config Backup</label>
+                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-color);cursor:pointer"><input type="checkbox" name="maintTasks" value="migration"> Device Migration</label>
+                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-color);cursor:pointer"><input type="checkbox" name="maintTasks" value="testing"> Post-Maint Testing</label>
+                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-color);cursor:pointer"><input type="checkbox" name="maintTasks" value="rollback"> Rollback Plan</label>
                     </div>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Notes (optional)</label>
                     <textarea id="maintNotes" class="form-input" rows="2" placeholder="Any additional context..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label"> Ticket URL (optional)</label>
+                    <input type="url" id="maintTicketUrl" class="form-input" placeholder="https://jira.nxlink.com/browse/NOC-1234 or ServiceNow URL" style="font-size:13px">
                 </div>
                 <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px">
                     <button type="button" onclick="closeMaintModal()" style="padding:10px 20px;background:var(--input-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:var(--radius-sm);cursor:pointer">Cancel</button>
@@ -12675,6 +12725,18 @@ show mac address-table | include &lt;mac&gt;</div>
                                     icon = '';
                                     activityLabel = 'Config Generated';
                                 }
+                            } else if (entry.type === 'maintenance-completed') {
+                                icon = '';
+                                activityLabel = 'Maintenance Completed';
+                            } else if (entry.type === 'maintenance-failed') {
+                                icon = '';
+                                activityLabel = 'Maintenance Failed';
+                            } else if (entry.type === 'maintenance-started') {
+                                icon = '';
+                                activityLabel = 'Maintenance Started';
+                            } else if (entry.type === 'maintenance-scheduled') {
+                                icon = '';
+                                activityLabel = 'Maintenance Scheduled';
                             }
 
                             const username = formatUsernameDisplay(entry.username || 'Unknown User');
@@ -28172,6 +28234,7 @@ Example Enterprise,CCR1036-12G-4S,10.255.0.3,0.0.0.3,10.255.0.3,1,bh-example,172
             const devices = document.getElementById('maintDevices').value.trim().split('\n').map(d => d.trim()).filter(d => d);
             const tasks = Array.from(document.querySelectorAll('input[name="maintTasks"]:checked')).map(cb => cb.value);
             const notes = document.getElementById('maintNotes').value.trim();
+            const ticketUrl = (document.getElementById('maintTicketUrl')?.value || '').trim();
 
             if (!name || !dateStr || !devices.length) { nocToast('Fill in all required fields', 'warning'); return; }
             if (!tasks.length) { nocToast('Select at least one task', 'warning'); return; }
@@ -28179,7 +28242,7 @@ Example Enterprise,CCR1036-12G-4S,10.255.0.3,0.0.0.3,10.255.0.3,1,bh-example,172
             const mw = {
                 id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
                 name, scheduledAt: dateStr, duration, priority,
-                devices, tasks, notes,
+                devices, tasks, notes, ticketUrl,
                 status: 'scheduled',
                 createdAt: new Date().toISOString(),
                 createdBy: (() => { try { return JSON.parse(localStorage.getItem('user_info') || '{}').email || 'unknown'; } catch { return 'unknown'; } })()
@@ -28187,9 +28250,13 @@ Example Enterprise,CCR1036-12G-4S,10.255.0.3,0.0.0.3,10.255.0.3,1,bh-example,172
             maintWindows.unshift(mw);
             maintSave();
             maintRender();
+            maintUpdateHomeMetrics();
             closeMaintModal();
             document.getElementById('maintForm').reset();
             nocToast(`Maintenance window "${name}" created`, 'success');
+
+            // Log to backend activity
+            maintLogActivity('maintenance-scheduled', mw);
         };
 
         window.maintRender = function () {
@@ -28213,8 +28280,8 @@ Example Enterprise,CCR1036-12G-4S,10.255.0.3,0.0.0.3,10.255.0.3,1,bh-example,172
                 return;
             }
 
-            const TASK_LABELS = { firmware: 'Firmware Upgrade', config: 'Config Push', credentials: 'Credential Rotation', snmp: 'SNMP Config', reboot: 'Reboot' };
-            const TASK_CLASS = { firmware: 'firmware', config: 'config', credentials: 'credentials', snmp: 'snmp', reboot: 'firmware' };
+            const TASK_LABELS = { firmware: 'Firmware Upgrade', config: 'Config Push', credentials: 'Credential Rotation', snmp: 'SNMP Config', reboot: 'Reboot', monitoring: 'Monitoring Check', patching: 'Security Patching', backup: 'Config Backup', migration: 'Device Migration', testing: 'Post-Maint Testing', rollback: 'Rollback Plan' };
+            const TASK_CLASS = { firmware: 'firmware', config: 'config', credentials: 'credentials', snmp: 'snmp', reboot: 'firmware', monitoring: 'snmp', patching: 'credentials', backup: 'config', migration: 'firmware', testing: 'snmp', rollback: 'credentials' };
             const PRIORITY_COLORS = { low: '#27ae60', normal: '#3498db', high: '#f39c12', emergency: '#e74c3c' };
 
             timeline.innerHTML = filtered.map(w => {
@@ -28242,7 +28309,8 @@ Example Enterprise,CCR1036-12G-4S,10.255.0.3,0.0.0.3,10.255.0.3,1,bh-example,172
                     </div>
                     <div class="maint-card-devices">${devChips}</div>
                     <div class="maint-card-tasks">${taskBadges}</div>
-                    ${w.notes ? `<div style="margin-top:10px;font-size:12px;color:var(--text-color-secondary);font-style:italic">${escHtml(w.notes)}</div>` : ''}
+                    ${w.ticketUrl ? `<div style="margin-top:10px;font-size:12px"><a href="${escHtml(w.ticketUrl)}" target="_blank" rel="noopener" style="color:var(--accent-color);text-decoration:none;font-weight:600"> ${escHtml(w.ticketUrl.length > 60 ? w.ticketUrl.slice(0,60) + '...' : w.ticketUrl)}</a></div>` : ''}
+                    ${w.notes ? `<div style="margin-top:8px;font-size:12px;color:var(--text-color-secondary);font-style:italic">${escHtml(w.notes)}</div>` : ''}
                 </div>`;
             }).join('');
         };
@@ -28250,7 +28318,16 @@ Example Enterprise,CCR1036-12G-4S,10.255.0.3,0.0.0.3,10.255.0.3,1,bh-example,172
         window.maintUpdateStatus = function (id, status) {
             maintLoad();
             const w = maintWindows.find(w => w.id === id);
-            if (w) { w.status = status; w.updatedAt = new Date().toISOString(); maintSave(); maintRender(); nocToast(`Window "${w.name}" marked as ${status}`, status === 'completed' ? 'success' : status === 'failed' ? 'error' : 'info'); }
+            if (w) {
+                w.status = status;
+                w.updatedAt = new Date().toISOString();
+                maintSave();
+                maintRender();
+                maintUpdateHomeMetrics();
+                nocToast(`Window "${w.name}" marked as ${status}`, status === 'completed' ? 'success' : status === 'failed' ? 'error' : 'info');
+                // Log to backend activity + log history
+                maintLogActivity('maintenance-' + status, w);
+            }
         };
 
         window.maintDelete = function (id) {
@@ -28269,18 +28346,65 @@ Example Enterprise,CCR1036-12G-4S,10.255.0.3,0.0.0.3,10.255.0.3,1,bh-example,172
             nocToast(`Cleared ${before - maintWindows.length} completed windows`, 'info');
         };
 
+        /* ── Log maintenance events to backend activity feed ── */
+        function maintLogActivity(type, mw) {
+            if (typeof window.sendActivityToBackend === 'function') {
+                window.sendActivityToBackend({
+                    type: type,
+                    device: (mw.devices || []).join(', '),
+                    siteName: mw.name + (mw.ticketUrl ? ' | Ticket: ' + mw.ticketUrl : ''),
+                    routeros: mw.tasks.join(', '),
+                    success: type !== 'maintenance-failed'
+                });
+            }
+        }
+
+        /* ── Update home dashboard maintenance metrics ── */
+        window.maintUpdateHomeMetrics = function () {
+            maintLoad();
+            const el = (id) => document.getElementById(id);
+            if (el('homeMaintTotal')) el('homeMaintTotal').textContent = maintWindows.length;
+            if (el('homeMaintScheduled')) el('homeMaintScheduled').textContent = maintWindows.filter(w => w.status === 'scheduled').length;
+            if (el('homeMaintRunning')) el('homeMaintRunning').textContent = maintWindows.filter(w => w.status === 'running').length;
+            if (el('homeMaintCompleted')) el('homeMaintCompleted').textContent = maintWindows.filter(w => w.status === 'completed').length;
+            if (el('homeMaintFailed')) el('homeMaintFailed').textContent = maintWindows.filter(w => w.status === 'failed').length;
+
+            // Render upcoming maintenance preview (next 3)
+            const upcoming = maintWindows.filter(w => w.status === 'scheduled' || w.status === 'running').sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt)).slice(0, 3);
+            const container = el('homeUpcomingMaint');
+            if (!container) return;
+            if (!upcoming.length) { container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-color-secondary);font-size:13px">No upcoming maintenance windows</div>'; return; }
+            const PRIORITY_COLORS = { low: '#27ae60', normal: '#3498db', high: '#f39c12', emergency: '#e74c3c' };
+            container.innerHTML = upcoming.map(w => {
+                const d = new Date(w.scheduledAt);
+                const dateLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                const statusDot = w.status === 'running' ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f39c12;animation:pulse 1.5s infinite;margin-right:6px"></span>' : '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#3498db;margin-right:6px"></span>';
+                const ticketLink = w.ticketUrl ? ` <a href="${escHtml(w.ticketUrl)}" target="_blank" rel="noopener" style="color:var(--accent-color);text-decoration:none;font-size:11px" onclick="event.stopPropagation()">[Ticket]</a>` : '';
+                return `<div style="padding:12px 16px;border-radius:var(--radius-sm);background:var(--card-bg);border:1px solid var(--border-color);margin-bottom:8px;cursor:pointer;transition:border-color .2s" onmouseover="this.style.borderColor='var(--accent-color)'" onmouseout="this.style.borderColor='var(--border-color)'" onclick="window.navigateToTab('maintenance')">
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                        <div style="font-weight:600;font-size:14px;color:var(--text-color)">${statusDot}${escHtml(w.name)}${ticketLink}</div>
+                        <span style="font-size:11px;color:${PRIORITY_COLORS[w.priority] || '#3498db'};font-weight:700;text-transform:uppercase">${w.priority}</span>
+                    </div>
+                    <div style="font-size:12px;color:var(--text-color-secondary);margin-top:4px"> ${dateLabel} &bull; ${w.duration} min &bull; ${w.devices.length} device${w.devices.length !== 1 ? 's' : ''}</div>
+                </div>`;
+            }).join('');
+        };
+
         // Initialize maintenance on tab visit
         const origNav = window.navigateToTab;
         if (origNav) {
             window.navigateToTab = async function (tabId) {
                 await origNav(tabId);
                 if (tabId === 'maintenance') maintRender();
+                if (tabId === 'home') maintUpdateHomeMetrics();
             };
         }
 
-        // Load on startup if on maintenance tab
+        // Load on startup
         maintLoad();
         if (document.getElementById('maintenance-pane') && document.getElementById('maintenance-pane').classList.contains('active')) maintRender();
+        // Always update home metrics on page load
+        setTimeout(() => { if (typeof maintUpdateHomeMetrics === 'function') maintUpdateHomeMetrics(); }, 500);
 
     })();
     </script>
