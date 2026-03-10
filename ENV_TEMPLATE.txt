@@ -7,9 +7,10 @@ ADMIN_EMAILS=netops@team.nxlink.com,whamza@team.nxlink.com
 # JWT_SECRET=your-secret-here
 # DEFAULT_PASSWORD=CHANGE_ME
 
-# AI Provider (optional)
+# AI Provider (optional — OpenAI-compatible endpoint for AI features)
 # OPENAI_API_KEY=your-key-here
 # OPENAI_COMPAT_MODEL=gpt-4o-mini
+
 # Microsoft SSO (Azure AD) – REQUIRED for SSO login
 # Tenant and Client IDs are baked into the code defaults; override here if needed.
 # The client SECRET must be set via env var (never hardcoded in source).
