@@ -8052,11 +8052,16 @@ show mac address-table | include &lt;mac&gt;</div>
                 <textarea id="diffTextA" class="diff-source-area" rows="6" placeholder="Paste your first configuration here..."></textarea>
             </div>
             <div id="diffInputA-ssh" style="display:none;margin-bottom:12px">
-                <div style="display:flex;gap:8px;align-items:flex-end">
-                    <div style="flex:1"><label style="font-size:12px;font-weight:600;color:var(--text-color-secondary)">Device IP (A)</label>
+                <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+                    <div style="flex:2;min-width:140px"><label style="font-size:12px;font-weight:600;color:var(--text-color-secondary)">Device IP (A)</label>
                         <input type="text" id="diffSshIpA" class="form-input" placeholder="10.0.0.1" style="margin-top:4px;width:100%"></div>
-                    <button onclick="diffFetchSSH('A')" style="background:var(--accent-color);color:#fff;padding:10px 18px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;white-space:nowrap"> Fetch A</button>
+                    <div style="flex:1;min-width:90px"><label style="font-size:12px;font-weight:600;color:var(--text-color-secondary)">Port</label>
+                        <input type="text" id="diffSshPortA" class="form-input" placeholder="22,5022" value="22,5022" style="margin-top:4px;width:100%;font-size:12px"></div>
+                    <div style="flex:1;min-width:70px"><label style="font-size:12px;font-weight:600;color:var(--text-color-secondary)">ROS</label>
+                        <select id="diffSshRosA" class="form-input" style="margin-top:4px;width:100%;font-size:12px"><option value="7">v7</option><option value="6">v6</option></select></div>
+                    <button onclick="diffFetchSSH('A')" id="diffFetchBtnA" style="background:var(--accent-color);color:#fff;padding:10px 18px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;white-space:nowrap"> Fetch A</button>
                 </div>
+                <div id="diffSshStatusA" style="display:none;margin-top:6px;padding:8px 12px;border-radius:var(--radius-sm);font-size:12px;font-family:'JetBrains Mono',monospace"></div>
             </div>
             <div id="diffInputA-saved" style="display:none;margin-bottom:12px">
                 <select id="diffSavedA" style="width:100%;padding:8px;background:var(--input-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:var(--radius-sm)">
@@ -8070,11 +8075,16 @@ show mac address-table | include &lt;mac&gt;</div>
                 <textarea id="diffTextB" class="diff-source-area" rows="6" placeholder="Paste your second configuration here..."></textarea>
             </div>
             <div id="diffInputB-ssh" style="display:none;margin-bottom:16px">
-                <div style="display:flex;gap:8px;align-items:flex-end">
-                    <div style="flex:1"><label style="font-size:12px;font-weight:600;color:var(--text-color-secondary)">Device IP (B)</label>
+                <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+                    <div style="flex:2;min-width:140px"><label style="font-size:12px;font-weight:600;color:var(--text-color-secondary)">Device IP (B)</label>
                         <input type="text" id="diffSshIpB" class="form-input" placeholder="10.0.0.2" style="margin-top:4px;width:100%"></div>
-                    <button onclick="diffFetchSSH('B')" style="background:var(--accent-color);color:#fff;padding:10px 18px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;white-space:nowrap"> Fetch B</button>
+                    <div style="flex:1;min-width:90px"><label style="font-size:12px;font-weight:600;color:var(--text-color-secondary)">Port</label>
+                        <input type="text" id="diffSshPortB" class="form-input" placeholder="22,5022" value="22,5022" style="margin-top:4px;width:100%;font-size:12px"></div>
+                    <div style="flex:1;min-width:70px"><label style="font-size:12px;font-weight:600;color:var(--text-color-secondary)">ROS</label>
+                        <select id="diffSshRosB" class="form-input" style="margin-top:4px;width:100%;font-size:12px"><option value="7">v7</option><option value="6">v6</option></select></div>
+                    <button onclick="diffFetchSSH('B')" id="diffFetchBtnB" style="background:var(--accent-color);color:#fff;padding:10px 18px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;white-space:nowrap"> Fetch B</button>
                 </div>
+                <div id="diffSshStatusB" style="display:none;margin-top:6px;padding:8px 12px;border-radius:var(--radius-sm);font-size:12px;font-family:'JetBrains Mono',monospace"></div>
             </div>
             <div id="diffInputB-saved" style="display:none;margin-bottom:16px">
                 <select id="diffSavedB" style="width:100%;padding:8px;background:var(--input-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:var(--radius-sm)">
@@ -27840,23 +27850,81 @@ Ready for translation!`);
         window.diffFetchSSH = async function (side) {
             const ip = document.getElementById('diffSshIp' + side).value.trim();
             if (!ip) { nocToast('Enter a device IP first', 'warning'); return; }
-            nocToast(`Fetching config from ${ip}...`, 'info');
+
+            const portsRaw = (document.getElementById('diffSshPort' + side)?.value || '22,5022').trim();
+            const rosVersion = (document.getElementById('diffSshRos' + side)?.value || '7');
+            const ports = portsRaw.split(/[,\s]+/).map(p => parseInt(p.trim())).filter(p => p > 0 && p <= 65535);
+            if (!ports.length) ports.push(22, 5022);
+
+            const btn = document.getElementById('diffFetchBtn' + side);
+            const statusEl = document.getElementById('diffSshStatus' + side);
+
+            // UI: disable button, show status
+            if (btn) { btn.disabled = true; btn.innerHTML = ' Connecting...'; }
+            if (statusEl) { statusEl.style.display = 'block'; statusEl.style.background = 'rgba(33,150,243,.1)'; statusEl.style.color = '#2196F3'; statusEl.style.border = '1px solid rgba(33,150,243,.3)'; statusEl.innerHTML = ` Connecting to ${ip} on port(s) ${ports.join(', ')}...`; }
+
+            nocToast(`Fetching config from ${ip} (ports: ${ports.join(', ')})...`, 'info', 5000);
+
             try {
-                const resp = await fetch('/api/fetch-config-ssh', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ host: ip })
+                // Use the same API base pattern as the rest of the app
+                const apiBase = (typeof resolveApiBase === 'function') ? resolveApiBase() : ((typeof AI_API_BASE !== 'undefined' ? AI_API_BASE : window.AI_API_BASE) || '/api');
+                const token = (typeof getAuthToken === 'function') ? getAuthToken() : (localStorage.getItem('auth_token') || '');
+
+                const headers = { 'Content-Type': 'application/json' };
+                if (token) headers['Authorization'] = 'Bearer ' + token;
+
+                console.log(`[DIFF-SSH] Fetching config from ${ip}, ports: ${ports}, ROS: ${rosVersion}, API: ${apiBase}/fetch-config-ssh`);
+
+                const resp = await fetch(`${apiBase}/fetch-config-ssh`, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({
+                        host: ip,
+                        ros_version: rosVersion,
+                        command: 'export',
+                        ports: ports
+                    })
                 });
+
+                // Handle non-OK responses
+                if (!resp.ok) {
+                    let errorMsg = `HTTP ${resp.status}`;
+                    try {
+                        const errData = await resp.json();
+                        errorMsg = errData.error || errData.message || errorMsg;
+                    } catch {
+                        try { const txt = await resp.text(); if (txt.trim()) errorMsg = txt.trim().slice(0, 300); } catch {}
+                    }
+                    console.error(`[DIFF-SSH] Error response:`, errorMsg);
+                    if (statusEl) { statusEl.style.background = 'rgba(231,76,60,.1)'; statusEl.style.color = '#e74c3c'; statusEl.style.border = '1px solid rgba(231,76,60,.3)'; statusEl.innerHTML = ` Failed: ${errorMsg}`; }
+                    nocToast(`SSH fetch failed: ${errorMsg}`, 'error', 8000);
+                    return;
+                }
+
                 const data = await resp.json();
-                if (data.config || data.export) {
-                    document.getElementById('diffText' + side).value = data.config || data.export || '';
-                    // Switch view back to paste to show the fetched text
+                console.log(`[DIFF-SSH] Response:`, { host: data.host, port: data.port, configLength: (data.config || '').length });
+
+                if (data.config) {
+                    document.getElementById('diffText' + side).value = data.config;
+                    // Switch view to paste to show the fetched text
                     document.getElementById('diffSource' + side).value = 'paste';
                     diffSourceChanged(side);
-                    nocToast(`Config fetched from ${ip}`, 'success');
+                    const lineCount = data.config.split('\n').length;
+                    if (statusEl) { statusEl.style.background = 'rgba(39,174,96,.1)'; statusEl.style.color = '#27ae60'; statusEl.style.border = '1px solid rgba(39,174,96,.3)'; statusEl.innerHTML = ` Config fetched via port ${data.port || '?'} — ${lineCount} lines`; }
+                    nocToast(`Config fetched from ${ip}:${data.port || '?'} (${lineCount} lines)`, 'success');
                 } else {
-                    nocToast(data.error || 'Failed to fetch config', 'error');
+                    const errMsg = data.error || 'No config returned from device';
+                    if (statusEl) { statusEl.style.background = 'rgba(231,76,60,.1)'; statusEl.style.color = '#e74c3c'; statusEl.style.border = '1px solid rgba(231,76,60,.3)'; statusEl.innerHTML = ` ${errMsg}`; }
+                    nocToast(errMsg, 'error', 8000);
                 }
-            } catch (e) { nocToast('SSH fetch failed: ' + e.message, 'error'); }
+            } catch (e) {
+                console.error(`[DIFF-SSH] Exception:`, e);
+                const errMsg = e.message || 'Network error';
+                if (statusEl) { statusEl.style.background = 'rgba(231,76,60,.1)'; statusEl.style.color = '#e74c3c'; statusEl.style.border = '1px solid rgba(231,76,60,.3)'; statusEl.innerHTML = ` ${errMsg}`; }
+                nocToast('SSH fetch failed: ' + errMsg, 'error', 8000);
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = ' Fetch ' + side; }
+            }
         };
 
         window.swapDiffSources = function () {
