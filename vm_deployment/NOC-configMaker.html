@@ -29509,28 +29509,50 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
             const r = compScanResults[compScanDetailIdx];
             if (!r || r.compliant) return;
 
-            // Use paste config if available, otherwise re-fetch via SSH
+            const btn = document.getElementById('compFixOneBtn');
+            btn.disabled = true; btn.textContent = '⏳ Fixing...';
+
+            const apiBase = (typeof resolveApiBase === 'function') ? resolveApiBase() : '/api';
             const pastedConfig = document.getElementById('compScanPaste').value.trim();
-            if (pastedConfig) {
-                try {
-                    const apiBase = (typeof resolveApiBase === 'function') ? resolveApiBase() : '/api';
-                    const resp = await fetch(apiBase + '/bulk-compliance-scan', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('auth_token') || '') },
-                        body: JSON.stringify({ configs: [{ name: r.name, config_text: pastedConfig }], apply_fix: true })
-                    });
-                    const data = await resp.json();
-                    const fixed = (data.results || [])[0];
-                    if (fixed && fixed.fixed_config) {
-                        compDownloadFixedDirect(fixed);
-                        nocToast(`Compliance fix applied — Grade ${fixed.fixed_compliant ? 'A' : fixed.grade}`, 'success');
-                    }
-                } catch (err) {
-                    nocToast('Fix failed: ' + err.message, 'error');
+
+            try {
+                let body;
+                if (pastedConfig) {
+                    // Mode A: use pasted config
+                    body = { configs: [{ name: r.name, config_text: pastedConfig }], apply_fix: true };
+                } else {
+                    // Mode B: re-fetch this specific device via SSH
+                    const portsRaw = document.getElementById('compScanPorts').value;
+                    const ports = portsRaw.split(',').map(p => parseInt(p.trim())).filter(p => p > 0);
+                    body = { hosts: [r.name], ports, apply_fix: true };
                 }
-            } else {
-                nocToast('Paste the config in the right panel or use SSH Fix All', 'info');
+
+                const resp = await fetch(apiBase + '/bulk-compliance-scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('auth_token') || '') },
+                    body: JSON.stringify(body)
+                });
+                const data = await resp.json();
+                if (data.error) { nocToast(data.error, 'error'); btn.disabled = false; btn.textContent = '🔧 Apply Compliance Fix'; return; }
+
+                const fixed = (data.results || [])[0];
+                if (fixed && fixed.fixed_config) {
+                    compDownloadFixedDirect(fixed);
+                    // Update the result in the main list
+                    compScanResults[compScanDetailIdx] = { ...r, ...fixed, score: fixed.fixed_score || r.score };
+                    compRenderTable();
+                    compShowDetail(compScanDetailIdx);
+                    nocToast(`Compliance fix applied for ${r.name} — download started`, 'success');
+                } else if (fixed && fixed.compliant) {
+                    nocToast(`${r.name} is already compliant after re-check!`, 'success');
+                } else {
+                    nocToast('Could not generate fixed config — ' + (fixed?.fix_error || fixed?.error || 'unknown error'), 'warning');
+                }
+            } catch (err) {
+                nocToast('Fix failed: ' + err.message, 'error');
             }
+
+            btn.disabled = false; btn.textContent = '🔧 Apply Compliance Fix';
         };
 
         function compDownloadFixedDirect(r) {
