@@ -8319,7 +8319,10 @@ show mac address-table | include &lt;mac&gt;</div>
                 <div id="bulkMigResults" style="display:none">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 8px">
                         <span style="font-size:14px;font-weight:700;color:var(--text-color)" id="bulkMigResultLabel">Migration Analysis</span>
-                        <button onclick="bulkMigExportReport()" style="background:#27ae60;color:#fff;padding:6px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:600">📄 Export Report</button>
+                        <div style="display:flex;gap:8px;align-items:center">
+                            <button onclick="bulkMigExecute()" id="bulkMigExecBtn" style="background:#e67e22;color:#fff;padding:8px 18px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:13px;font-weight:700">🚀 Generate Migration Configs</button>
+                            <button onclick="bulkMigExportReport()" style="background:#27ae60;color:#fff;padding:6px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:600">📄 Export Report</button>
+                        </div>
                     </div>
                     <div class="bulk-table-wrap" style="max-height:50vh;overflow-y:auto">
                         <table class="bulk-table">
@@ -8338,6 +8341,35 @@ show mac address-table | include &lt;mac&gt;</div>
                         <button onclick="document.getElementById('bulkMigDetail').style.display='none'" style="background:var(--card-bg);color:var(--text-color);border:1px solid var(--border-color);padding:4px 12px;border-radius:var(--radius-sm);cursor:pointer;font-size:12px">Close</button>
                     </div>
                     <div id="bulkMigDetailContent" style="font-size:13px;color:var(--text-color)"></div>
+                </div>
+
+                <!-- Migrated Configs Output -->
+                <div id="bulkMigExecuteResults" style="display:none;margin-top:20px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                        <span style="font-size:14px;font-weight:700;color:var(--accent-color)" id="bulkMigExecLabel">🚀 Migrated Configs</span>
+                        <div style="display:flex;gap:8px">
+                            <button onclick="bulkMigDownloadAllZip()" style="background:#27ae60;color:#fff;padding:6px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:600">📦 Download All as ZIP</button>
+                        </div>
+                    </div>
+                    <div class="bulk-progress" id="bulkMigExecProgress" style="display:none">
+                        <div class="bulk-progress-bar"><div class="bulk-progress-fill" id="bulkMigExecProgressFill"></div></div>
+                        <div class="bulk-progress-text" id="bulkMigExecProgressText">Generating...</div>
+                    </div>
+                    <div class="bulk-table-wrap" style="max-height:40vh;overflow-y:auto">
+                        <table class="bulk-table">
+                            <thead><tr>
+                                <th>#</th><th>Host</th><th>Identity</th><th>Interfaces Remapped</th><th>Version Migrated</th><th>Device Migrated</th><th>Config Lines</th><th>Status</th><th>Actions</th>
+                            </tr></thead>
+                            <tbody id="bulkMigExecTableBody"></tbody>
+                        </table>
+                    </div>
+                    <div id="bulkMigExecPreview" style="display:none;margin-top:12px">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                            <span style="font-size:13px;font-weight:700;color:var(--text-color)" id="bulkMigExecPreviewTitle">Migrated Config Preview</span>
+                            <button onclick="document.getElementById('bulkMigExecPreview').style.display='none'" style="background:var(--card-bg);color:var(--text-color);border:1px solid var(--border-color);padding:4px 12px;border-radius:var(--radius-sm);cursor:pointer;font-size:12px">Close</button>
+                        </div>
+                        <pre id="bulkMigExecPreviewCode" style="background:var(--bg-color);color:var(--text-color);border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:16px;font-size:12px;font-family:'JetBrains Mono',monospace;max-height:400px;overflow:auto;white-space:pre-wrap;word-break:break-all"></pre>
+                    </div>
                 </div>
             </div>
         </div>
@@ -28946,6 +28978,124 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
             const a = document.createElement('a'); a.href = url; a.download = 'migration_report_' + new Date().toISOString().slice(0, 10) + '.csv'; a.click();
             URL.revokeObjectURL(url);
             nocToast('Migration report exported', 'success');
+        };
+
+        // ═══════════════════════════════════════════════════
+        // BULK MIGRATION EXECUTE
+        // ═══════════════════════════════════════════════════
+
+        let bulkMigratedConfigs = [];
+
+        window.bulkMigExecute = async function () {
+            if (!bulkMigResults.length) { nocToast('Run migration analysis first', 'warning'); return; }
+            const eligible = bulkMigResults.filter(r => r.success);
+            if (!eligible.length) { nocToast('No successfully analyzed devices to migrate', 'warning'); return; }
+
+            const btn = document.getElementById('bulkMigExecBtn');
+            btn.disabled = true; btn.textContent = '⏳ Generating...';
+
+            const prog = document.getElementById('bulkMigExecProgress');
+            prog.style.display = 'block';
+            document.getElementById('bulkMigExecProgressFill').style.width = '0%';
+            document.getElementById('bulkMigExecProgressText').textContent = `Transforming ${eligible.length} configs...`;
+
+            try {
+                const apiBase = (typeof resolveApiBase === 'function') ? resolveApiBase() : '/api';
+                const devPayload = eligible.map(r => ({
+                    config_text: r.config_text || '',
+                    interface_map: r.interface_map || {},
+                    target_model: r.target_model,
+                    target_version: r.target_version,
+                    needs_version_migration: r.needs_version_migration,
+                    needs_device_migration: r.needs_device_migration,
+                    identity: r.identity || '',
+                    host: r.host,
+                    current_model: r.current_model
+                }));
+
+                const resp = await fetch(apiBase + '/bulk-migration-execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('auth_token') || '') },
+                    body: JSON.stringify({ devices: devPayload })
+                });
+                const data = await resp.json();
+                bulkMigratedConfigs = data.results || [];
+
+                document.getElementById('bulkMigExecProgressFill').style.width = '100%';
+                document.getElementById('bulkMigExecProgressText').textContent = `Done! ${data.succeeded}/${data.total} configs generated`;
+                document.getElementById('bulkMigExecLabel').textContent = `🚀 Migrated Configs — ${data.succeeded} generated, ${data.failed} failed`;
+
+                bulkMigExecRenderTable();
+                document.getElementById('bulkMigExecuteResults').style.display = '';
+                nocToast(`Migration execution: ${data.succeeded}/${data.total} configs generated`, data.failed === 0 ? 'success' : 'warning');
+            } catch (err) {
+                nocToast('Migration execution failed: ' + err.message, 'error');
+                document.getElementById('bulkMigExecProgressText').textContent = 'Failed: ' + err.message;
+            }
+
+            btn.disabled = false; btn.textContent = '🚀 Generate Migration Configs';
+        };
+
+        function bulkMigExecRenderTable() {
+            const tb = document.getElementById('bulkMigExecTableBody');
+            if (!tb) return;
+            tb.innerHTML = bulkMigratedConfigs.map((r, i) => {
+                if (!r.success) {
+                    return `<tr><td>${i+1}</td><td>${escHtml(r.host)}</td><td colspan="6"><span class="status-badge error">❌ ${escHtml(r.error||'Failed')}</span></td><td></td></tr>`;
+                }
+                const ch = r.changes || {};
+                return `<tr>
+                    <td>${i+1}</td>
+                    <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${escHtml(r.host)}</td>
+                    <td style="font-weight:600">${escHtml(r.identity || '-')}</td>
+                    <td style="text-align:center">${ch.interfaces_remapped || 0} ports</td>
+                    <td style="text-align:center">${ch.version_migrated ? '<span style="color:#9b59b6;font-weight:700">v6→v7</span>' : '—'}</td>
+                    <td style="text-align:center">${ch.device_migrated ? `<span style="color:#e67e22;font-weight:600">${escHtml(ch.source_model||'')} → ${escHtml(ch.target_model||'')}</span>` : '—'}</td>
+                    <td>${r.config_lines || '-'}</td>
+                    <td><span class="status-badge success">✅ Ready</span></td>
+                    <td style="white-space:nowrap">
+                        <button onclick="bulkMigPreviewOne(${i})" style="background:var(--accent-color);color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px">👁️</button>
+                        <button onclick="bulkMigDownloadOne(${i})" style="background:#27ae60;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px">📥</button>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
+        window.bulkMigPreviewOne = function (idx) {
+            const r = bulkMigratedConfigs[idx];
+            if (!r || !r.migrated_config) return;
+            document.getElementById('bulkMigExecPreviewTitle').textContent = `Migrated Config: ${r.host} (${r.identity || 'device'})`;
+            document.getElementById('bulkMigExecPreviewCode').textContent = r.migrated_config;
+            document.getElementById('bulkMigExecPreview').style.display = '';
+        };
+
+        window.bulkMigDownloadOne = function (idx) {
+            const r = bulkMigratedConfigs[idx];
+            if (!r || !r.migrated_config) return;
+            const name = (r.identity || r.host).replace(/[^a-zA-Z0-9_.-]/g, '_') + '_migrated';
+            const blob = new Blob([r.migrated_config], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = name + '.rsc'; a.click();
+            URL.revokeObjectURL(url);
+        };
+
+        window.bulkMigDownloadAllZip = async function () {
+            if (typeof JSZip === 'undefined') { nocToast('JSZip not loaded', 'error'); return; }
+            const zip = new JSZip();
+            let count = 0;
+            bulkMigratedConfigs.forEach(r => {
+                if (r.success && r.migrated_config) {
+                    const name = (r.identity || r.host).replace(/[^a-zA-Z0-9_.-]/g, '_') + '_migrated.rsc';
+                    zip.file(name, r.migrated_config);
+                    count++;
+                }
+            });
+            if (!count) { nocToast('No migrated configs to download', 'warning'); return; }
+            const blob = await zip.generateAsync({ type: 'blob' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = 'migrated_configs_' + new Date().toISOString().slice(0, 10) + '.zip'; a.click();
+            URL.revokeObjectURL(url);
+            nocToast(`Downloaded ${count} migrated configs as ZIP`, 'success');
         };
 
         /* ──────────────────────────────────────────────────
