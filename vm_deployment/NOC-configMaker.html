@@ -3386,12 +3386,15 @@
                         </div>
                     </div>
 
-                    <!-- Maintenance Tracking -->
-                    <div class="activity-section" style="margin-top:0">
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-                            <h2 style="margin:0"> Maintenance Tracking</h2>
-                            <button onclick="window.navigateToTab && window.navigateToTab('maintenance')" style="background:var(--accent-color);color:#fff;border:none;padding:6px 16px;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:600"> View All</button>
-                        </div>
+                    <!-- Maintenance Tracking (collapsible) -->
+                    <details class="activity-section" style="margin-top:0" open id="homeMaintSection">
+                        <summary style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;list-style:none">
+                            <h2 style="margin:0;display:inline-flex;align-items:center;gap:8px"> Maintenance Tracking <span style="font-size:11px;font-weight:400;color:var(--text-color-secondary);background:var(--input-bg);padding:2px 8px;border-radius:10px" id="homeMaintBadge">0</span></h2>
+                            <div style="display:flex;align-items:center;gap:10px">
+                                <button onclick="event.stopPropagation();window.navigateToTab && window.navigateToTab('maintenance')" style="background:var(--accent-color);color:#fff;border:none;padding:6px 16px;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:600"> View All</button>
+                                <span style="font-size:18px;color:var(--text-color-secondary);transition:transform .2s" class="maint-chevron">&#9660;</span>
+                            </div>
+                        </summary>
                         <div class="metrics-row" id="homeMaintMetrics">
                             <div class="metric-card" style="cursor:pointer" onclick="window.navigateToTab && window.navigateToTab('maintenance')">
                                 <span class="metric-icon"></span>
@@ -3420,7 +3423,7 @@
                             </div>
                         </div>
                         <div id="homeUpcomingMaint" style="margin-top:12px"></div>
-                    </div>
+                    </details>
 
                     <!-- Quick Actions -->
                     <div class="activity-section">
@@ -8255,8 +8258,12 @@ show mac address-table | include &lt;mac&gt;</div>
                     <textarea id="maintNotes" class="form-input" rows="2" placeholder="Any additional context..."></textarea>
                 </div>
                 <div class="form-group">
-                    <label class="form-label"> Ticket URL (optional)</label>
-                    <input type="url" id="maintTicketUrl" class="form-input" placeholder="https://jira.nxlink.com/browse/NOC-1234 or ServiceNow URL" style="font-size:13px">
+                    <label class="form-label"> Ticket Reference (optional)</label>
+                    <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px">
+                        <input type="text" id="maintTicketNum" class="form-input" placeholder="e.g. 136895 or NOC-1234" style="font-size:13px">
+                        <input type="url" id="maintTicketUrl" class="form-input" placeholder="Full link — https://jira.nxlink.com/browse/..." style="font-size:13px">
+                    </div>
+                    <div style="font-size:11px;color:var(--text-color-secondary);margin-top:4px">Ticket # shows as a clickable link that opens the URL</div>
                 </div>
                 <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px">
                     <button type="button" onclick="closeMaintModal()" style="padding:10px 20px;background:var(--input-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:var(--radius-sm);cursor:pointer">Cancel</button>
@@ -28234,6 +28241,7 @@ Example Enterprise,CCR1036-12G-4S,10.255.0.3,0.0.0.3,10.255.0.3,1,bh-example,172
             const devices = document.getElementById('maintDevices').value.trim().split('\n').map(d => d.trim()).filter(d => d);
             const tasks = Array.from(document.querySelectorAll('input[name="maintTasks"]:checked')).map(cb => cb.value);
             const notes = document.getElementById('maintNotes').value.trim();
+            const ticketNum = (document.getElementById('maintTicketNum')?.value || '').trim();
             const ticketUrl = (document.getElementById('maintTicketUrl')?.value || '').trim();
 
             if (!name || !dateStr || !devices.length) { nocToast('Fill in all required fields', 'warning'); return; }
@@ -28242,7 +28250,7 @@ Example Enterprise,CCR1036-12G-4S,10.255.0.3,0.0.0.3,10.255.0.3,1,bh-example,172
             const mw = {
                 id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
                 name, scheduledAt: dateStr, duration, priority,
-                devices, tasks, notes, ticketUrl,
+                devices, tasks, notes, ticketNum, ticketUrl,
                 status: 'scheduled',
                 createdAt: new Date().toISOString(),
                 createdBy: (() => { try { return JSON.parse(localStorage.getItem('user_info') || '{}').email || 'unknown'; } catch { return 'unknown'; } })()
@@ -28309,7 +28317,7 @@ Example Enterprise,CCR1036-12G-4S,10.255.0.3,0.0.0.3,10.255.0.3,1,bh-example,172
                     </div>
                     <div class="maint-card-devices">${devChips}</div>
                     <div class="maint-card-tasks">${taskBadges}</div>
-                    ${w.ticketUrl ? `<div style="margin-top:10px;font-size:12px"><a href="${escHtml(w.ticketUrl)}" target="_blank" rel="noopener" style="color:var(--accent-color);text-decoration:none;font-weight:600"> ${escHtml(w.ticketUrl.length > 60 ? w.ticketUrl.slice(0,60) + '...' : w.ticketUrl)}</a></div>` : ''}
+                    ${w.ticketUrl || w.ticketNum ? `<div style="margin-top:10px;font-size:12px"><a href="${escHtml(w.ticketUrl || '#')}" target="_blank" rel="noopener" style="color:var(--accent-color);text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:4px;background:rgba(230,126,34,.08);padding:3px 10px;border-radius:12px;border:1px solid rgba(230,126,34,.2)"> Ticket #${escHtml(w.ticketNum || extractTicketNum(w.ticketUrl))}</a></div>` : ''}
                     ${w.notes ? `<div style="margin-top:8px;font-size:12px;color:var(--text-color-secondary);font-style:italic">${escHtml(w.notes)}</div>` : ''}
                 </div>`;
             }).join('');
@@ -28346,6 +28354,25 @@ Example Enterprise,CCR1036-12G-4S,10.255.0.3,0.0.0.3,10.255.0.3,1,bh-example,172
             nocToast(`Cleared ${before - maintWindows.length} completed windows`, 'info');
         };
 
+        /* ── Extract ticket number from URL ── */
+        function extractTicketNum(url) {
+            if (!url) return '?';
+            // Try common patterns: /browse/NOC-1234, /ticket/136895, ends with digits
+            const patterns = [
+                /\/browse\/([A-Z]+-\d+)/i,     // Jira: /browse/NOC-1234
+                /\/ticket\/(\d+)/i,              // ServiceNow: /ticket/136895
+                /[\/#](\d{4,})/,                 // Generic trailing number
+                /([A-Z]+-\d+)/i,                 // Any KEY-123 pattern
+            ];
+            for (const p of patterns) {
+                const m = url.match(p);
+                if (m) return m[1];
+            }
+            // Fallback: last segment of URL path
+            try { const u = new URL(url); const parts = u.pathname.split('/').filter(Boolean); return parts[parts.length-1] || '?'; } catch { return url.slice(-12); }
+        }
+        window.extractTicketNum = extractTicketNum;
+
         /* ── Log maintenance events to backend activity feed ── */
         function maintLogActivity(type, mw) {
             if (typeof window.sendActivityToBackend === 'function') {
@@ -28363,6 +28390,7 @@ Example Enterprise,CCR1036-12G-4S,10.255.0.3,0.0.0.3,10.255.0.3,1,bh-example,172
         window.maintUpdateHomeMetrics = function () {
             maintLoad();
             const el = (id) => document.getElementById(id);
+            if (el('homeMaintBadge')) el('homeMaintBadge').textContent = maintWindows.length;
             if (el('homeMaintTotal')) el('homeMaintTotal').textContent = maintWindows.length;
             if (el('homeMaintScheduled')) el('homeMaintScheduled').textContent = maintWindows.filter(w => w.status === 'scheduled').length;
             if (el('homeMaintRunning')) el('homeMaintRunning').textContent = maintWindows.filter(w => w.status === 'running').length;
@@ -28379,7 +28407,7 @@ Example Enterprise,CCR1036-12G-4S,10.255.0.3,0.0.0.3,10.255.0.3,1,bh-example,172
                 const d = new Date(w.scheduledAt);
                 const dateLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
                 const statusDot = w.status === 'running' ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f39c12;animation:pulse 1.5s infinite;margin-right:6px"></span>' : '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#3498db;margin-right:6px"></span>';
-                const ticketLink = w.ticketUrl ? ` <a href="${escHtml(w.ticketUrl)}" target="_blank" rel="noopener" style="color:var(--accent-color);text-decoration:none;font-size:11px" onclick="event.stopPropagation()">[Ticket]</a>` : '';
+                const ticketLink = (w.ticketUrl || w.ticketNum) ? ` <a href="${escHtml(w.ticketUrl || '#')}" target="_blank" rel="noopener" style="color:var(--accent-color);text-decoration:none;font-size:11px;font-weight:700;background:rgba(230,126,34,.1);padding:1px 8px;border-radius:10px" onclick="event.stopPropagation()">#${escHtml(w.ticketNum || extractTicketNum(w.ticketUrl))}</a>` : '';
                 return `<div style="padding:12px 16px;border-radius:var(--radius-sm);background:var(--card-bg);border:1px solid var(--border-color);margin-bottom:8px;cursor:pointer;transition:border-color .2s" onmouseover="this.style.borderColor='var(--accent-color)'" onmouseout="this.style.borderColor='var(--border-color)'" onclick="window.navigateToTab('maintenance')">
                     <div style="display:flex;justify-content:space-between;align-items:center">
                         <div style="font-weight:600;font-size:14px;color:var(--text-color)">${statusDot}${escHtml(w.name)}${ticketLink}</div>
