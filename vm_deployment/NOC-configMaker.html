@@ -3118,8 +3118,12 @@
         .diff-source-area{width:100%;min-height:120px;font-family:'JetBrains Mono',monospace;font-size:12px;resize:vertical;background:var(--input-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:10px}
 
         /* ═══════════════════════════════════════════════════
-           BULK CONFIG GENERATOR
+           BULK OPERATIONS CENTER
            ═══════════════════════════════════════════════════ */
+        .bulk-mode-tabs{display:flex;gap:0;border-bottom:2px solid var(--border-color)}
+        .bulk-mode-tab{padding:12px 24px;background:none;border:none;color:var(--text-color-secondary);font-size:14px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent;transition:all .2s;display:flex;align-items:center;gap:8px}
+        .bulk-mode-tab:hover{color:var(--text-color);background:rgba(230,126,34,.04)}
+        .bulk-mode-tab.active{color:var(--accent-color);border-bottom-color:var(--accent-color)}
         .bulk-dropzone{border:2px dashed var(--border-color);border-radius:var(--radius-lg);padding:50px 30px;text-align:center;transition:all .25s;cursor:pointer;background:var(--card-bg)}
         .bulk-dropzone:hover,.bulk-dropzone.dragover{border-color:var(--accent-color);background:rgba(230,126,34,.06)}
         .bulk-dropzone .drop-icon{font-size:48px;margin-bottom:12px;opacity:.6}
@@ -3140,6 +3144,12 @@
         .bulk-table .status-badge.success{background:rgba(39,174,96,.15);color:#27ae60}
         .bulk-table .status-badge.error{background:rgba(231,76,60,.15);color:#e74c3c}
         .bulk-table .status-badge.running{background:rgba(52,152,219,.15);color:#3498db}
+        .bulk-manual-row{display:grid;grid-template-columns:1fr 150px 160px 120px 100px 40px;gap:8px;align-items:center;padding:8px 12px;background:var(--card-bg);border-radius:var(--radius-sm);border:1px solid var(--border-color)}
+        .bulk-manual-row input,.bulk-manual-row select{padding:6px 10px;background:var(--input-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:4px;font-size:12px;font-family:'JetBrains Mono',monospace}
+        .bulk-complexity-badge{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700}
+        .bulk-complexity-badge.low{background:rgba(39,174,96,.15);color:#27ae60}
+        .bulk-complexity-badge.medium{background:rgba(243,156,18,.15);color:#f39c12}
+        .bulk-complexity-badge.high{background:rgba(231,76,60,.15);color:#e74c3c}
 
         /* ═══════════════════════════════════════════════════
            SCHEDULED MAINTENANCE
@@ -3284,8 +3294,8 @@
                             <span class="desc">Side-by-side config comparison &amp; diff</span>
                         </a>
                         <a data-tab="bulk-config">
-                             Bulk Config Generator
-                            <span class="desc">CSV upload → generate configs for many sites at once</span>
+                             Bulk Operations Center
+                            <span class="desc">Generate, SSH fetch &amp; migrate configs at scale</span>
                         </a>
                         <a data-tab="maintenance">
                              Scheduled Maintenance
@@ -8107,48 +8117,227 @@ show mac address-table | include &lt;mac&gt;</div>
     </div>
 
     <!-- ═══════════════════════════════════════════════════════
-         BULK CONFIG GENERATOR TAB
+         BULK OPERATIONS CENTER
          ═══════════════════════════════════════════════════════ -->
     <div class="content-pane" id="bulk-config-pane">
         <div class="container">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:20px">
                 <div>
-                    <h1 style="margin:0;color:var(--text-color);">Bulk Config Generator</h1>
-                    <p style="color:var(--text-color-secondary);font-size:14px;margin-top:4px;">Upload a CSV to generate MikroTik tower configs for multiple sites at once.</p>
-                </div>
-                <div style="display:flex;gap:8px">
-                    <button onclick="bulkDownloadTemplate()" style="background:var(--input-bg);color:var(--text-color);padding:10px 18px;border:1px solid var(--border-color);border-radius:var(--radius-sm);cursor:pointer;font-weight:600"> Download CSV Template</button>
-                    <button onclick="bulkGenerateAll()" id="bulkGenerateBtn" disabled style="background:var(--accent-color);color:#fff;padding:10px 24px;border:none;border-radius:var(--radius-sm);font-weight:700;cursor:pointer;opacity:.5"> Generate All</button>
+                    <h1 style="margin:0;color:var(--text-color);">Bulk Operations Center</h1>
+                    <p style="color:var(--text-color-secondary);font-size:14px;margin-top:4px;">Generate, fetch, and migrate MikroTik configs at scale — CSV, JSON, IP lists, or manual entry.</p>
                 </div>
             </div>
 
-            <div class="bulk-dropzone" id="bulkDropzone" onclick="document.getElementById('bulkFileInput').click()">
-                <div class="drop-icon"></div>
-                <div class="drop-title">Drop your CSV file here</div>
-                <div class="drop-sub">or click to browse &bull; Accepts .csv files &bull; <a href="#" onclick="event.stopPropagation();bulkDownloadTemplate()" style="color:var(--accent-color)">Download template</a></div>
-                <input type="file" id="bulkFileInput" accept=".csv" style="display:none" onchange="bulkHandleFile(this.files[0])">
+            <!-- Mode Tabs -->
+            <div class="bulk-mode-tabs" style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid var(--border-color)">
+                <button class="bulk-mode-tab active" data-bulk-mode="generate" onclick="bulkSwitchMode('generate')">
+                    <span style="font-size:16px">⚙️</span> Bulk Generate
+                </button>
+                <button class="bulk-mode-tab" data-bulk-mode="ssh-fetch" onclick="bulkSwitchMode('ssh-fetch')">
+                    <span style="font-size:16px">📡</span> Bulk SSH Fetch
+                </button>
+                <button class="bulk-mode-tab" data-bulk-mode="migration" onclick="bulkSwitchMode('migration')">
+                    <span style="font-size:16px">🔄</span> Bulk Migration
+                </button>
             </div>
 
-            <div class="bulk-progress" id="bulkProgress">
-                <div class="bulk-progress-bar"><div class="bulk-progress-fill" id="bulkProgressFill"></div></div>
-                <div class="bulk-progress-text" id="bulkProgressText">0 / 0 sites generated</div>
-            </div>
-
-            <div id="bulkTableWrap" style="display:none">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 8px">
-                    <span style="font-size:14px;font-weight:700;color:var(--text-color)">Parsed Sites</span>
-                    <div style="display:flex;gap:8px">
-                        <button onclick="bulkClearAll()" style="background:var(--input-bg);color:var(--text-color);padding:6px 14px;border:1px solid var(--border-color);border-radius:var(--radius-sm);cursor:pointer;font-size:12px">Clear All</button>
-                        <button onclick="bulkDownloadAllZip()" id="bulkDownloadBtn" disabled style="background:#27ae60;color:#fff;padding:6px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:600;opacity:.5"> Download All (.zip)</button>
+            <!-- ═══════ MODE 1: BULK GENERATE ═══════ -->
+            <div class="bulk-mode-content" id="bulkModeGenerate">
+                <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <label style="font-size:13px;font-weight:600;color:var(--text-color)">Config Type:</label>
+                        <select id="bulkGenConfigType" onchange="bulkGenTypeChanged()" style="padding:8px 12px;background:var(--input-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:var(--radius-sm);font-size:13px">
+                            <option value="non-mpls">Enterprise Non-MPLS</option>
+                            <option value="tower">Tower Config</option>
+                            <option value="bng2">BNG2 Config</option>
+                        </select>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <label style="font-size:13px;font-weight:600;color:var(--text-color)">Input:</label>
+                        <select id="bulkGenInputType" onchange="bulkGenInputChanged()" style="padding:8px 12px;background:var(--input-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:var(--radius-sm);font-size:13px">
+                            <option value="csv">CSV Upload</option>
+                            <option value="json">JSON Upload</option>
+                            <option value="manual">Manual Entry</option>
+                        </select>
+                    </div>
+                    <div style="margin-left:auto;display:flex;gap:8px">
+                        <button onclick="bulkDownloadTemplate()" style="background:var(--input-bg);color:var(--text-color);padding:8px 16px;border:1px solid var(--border-color);border-radius:var(--radius-sm);cursor:pointer;font-weight:600;font-size:13px">📋 Template</button>
+                        <button onclick="bulkGenerateAll()" id="bulkGenerateBtn" disabled style="background:var(--accent-color);color:#fff;padding:8px 20px;border:none;border-radius:var(--radius-sm);font-weight:700;cursor:pointer;opacity:.5;font-size:13px">⚡ Generate All</button>
                     </div>
                 </div>
-                <div class="bulk-table-wrap" style="max-height:50vh;overflow-y:auto">
-                    <table class="bulk-table">
-                        <thead><tr>
-                            <th>#</th><th>Site Name</th><th>Model</th><th>Loopback</th><th>OSPF Area</th><th>Backhauls</th><th>Status</th><th>Actions</th>
-                        </tr></thead>
-                        <tbody id="bulkTableBody"></tbody>
-                    </table>
+
+                <!-- CSV/JSON Drop Zone -->
+                <div class="bulk-dropzone" id="bulkDropzone" onclick="document.getElementById('bulkFileInput').click()">
+                    <div class="drop-icon">📂</div>
+                    <div class="drop-title">Drop your CSV or JSON file here</div>
+                    <div class="drop-sub">or click to browse &bull; Accepts .csv and .json files &bull; <a href="#" onclick="event.stopPropagation();bulkDownloadTemplate()" style="color:var(--accent-color)">Download template</a></div>
+                    <input type="file" id="bulkFileInput" accept=".csv,.json" style="display:none" onchange="bulkHandleFile(this.files[0])">
+                </div>
+
+                <!-- Manual Entry Form -->
+                <div id="bulkManualEntry" style="display:none">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                        <span style="font-size:14px;font-weight:700;color:var(--text-color)">Add Sites Manually</span>
+                        <button onclick="bulkAddManualRow()" style="background:var(--accent-color);color:#fff;border:none;padding:6px 16px;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:600">+ Add Site</button>
+                    </div>
+                    <div id="bulkManualRows" style="display:flex;flex-direction:column;gap:8px"></div>
+                </div>
+
+                <!-- Progress -->
+                <div class="bulk-progress" id="bulkProgress">
+                    <div class="bulk-progress-bar"><div class="bulk-progress-fill" id="bulkProgressFill"></div></div>
+                    <div class="bulk-progress-text" id="bulkProgressText">0 / 0 sites generated</div>
+                </div>
+
+                <!-- Results Table -->
+                <div id="bulkTableWrap" style="display:none">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 8px">
+                        <span style="font-size:14px;font-weight:700;color:var(--text-color)" id="bulkTableLabel">Parsed Sites</span>
+                        <div style="display:flex;gap:8px">
+                            <button onclick="bulkClearAll()" style="background:var(--input-bg);color:var(--text-color);padding:6px 14px;border:1px solid var(--border-color);border-radius:var(--radius-sm);cursor:pointer;font-size:12px">Clear All</button>
+                            <button onclick="bulkDownloadAllZip()" id="bulkDownloadBtn" disabled style="background:#27ae60;color:#fff;padding:6px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:600;opacity:.5">📦 Download All (.zip)</button>
+                        </div>
+                    </div>
+                    <div class="bulk-table-wrap" style="max-height:50vh;overflow-y:auto">
+                        <table class="bulk-table">
+                            <thead><tr id="bulkTableHead">
+                                <th>#</th><th>Site Name</th><th>Model</th><th>Loopback</th><th>OSPF Area</th><th>Backhauls</th><th>Status</th><th>Actions</th>
+                            </tr></thead>
+                            <tbody id="bulkTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════ MODE 2: BULK SSH FETCH ═══════ -->
+            <div class="bulk-mode-content" id="bulkModeSshFetch" style="display:none">
+                <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap">
+                    <div style="flex:1;min-width:200px">
+                        <label style="font-size:13px;font-weight:600;color:var(--text-color);display:block;margin-bottom:4px">Device IPs (one per line or comma-separated)</label>
+                        <textarea id="bulkSshHosts" class="form-input" rows="5" placeholder="10.42.12.203&#10;10.42.13.101&#10;10.42.14.15" style="font-family:'JetBrains Mono',monospace;font-size:12px;width:100%;resize:vertical"></textarea>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:8px;min-width:180px">
+                        <div style="display:flex;align-items:center;gap:6px">
+                            <label style="font-size:12px;font-weight:600;color:var(--text-color);white-space:nowrap">ROS Ver:</label>
+                            <select id="bulkSshRos" style="padding:6px 10px;background:var(--input-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:var(--radius-sm);font-size:12px;flex:1">
+                                <option value="7" selected>RouterOS 7</option>
+                                <option value="6">RouterOS 6</option>
+                            </select>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:6px">
+                            <label style="font-size:12px;font-weight:600;color:var(--text-color);white-space:nowrap">Ports:</label>
+                            <input type="text" id="bulkSshPorts" value="22, 5022" style="padding:6px 10px;background:var(--input-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:var(--radius-sm);font-size:12px;font-family:'JetBrains Mono',monospace;flex:1">
+                        </div>
+                        <button onclick="bulkSshFetchAll()" id="bulkSshFetchBtn" style="background:var(--accent-color);color:#fff;padding:10px 20px;border:none;border-radius:var(--radius-sm);font-weight:700;cursor:pointer;font-size:13px">📡 Fetch All Configs</button>
+                    </div>
+                </div>
+
+                <div style="font-size:12px;color:var(--text-color-secondary);margin-bottom:12px;padding:8px 12px;background:var(--input-bg);border-radius:var(--radius-sm);border:1px solid var(--border-color)">
+                    ℹ️ Uses server-side SSH credentials (NEXTLINK_SSH_USERNAME / NEXTLINK_SSH_PASSWORD). Max 3 concurrent connections.
+                </div>
+
+                <!-- SSH Progress -->
+                <div class="bulk-progress" id="bulkSshProgress" style="display:none">
+                    <div class="bulk-progress-bar"><div class="bulk-progress-fill" id="bulkSshProgressFill"></div></div>
+                    <div class="bulk-progress-text" id="bulkSshProgressText">Connecting...</div>
+                </div>
+
+                <!-- SSH Results -->
+                <div id="bulkSshResults" style="display:none">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 8px">
+                        <span style="font-size:14px;font-weight:700;color:var(--text-color)" id="bulkSshResultLabel">Results</span>
+                        <div style="display:flex;gap:8px">
+                            <button onclick="bulkSshSaveAll()" id="bulkSshSaveBtn" style="background:var(--accent-color);color:#fff;padding:6px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:600">💾 Save All to DB</button>
+                            <button onclick="bulkSshDownloadZip()" id="bulkSshDownloadBtn" style="background:#27ae60;color:#fff;padding:6px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:600">📦 Download All (.zip)</button>
+                        </div>
+                    </div>
+                    <div class="bulk-table-wrap" style="max-height:50vh;overflow-y:auto">
+                        <table class="bulk-table">
+                            <thead><tr>
+                                <th>#</th><th>Host</th><th>Port</th><th>Identity</th><th>Model</th><th>Version</th><th>Config Lines</th><th>Status</th><th>Actions</th>
+                            </tr></thead>
+                            <tbody id="bulkSshTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Config Preview Modal (inline) -->
+                <div id="bulkSshPreview" style="display:none;margin-top:16px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                        <span style="font-size:14px;font-weight:700;color:var(--text-color)" id="bulkSshPreviewTitle">Config Preview</span>
+                        <button onclick="document.getElementById('bulkSshPreview').style.display='none'" style="background:var(--input-bg);color:var(--text-color);border:1px solid var(--border-color);padding:4px 12px;border-radius:var(--radius-sm);cursor:pointer;font-size:12px">Close</button>
+                    </div>
+                    <pre id="bulkSshPreviewCode" style="background:var(--input-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:16px;font-size:12px;font-family:'JetBrains Mono',monospace;max-height:400px;overflow:auto;white-space:pre-wrap;word-break:break-all"></pre>
+                </div>
+            </div>
+
+            <!-- ═══════ MODE 3: BULK MIGRATION ═══════ -->
+            <div class="bulk-mode-content" id="bulkModeMigration" style="display:none">
+                <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap">
+                    <div style="flex:1;min-width:200px">
+                        <label style="font-size:13px;font-weight:600;color:var(--text-color);display:block;margin-bottom:4px">Device IPs to migrate (one per line)</label>
+                        <textarea id="bulkMigHosts" class="form-input" rows="5" placeholder="10.42.12.203&#10;10.42.13.101&#10;10.42.14.15" style="font-family:'JetBrains Mono',monospace;font-size:12px;width:100%;resize:vertical"></textarea>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:8px;min-width:220px">
+                        <div style="display:flex;align-items:center;gap:6px">
+                            <label style="font-size:12px;font-weight:600;color:var(--text-color);white-space:nowrap">Target Model:</label>
+                            <select id="bulkMigTarget" style="padding:6px 10px;background:var(--input-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:var(--radius-sm);font-size:12px;flex:1">
+                                <option value="CCR2004-1G-12S+2XS">CCR2004-1G-12S+2XS</option>
+                                <option value="CCR2216-1G-12XS-2XQ">CCR2216-1G-12XS-2XQ</option>
+                                <option value="CCR2116-12G-4S+">CCR2116-12G-4S+</option>
+                                <option value="CCR1036-12G-4S">CCR1036-12G-4S</option>
+                                <option value="CCR1072-12G-4S+">CCR1072-12G-4S+</option>
+                                <option value="RB5009UG+S+">RB5009UG+S+</option>
+                            </select>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:6px">
+                            <label style="font-size:12px;font-weight:600;color:var(--text-color);white-space:nowrap">Target ROS:</label>
+                            <select id="bulkMigVersion" style="padding:6px 10px;background:var(--input-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:var(--radius-sm);font-size:12px;flex:1">
+                                <option value="7" selected>RouterOS 7</option>
+                                <option value="6">RouterOS 6</option>
+                            </select>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:6px">
+                            <label style="font-size:12px;font-weight:600;color:var(--text-color);white-space:nowrap">Ports:</label>
+                            <input type="text" id="bulkMigPorts" value="22, 5022" style="padding:6px 10px;background:var(--input-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:var(--radius-sm);font-size:12px;font-family:'JetBrains Mono',monospace;flex:1">
+                        </div>
+                        <button onclick="bulkMigAnalyze()" id="bulkMigBtn" style="background:#e67e22;color:#fff;padding:10px 20px;border:none;border-radius:var(--radius-sm);font-weight:700;cursor:pointer;font-size:13px">🔄 Analyze Migration</button>
+                    </div>
+                </div>
+
+                <div style="font-size:12px;color:var(--text-color-secondary);margin-bottom:12px;padding:8px 12px;background:var(--input-bg);border-radius:var(--radius-sm);border:1px solid var(--border-color)">
+                    ℹ️ Fetches current config via SSH, auto-detects model/version, builds interface migration map, and identifies v6→v7 + device swap requirements.
+                </div>
+
+                <!-- Migration Progress -->
+                <div class="bulk-progress" id="bulkMigProgress" style="display:none">
+                    <div class="bulk-progress-bar"><div class="bulk-progress-fill" id="bulkMigProgressFill"></div></div>
+                    <div class="bulk-progress-text" id="bulkMigProgressText">Analyzing...</div>
+                </div>
+
+                <!-- Migration Results -->
+                <div id="bulkMigResults" style="display:none">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 8px">
+                        <span style="font-size:14px;font-weight:700;color:var(--text-color)" id="bulkMigResultLabel">Migration Analysis</span>
+                        <button onclick="bulkMigExportReport()" style="background:#27ae60;color:#fff;padding:6px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:600">📄 Export Report</button>
+                    </div>
+                    <div class="bulk-table-wrap" style="max-height:50vh;overflow-y:auto">
+                        <table class="bulk-table">
+                            <thead><tr>
+                                <th>#</th><th>Host</th><th>Identity</th><th>Current Model</th><th>Current ROS</th><th>Migration Type</th><th>Complexity</th><th>Warnings</th><th>Status</th><th>Actions</th>
+                            </tr></thead>
+                            <tbody id="bulkMigTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Migration Detail Panel -->
+                <div id="bulkMigDetail" style="display:none;margin-top:16px;background:var(--input-bg);border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:16px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                        <span style="font-size:14px;font-weight:700;color:var(--text-color)" id="bulkMigDetailTitle">Device Details</span>
+                        <button onclick="document.getElementById('bulkMigDetail').style.display='none'" style="background:var(--card-bg);color:var(--text-color);border:1px solid var(--border-color);padding:4px 12px;border-radius:var(--radius-sm);cursor:pointer;font-size:12px">Close</button>
+                    </div>
+                    <div id="bulkMigDetailContent" style="font-size:13px;color:var(--text-color)"></div>
                 </div>
             </div>
         </div>
@@ -27733,7 +27922,7 @@ Ready for translation!`);
             { cat: 'Navigate', icon: '', label: 'Admin Panel', desc: 'Feedback & user management', action: () => window.navigateToTab('admin-panel') },
             // Power Tools
             { cat: 'Power Tools', icon: '', label: 'Config Diff Viewer', desc: 'Side-by-side config comparison', action: () => window.navigateToTab('config-diff'), shortcut: '' },
-            { cat: 'Power Tools', icon: '', label: 'Bulk Config Generator', desc: 'CSV → multi-site configs', action: () => window.navigateToTab('bulk-config') },
+            { cat: 'Power Tools', icon: '', label: 'Bulk Operations Center', desc: 'Generate, fetch & migrate at scale', action: () => window.navigateToTab('bulk-config') },
             { cat: 'Power Tools', icon: '', label: 'Scheduled Maintenance', desc: 'Plan maintenance windows', action: () => window.navigateToTab('maintenance') },
             // Actions
             { cat: 'Actions', icon: '', label: 'Settings', desc: 'Theme, font size, password', action: () => window.openSettingsModal && window.openSettingsModal() },
@@ -28107,26 +28296,87 @@ Ready for translation!`);
         function escHtml(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
         /* ──────────────────────────────────────────────────
-           4. BULK CONFIG GENERATOR
+           4. BULK OPERATIONS CENTER
            ────────────────────────────────────────────────── */
         let bulkSites = [];
         let bulkResults = {};
+        let bulkSshResults = [];
+        let bulkMigResults = [];
 
-        const BULK_CSV_TEMPLATE = `site_name,model,loopback_ip,ospf_area,ospf_router_id,backhaul_count,backhaul1_name,backhaul1_ip,backhaul2_name,backhaul2_ip,snmp_contact
-Venus Tower,CCR2004-1G-12S+2XS,10.255.0.1,0.0.0.1,10.255.0.1,2,bh-venus-1,172.16.0.1/30,bh-venus-2,172.16.0.5/30,netops@team.nxlink.com
-Kempner Tower,CCR2216-1G-12XS-2XQ,10.255.0.2,0.0.0.2,10.255.0.2,1,bh-kempner-1,172.16.1.1/30,,,,netops@team.nxlink.com
-Example Enterprise,CCR1036-12G-4S,10.255.0.3,0.0.0.3,10.255.0.3,1,bh-example,172.16.2.1/30,,,,netops@team.nxlink.com`;
+        // ── CSV Templates per config type ──
+        const BULK_CSV_TEMPLATES = {
+            'non-mpls': `site_name,model,loopback_ip,public_cidr,bh_cidr,identity,snmp_community,uplink_interface
+Venus Tower,RB5009,10.255.0.1/32,172.16.100.0/29,172.16.0.0/30,RTR-RB5009.VENUS,nxlink-snmp,sfp-sfpplus1
+Kempner Site,CCR2004,10.255.0.2/32,172.16.101.0/29,172.16.1.0/30,RTR-CCR2004.KEMPNER,nxlink-snmp,sfp-sfpplus1`,
 
-        window.bulkDownloadTemplate = function () {
-            const blob = new Blob([BULK_CSV_TEMPLATE], { type: 'text/csv' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = 'bulk_config_template.csv'; a.click();
-            URL.revokeObjectURL(url);
-            nocToast('CSV template downloaded', 'success');
+            'tower': `tower_name,router_type,state_code,loopback_subnet,asn,peer_1_name,peer_1_address,peer_2_name,peer_2_address,cpe_subnet,unauth_subnet,cgn_priv,cgn_pub,latitude,longitude,backhaul_count,bh_1_name,bh_1_subnet,bh_1_master,bh_1_port,bh_1_bandwidth
+Venus Tower,MT2004,TX,10.255.0.1/32,64700,CORE-1,172.16.0.1,CORE-2,172.16.0.5,10.100.0.0/22,10.100.4.0/22,100.64.0.0/22,132.147.184.0/24,31.0553,-97.4422,1,bh-venus-core,172.16.10.0/30,true,sfp-sfpplus4,1000`,
+
+            'bng2': `tower_name,router_type,loopback_subnet,cpe_subnet,unauth_subnet,cgn_priv,cgn_pub,state_code,asn,peer_1_name,peer_1_address,peer_2_name,peer_2_address,latitude,longitude
+BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147.185.0/24,TX,64700,CORE-1,172.16.20.1,CORE-2,172.16.20.5,31.0553,-97.4422`
         };
 
-        // Drag & drop
+        const BULK_JSON_TEMPLATES = {
+            'non-mpls': [{ site_name: 'Example Site', model: 'RB5009', loopback_ip: '10.255.0.1/32', public_cidr: '172.16.100.0/29', bh_cidr: '172.16.0.0/30' }],
+            'tower': [{ tower_name: 'Example Tower', router_type: 'MT2004', state_code: 'TX', loopback_subnet: '10.255.0.1/32', asn: '64700', peer_1_name: 'CORE-1', peer_1_address: '172.16.0.1', peer_2_name: 'CORE-2', peer_2_address: '172.16.0.5', cpe_subnet: '10.100.0.0/22', unauth_subnet: '10.100.4.0/22', cgn_priv: '100.64.0.0/22', cgn_pub: '132.147.184.0/24', latitude: '31.0553', longitude: '-97.4422', backhauls: [{ name: 'bh-core', subnet: '172.16.10.0/30', master: true, port: 'sfp-sfpplus4', bandwidth: '1000' }] }],
+            'bng2': [{ tower_name: 'BNG2 Example', router_type: 'MT2216', loopback_subnet: '10.255.1.1/32', cpe_subnet: '10.200.0.0/22', unauth_subnet: '10.200.4.0/22', cgn_priv: '100.65.0.0/22', cgn_pub: '132.147.185.0/24', state_code: 'TX', asn: '64700', peer_1_name: 'CORE-1', peer_1_address: '172.16.20.1', peer_2_name: 'CORE-2', peer_2_address: '172.16.20.5', latitude: '31.0553', longitude: '-97.4422' }]
+        };
+
+        // ── Mode Switching ──
+        window.bulkSwitchMode = function (mode) {
+            document.querySelectorAll('.bulk-mode-tab').forEach(t => t.classList.remove('active'));
+            document.querySelector(`.bulk-mode-tab[data-bulk-mode="${mode}"]`).classList.add('active');
+            document.getElementById('bulkModeGenerate').style.display = mode === 'generate' ? '' : 'none';
+            document.getElementById('bulkModeSshFetch').style.display = mode === 'ssh-fetch' ? '' : 'none';
+            document.getElementById('bulkModeMigration').style.display = mode === 'migration' ? '' : 'none';
+        };
+
+        // ── Input type switching ──
+        window.bulkGenInputChanged = function () {
+            const inputType = document.getElementById('bulkGenInputType').value;
+            document.getElementById('bulkDropzone').style.display = (inputType === 'csv' || inputType === 'json') ? '' : 'none';
+            document.getElementById('bulkManualEntry').style.display = inputType === 'manual' ? '' : 'none';
+            // Update dropzone text
+            if (inputType === 'json') {
+                document.querySelector('#bulkDropzone .drop-title').textContent = 'Drop your JSON file here';
+                document.querySelector('#bulkDropzone .drop-sub').innerHTML = 'or click to browse &bull; Accepts .json files &bull; <a href="#" onclick="event.stopPropagation();bulkDownloadTemplate()" style="color:var(--accent-color)">Download template</a>';
+                document.getElementById('bulkFileInput').accept = '.json';
+            } else {
+                document.querySelector('#bulkDropzone .drop-title').textContent = 'Drop your CSV file here';
+                document.querySelector('#bulkDropzone .drop-sub').innerHTML = 'or click to browse &bull; Accepts .csv files &bull; <a href="#" onclick="event.stopPropagation();bulkDownloadTemplate()" style="color:var(--accent-color)">Download template</a>';
+                document.getElementById('bulkFileInput').accept = '.csv';
+            }
+        };
+
+        window.bulkGenTypeChanged = function () {
+            // Clear existing data when config type changes
+            bulkSites = []; bulkResults = {};
+            document.getElementById('bulkTableWrap').style.display = 'none';
+            const m = document.getElementById('bulkManualRows');
+            if (m) m.innerHTML = '';
+        };
+
+        // ── Template Download ──
+        window.bulkDownloadTemplate = function () {
+            const configType = document.getElementById('bulkGenConfigType').value;
+            const inputType = document.getElementById('bulkGenInputType').value;
+            if (inputType === 'json') {
+                const tmpl = BULK_JSON_TEMPLATES[configType] || BULK_JSON_TEMPLATES['non-mpls'];
+                const blob = new Blob([JSON.stringify(tmpl, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = `bulk_${configType}_template.json`; a.click();
+                URL.revokeObjectURL(url);
+            } else {
+                const tmpl = BULK_CSV_TEMPLATES[configType] || BULK_CSV_TEMPLATES['non-mpls'];
+                const blob = new Blob([tmpl], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = `bulk_${configType}_template.csv`; a.click();
+                URL.revokeObjectURL(url);
+            }
+            nocToast('Template downloaded', 'success');
+        };
+
+        // ── Drag & Drop ──
         const dz = document.getElementById('bulkDropzone');
         if (dz) {
             dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
@@ -28136,13 +28386,18 @@ Example Enterprise,CCR1036-12G-4S,10.255.0.3,0.0.0.3,10.255.0.3,1,bh-example,172
 
         window.bulkHandleFile = function (file) {
             if (!file) return;
-            if (!file.name.endsWith('.csv')) { nocToast('Please upload a .csv file', 'warning'); return; }
-            const reader = new FileReader();
-            reader.onload = function (e) {
-                const text = e.target.result;
-                bulkParseCSV(text);
-            };
-            reader.readAsText(file);
+            const inputType = document.getElementById('bulkGenInputType').value;
+            if (inputType === 'json' && file.name.endsWith('.json')) {
+                const reader = new FileReader();
+                reader.onload = e => bulkParseJSON(e.target.result);
+                reader.readAsText(file);
+            } else if (file.name.endsWith('.csv')) {
+                const reader = new FileReader();
+                reader.onload = e => bulkParseCSV(e.target.result);
+                reader.readAsText(file);
+            } else {
+                nocToast('Please upload a valid .csv or .json file', 'warning');
+            }
         };
 
         function bulkParseCSV(text) {
@@ -28154,6 +28409,10 @@ Example Enterprise,CCR1036-12G-4S,10.255.0.3,0.0.0.3,10.255.0.3,1,bh-example,172
                 const cols = lines[i].split(',').map(c => c.trim());
                 const row = {};
                 headers.forEach((h, j) => row[h] = cols[j] || '');
+                // Parse backhauls from CSV columns for tower config
+                if (row.backhaul_count || row.bh_1_name || row.num_backhauls) {
+                    row.backhauls = buildBackhaulsFromCSVRow(row);
+                }
                 row._idx = i - 1;
                 row._status = 'pending';
                 bulkSites.push(row);
@@ -28166,112 +28425,203 @@ Example Enterprise,CCR1036-12G-4S,10.255.0.3,0.0.0.3,10.255.0.3,1,bh-example,172
             nocToast(`Parsed ${bulkSites.length} sites from CSV`, 'success');
         }
 
-        function bulkRenderTable() {
-            const tb = document.getElementById('bulkTableBody');
-            if (!tb) return;
-            tb.innerHTML = bulkSites.map((s, i) => {
-                const statusClass = s._status;
-                const statusLabel = s._status === 'pending' ? ' Pending' : s._status === 'running' ? ' Running' : s._status === 'success' ? ' Done' : ' Error';
-                return `<tr>
-                    <td>${i + 1}</td>
-                    <td style="font-weight:600">${escHtml(s.site_name || s.name || 'Site ' + (i+1))}</td>
-                    <td><code style="font-size:11px;background:var(--input-bg);padding:2px 6px;border-radius:3px">${escHtml(s.model || 'auto')}</code></td>
-                    <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${escHtml(s.loopback_ip || '-')}</td>
-                    <td>${escHtml(s.ospf_area || '-')}</td>
-                    <td>${escHtml(s.backhaul_count || '-')}</td>
-                    <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
-                    <td>${s._status === 'success' ? '<button onclick="bulkDownloadOne(' + i + ')" style="background:var(--accent-color);color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px"> .rsc</button>' : ''}</td>
-                </tr>`;
-            }).join('');
+        function bulkParseJSON(text) {
+            try {
+                let arr = JSON.parse(text);
+                if (!Array.isArray(arr)) arr = [arr];
+                bulkSites = arr.map((obj, i) => ({ ...obj, _idx: i, _status: 'pending' }));
+                bulkResults = {};
+                bulkRenderTable();
+                document.getElementById('bulkTableWrap').style.display = '';
+                document.getElementById('bulkGenerateBtn').disabled = false;
+                document.getElementById('bulkGenerateBtn').style.opacity = '1';
+                nocToast(`Parsed ${bulkSites.length} sites from JSON`, 'success');
+            } catch (e) {
+                nocToast('Invalid JSON: ' + e.message, 'error');
+            }
         }
 
-        window.bulkGenerateAll = async function () {
-            if (!bulkSites.length) return;
-            const btn = document.getElementById('bulkGenerateBtn');
-            btn.disabled = true; btn.textContent = ' Generating...';
-            const prog = document.getElementById('bulkProgress');
-            prog.classList.add('active');
-            let done = 0;
-            const total = bulkSites.length;
-
-            for (let i = 0; i < total; i++) {
-                bulkSites[i]._status = 'running';
-                bulkRenderTable();
-                updateBulkProgress(done, total);
-                try {
-                    const payload = buildBulkPayload(bulkSites[i]);
-                    const resp = await fetch('/api/gen-enterprise-non-mpls', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('auth_token') || '') },
-                        body: JSON.stringify(payload)
-                    });
-                    const data = await resp.json();
-                    if (data.config || data.commands || data.script) {
-                        bulkResults[i] = data.config || data.commands || data.script || '';
-                        bulkSites[i]._status = 'success';
-                    } else {
-                        bulkResults[i] = null;
-                        bulkSites[i]._status = 'error';
-                        bulkSites[i]._error = data.error || 'Unknown error';
-                    }
-                } catch (e) {
-                    bulkResults[i] = null;
-                    bulkSites[i]._status = 'error';
-                    bulkSites[i]._error = e.message;
-                }
-                done++;
-                updateBulkProgress(done, total);
-                bulkRenderTable();
-            }
-
-            btn.disabled = false; btn.innerHTML = ' Generate All';
-            const successCount = bulkSites.filter(s => s._status === 'success').length;
-            nocToast(`Bulk generation complete: ${successCount}/${total} succeeded`, successCount === total ? 'success' : 'warning');
-
-            if (successCount > 0) {
-                document.getElementById('bulkDownloadBtn').disabled = false;
-                document.getElementById('bulkDownloadBtn').style.opacity = '1';
-            }
-        };
-
-        function buildBulkPayload(site) {
-            return {
-                site_name: site.site_name || site.name || 'Unnamed',
-                model: site.model || 'CCR2004-1G-12S+2XS',
-                loopback_ip: site.loopback_ip || '',
-                ospf_area: site.ospf_area || '0.0.0.0',
-                ospf_router_id: site.ospf_router_id || site.loopback_ip || '',
-                snmp_contact: site.snmp_contact || 'netops@team.nxlink.com',
-                backhauls: buildBulkBackhauls(site),
-                bulk_mode: true
-            };
-        }
-
-        function buildBulkBackhauls(site) {
+        function buildBackhaulsFromCSVRow(row) {
             const bhs = [];
-            const count = parseInt(site.backhaul_count) || 0;
-            for (let i = 1; i <= count; i++) {
-                const name = site['backhaul' + i + '_name'] || 'bh-' + i;
-                const ip = site['backhaul' + i + '_ip'] || '';
-                if (name || ip) bhs.push({ name, ip });
+            const count = parseInt(row.backhaul_count || row.num_backhauls) || 0;
+            for (let i = 1; i <= Math.max(count, 5); i++) {
+                const name = row['bh_' + i + '_name'] || row['backhaul' + i + '_name'] || '';
+                const subnet = row['bh_' + i + '_subnet'] || row['backhaul' + i + '_ip'] || '';
+                const master = row['bh_' + i + '_master'] || '';
+                const port = row['bh_' + i + '_port'] || '';
+                const bandwidth = row['bh_' + i + '_bandwidth'] || '1000';
+                if (name || subnet) {
+                    bhs.push({
+                        name, subnet, port,
+                        master: master === 'true' || master === '1' || master === 'yes' || (i === 1 && !master),
+                        bandwidth
+                    });
+                }
             }
             return bhs;
         }
 
+        // ── Manual Entry ──
+        window.bulkAddManualRow = function () {
+            const configType = document.getElementById('bulkGenConfigType').value;
+            const container = document.getElementById('bulkManualRows');
+            const idx = container.children.length;
+            const div = document.createElement('div');
+            div.className = 'bulk-manual-row';
+            div.dataset.idx = idx;
+            if (configType === 'non-mpls') {
+                div.innerHTML = `
+                    <input type="text" placeholder="Site Name" data-field="site_name">
+                    <select data-field="model"><option value="RB5009">RB5009</option><option value="CCR2004">CCR2004</option><option value="CCR2216">CCR2216</option><option value="CCR1036">CCR1036</option></select>
+                    <input type="text" placeholder="Loopback IP/32" data-field="loopback_ip">
+                    <input type="text" placeholder="Public CIDR" data-field="public_cidr">
+                    <input type="text" placeholder="BH CIDR" data-field="bh_cidr">
+                    <button onclick="this.parentElement.remove();bulkManualSync()" style="background:#e74c3c;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:12px">✕</button>`;
+            } else if (configType === 'tower') {
+                div.style.gridTemplateColumns = '1fr 120px 60px 150px 90px 40px';
+                div.innerHTML = `
+                    <input type="text" placeholder="Tower Name" data-field="tower_name">
+                    <select data-field="router_type"><option value="MT2004">CCR2004</option><option value="MT2216">CCR2216</option><option value="MT1036">CCR1036</option><option value="MT1072">CCR1072</option></select>
+                    <input type="text" placeholder="TX" data-field="state_code" maxlength="2" style="text-transform:uppercase">
+                    <input type="text" placeholder="Loopback /32" data-field="loopback_subnet">
+                    <input type="text" placeholder="ASN" data-field="asn" value="64700">
+                    <button onclick="this.parentElement.remove();bulkManualSync()" style="background:#e74c3c;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:12px">✕</button>`;
+            } else {
+                div.innerHTML = `
+                    <input type="text" placeholder="Site Name" data-field="tower_name">
+                    <select data-field="router_type"><option value="MT2216">CCR2216</option><option value="MT2004">CCR2004</option></select>
+                    <input type="text" placeholder="Loopback /32" data-field="loopback_subnet">
+                    <input type="text" placeholder="CPE Subnet" data-field="cpe_subnet">
+                    <input type="text" placeholder="State" data-field="state_code" maxlength="2">
+                    <button onclick="this.parentElement.remove();bulkManualSync()" style="background:#e74c3c;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:12px">✕</button>`;
+            }
+            container.appendChild(div);
+            bulkManualSync();
+        };
+
+        window.bulkManualSync = function () {
+            const rows = document.querySelectorAll('#bulkManualRows .bulk-manual-row');
+            bulkSites = [];
+            rows.forEach((row, i) => {
+                const obj = { _idx: i, _status: 'pending' };
+                row.querySelectorAll('[data-field]').forEach(el => {
+                    obj[el.dataset.field] = el.value;
+                });
+                bulkSites.push(obj);
+            });
+            bulkResults = {};
+            if (bulkSites.length > 0) {
+                document.getElementById('bulkTableWrap').style.display = 'none';
+                document.getElementById('bulkGenerateBtn').disabled = false;
+                document.getElementById('bulkGenerateBtn').style.opacity = '1';
+            }
+        };
+
+        function bulkRenderTable() {
+            const tb = document.getElementById('bulkTableBody');
+            if (!tb) return;
+            const configType = document.getElementById('bulkGenConfigType').value;
+            // Update table header based on config type
+            const head = document.getElementById('bulkTableHead');
+            if (head) {
+                if (configType === 'tower') {
+                    head.innerHTML = '<th>#</th><th>Tower Name</th><th>Router</th><th>State</th><th>Loopback</th><th>ASN</th><th>Status</th><th>Actions</th>';
+                } else if (configType === 'bng2') {
+                    head.innerHTML = '<th>#</th><th>Site Name</th><th>Router</th><th>Loopback</th><th>CPE Subnet</th><th>State</th><th>Status</th><th>Actions</th>';
+                } else {
+                    head.innerHTML = '<th>#</th><th>Site Name</th><th>Model</th><th>Loopback</th><th>Public CIDR</th><th>BH CIDR</th><th>Status</th><th>Actions</th>';
+                }
+            }
+            tb.innerHTML = bulkSites.map((s, i) => {
+                const statusClass = s._status;
+                const statusLabel = s._status === 'pending' ? '⏳ Pending' : s._status === 'running' ? '🔄 Running' : s._status === 'success' ? '✅ Done' : '❌ Error';
+                const name = escHtml(s.site_name || s.tower_name || s.name || 'Site ' + (i + 1));
+                let cols;
+                if (configType === 'tower') {
+                    cols = `<td>${i+1}</td><td style="font-weight:600">${name}</td><td><code style="font-size:11px;background:var(--input-bg);padding:2px 6px;border-radius:3px">${escHtml(s.router_type||'MT2004')}</code></td><td>${escHtml(s.state_code||'TX')}</td><td style="font-family:'JetBrains Mono',monospace;font-size:12px">${escHtml(s.loopback_subnet||'-')}</td><td>${escHtml(s.asn||'-')}</td>`;
+                } else if (configType === 'bng2') {
+                    cols = `<td>${i+1}</td><td style="font-weight:600">${name}</td><td><code style="font-size:11px;background:var(--input-bg);padding:2px 6px;border-radius:3px">${escHtml(s.router_type||'MT2216')}</code></td><td style="font-family:'JetBrains Mono',monospace;font-size:12px">${escHtml(s.loopback_subnet||'-')}</td><td>${escHtml(s.cpe_subnet||'-')}</td><td>${escHtml(s.state_code||'-')}</td>`;
+                } else {
+                    cols = `<td>${i+1}</td><td style="font-weight:600">${name}</td><td><code style="font-size:11px;background:var(--input-bg);padding:2px 6px;border-radius:3px">${escHtml(s.model||s.device||'RB5009')}</code></td><td style="font-family:'JetBrains Mono',monospace;font-size:12px">${escHtml(s.loopback_ip||'-')}</td><td>${escHtml(s.public_cidr||'-')}</td><td>${escHtml(s.bh_cidr||'-')}</td>`;
+                }
+                const actions = s._status === 'success' ? `<button onclick="bulkDownloadOne(${i})" style="background:var(--accent-color);color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px">📥 .rsc</button>` : (s._error ? `<span title="${escHtml(s._error)}" style="cursor:help;font-size:11px;color:#e74c3c">ℹ️</span>` : '');
+                return `<tr>${cols}<td><span class="status-badge ${statusClass}">${statusLabel}</span></td><td>${actions}</td></tr>`;
+            }).join('');
+        }
+
+        // ── Bulk Generate All (uses /api/bulk-generate) ──
+        window.bulkGenerateAll = async function () {
+            // Sync manual rows if in manual mode
+            const inputType = document.getElementById('bulkGenInputType').value;
+            if (inputType === 'manual') bulkManualSync();
+            if (!bulkSites.length) { nocToast('No sites to generate', 'warning'); return; }
+
+            const configType = document.getElementById('bulkGenConfigType').value;
+            const btn = document.getElementById('bulkGenerateBtn');
+            btn.disabled = true; btn.textContent = '⏳ Generating...';
+            const prog = document.getElementById('bulkProgress');
+            prog.style.display = 'block';
+
+            // Mark all as running
+            bulkSites.forEach(s => s._status = 'running');
+            document.getElementById('bulkTableWrap').style.display = '';
+            bulkRenderTable();
+            updateBulkProgress(0, bulkSites.length);
+
+            try {
+                const apiBase = (typeof resolveApiBase === 'function') ? resolveApiBase() : '/api';
+                const sitesPayload = bulkSites.map(s => {
+                    const clean = { ...s };
+                    delete clean._idx; delete clean._status; delete clean._error;
+                    return clean;
+                });
+                const resp = await fetch(apiBase + '/bulk-generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('auth_token') || '') },
+                    body: JSON.stringify({ sites: sitesPayload, config_type: configType })
+                });
+                const data = await resp.json();
+                if (data.results) {
+                    data.results.forEach(r => {
+                        const idx = r.index;
+                        if (idx < bulkSites.length) {
+                            bulkSites[idx]._status = r.success ? 'success' : 'error';
+                            bulkSites[idx]._error = r.error || '';
+                            bulkResults[idx] = r.config || null;
+                        }
+                    });
+                }
+                updateBulkProgress(data.succeeded || 0, data.total || bulkSites.length);
+                bulkRenderTable();
+                const sc = data.succeeded || 0;
+                nocToast(`Bulk generation: ${sc}/${data.total} succeeded`, sc === data.total ? 'success' : 'warning');
+
+                if (sc > 0) {
+                    document.getElementById('bulkDownloadBtn').disabled = false;
+                    document.getElementById('bulkDownloadBtn').style.opacity = '1';
+                }
+            } catch (err) {
+                bulkSites.forEach(s => s._status = 'error');
+                bulkRenderTable();
+                nocToast('Bulk generation failed: ' + err.message, 'error');
+            }
+
+            btn.disabled = false; btn.innerHTML = '⚡ Generate All';
+        };
+
         function updateBulkProgress(done, total) {
             const pct = total ? Math.round((done / total) * 100) : 0;
             document.getElementById('bulkProgressFill').style.width = pct + '%';
-            document.getElementById('bulkProgressText').textContent = `${done} / ${total} sites generated (${pct}%)`;
+            document.getElementById('bulkProgressText').textContent = `${done} / ${total} completed (${pct}%)`;
         }
 
         window.bulkDownloadOne = function (idx) {
             const cfg = bulkResults[idx];
             if (!cfg) return;
-            const name = (bulkSites[idx].site_name || 'config').replace(/[^a-zA-Z0-9_-]/g, '_');
+            const name = (bulkSites[idx].site_name || bulkSites[idx].tower_name || 'config').replace(/[^a-zA-Z0-9_-]/g, '_');
             const blob = new Blob([cfg], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = name + '.rsc'; a.click();
+            const a = document.createElement('a'); a.href = url; a.download = name + '.rsc'; a.click();
             URL.revokeObjectURL(url);
         };
 
@@ -28281,7 +28631,7 @@ Example Enterprise,CCR1036-12G-4S,10.255.0.3,0.0.0.3,10.255.0.3,1,bh-example,172
             let count = 0;
             bulkSites.forEach((s, i) => {
                 if (bulkResults[i]) {
-                    const name = (s.site_name || 'config_' + (i + 1)).replace(/[^a-zA-Z0-9_-]/g, '_') + '.rsc';
+                    const name = (s.site_name || s.tower_name || 'config_' + (i + 1)).replace(/[^a-zA-Z0-9_-]/g, '_') + '.rsc';
                     zip.file(name, bulkResults[i]);
                     count++;
                 }
@@ -28289,23 +28639,313 @@ Example Enterprise,CCR1036-12G-4S,10.255.0.3,0.0.0.3,10.255.0.3,1,bh-example,172
             if (!count) { nocToast('No configs to download', 'warning'); return; }
             const blob = await zip.generateAsync({ type: 'blob' });
             const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = 'bulk_configs_' + new Date().toISOString().slice(0, 10) + '.zip'; a.click();
+            const a = document.createElement('a'); a.href = url; a.download = 'bulk_configs_' + new Date().toISOString().slice(0, 10) + '.zip'; a.click();
             URL.revokeObjectURL(url);
             nocToast(`Downloaded ${count} configs as ZIP`, 'success');
         };
 
         window.bulkClearAll = function () {
             bulkSites = []; bulkResults = {};
-            document.getElementById('bulkTableBody').innerHTML = '';
+            const tb = document.getElementById('bulkTableBody');
+            if (tb) tb.innerHTML = '';
             document.getElementById('bulkTableWrap').style.display = 'none';
-            document.getElementById('bulkProgress').classList.remove('active');
+            document.getElementById('bulkProgress').style.display = 'none';
             document.getElementById('bulkGenerateBtn').disabled = true;
             document.getElementById('bulkGenerateBtn').style.opacity = '.5';
             document.getElementById('bulkDownloadBtn').disabled = true;
             document.getElementById('bulkDownloadBtn').style.opacity = '.5';
-            document.getElementById('bulkFileInput').value = '';
+            const fi = document.getElementById('bulkFileInput');
+            if (fi) fi.value = '';
+            const mr = document.getElementById('bulkManualRows');
+            if (mr) mr.innerHTML = '';
             nocToast('Cleared all sites', 'info');
+        };
+
+        // ═══════════════════════════════════════════════════
+        // BULK SSH FETCH
+        // ═══════════════════════════════════════════════════
+
+        window.bulkSshFetchAll = async function () {
+            const raw = document.getElementById('bulkSshHosts').value.trim();
+            if (!raw) { nocToast('Enter at least one device IP', 'warning'); return; }
+            const hosts = raw.split(/[\n,]+/).map(h => h.trim()).filter(h => h);
+            if (!hosts.length) { nocToast('No valid IPs found', 'warning'); return; }
+
+            const rosVersion = document.getElementById('bulkSshRos').value;
+            const portsRaw = document.getElementById('bulkSshPorts').value;
+            const ports = portsRaw.split(',').map(p => parseInt(p.trim())).filter(p => p > 0);
+
+            const btn = document.getElementById('bulkSshFetchBtn');
+            btn.disabled = true; btn.textContent = '⏳ Fetching...';
+
+            const prog = document.getElementById('bulkSshProgress');
+            prog.style.display = 'block';
+            document.getElementById('bulkSshProgressFill').style.width = '0%';
+            document.getElementById('bulkSshProgressText').textContent = `Connecting to ${hosts.length} devices (max 3 concurrent)...`;
+
+            try {
+                const apiBase = (typeof resolveApiBase === 'function') ? resolveApiBase() : '/api';
+                const resp = await fetch(apiBase + '/bulk-ssh-fetch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('auth_token') || '') },
+                    body: JSON.stringify({ hosts, ros_version: rosVersion, ports, command: 'export' })
+                });
+                const data = await resp.json();
+                bulkSshResults = data.results || [];
+
+                document.getElementById('bulkSshProgressFill').style.width = '100%';
+                document.getElementById('bulkSshProgressText').textContent = `Done! ${data.succeeded}/${data.total} succeeded, ${data.failed} failed`;
+                document.getElementById('bulkSshResultLabel').textContent = `Results — ${data.succeeded} succeeded, ${data.failed} failed`;
+
+                bulkSshRenderTable();
+                document.getElementById('bulkSshResults').style.display = '';
+                nocToast(`Bulk SSH: ${data.succeeded}/${data.total} devices fetched`, data.failed === 0 ? 'success' : 'warning');
+            } catch (err) {
+                nocToast('Bulk SSH fetch failed: ' + err.message, 'error');
+                document.getElementById('bulkSshProgressText').textContent = 'Failed: ' + err.message;
+            }
+
+            btn.disabled = false; btn.textContent = '📡 Fetch All Configs';
+        };
+
+        function bulkSshRenderTable() {
+            const tb = document.getElementById('bulkSshTableBody');
+            if (!tb) return;
+            tb.innerHTML = bulkSshResults.map((r, i) => {
+                const status = r.success
+                    ? '<span class="status-badge success">✅ OK</span>'
+                    : `<span class="status-badge error" title="${escHtml(r.error||'')}">❌ Failed</span>`;
+                const actions = r.success
+                    ? `<button onclick="bulkSshPreview(${i})" style="background:var(--accent-color);color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px">👁️</button>
+                       <button onclick="bulkSshDownloadOne(${i})" style="background:#27ae60;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px">📥</button>`
+                    : `<span style="font-size:11px;color:#e74c3c" title="${escHtml(r.error||'')}">${escHtml((r.error||'').substring(0,40))}</span>`;
+                return `<tr>
+                    <td>${i + 1}</td>
+                    <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${escHtml(r.host)}</td>
+                    <td>${r.port || '-'}</td>
+                    <td style="font-weight:600">${escHtml(r.identity || '-')}</td>
+                    <td><code style="font-size:11px;background:var(--input-bg);padding:2px 6px;border-radius:3px">${escHtml(r.model || '-')}</code></td>
+                    <td>${escHtml(r.version || '-')}</td>
+                    <td>${r.config_lines || '-'}</td>
+                    <td>${status}</td>
+                    <td style="white-space:nowrap">${actions}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        window.bulkSshPreview = function (idx) {
+            const r = bulkSshResults[idx];
+            if (!r || !r.config) return;
+            document.getElementById('bulkSshPreviewTitle').textContent = `Config: ${r.host} (${r.identity || r.model || 'device'})`;
+            document.getElementById('bulkSshPreviewCode').textContent = r.config;
+            document.getElementById('bulkSshPreview').style.display = '';
+        };
+
+        window.bulkSshDownloadOne = function (idx) {
+            const r = bulkSshResults[idx];
+            if (!r || !r.config) return;
+            const name = (r.identity || r.host).replace(/[^a-zA-Z0-9_.-]/g, '_');
+            const blob = new Blob([r.config], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = name + '.rsc'; a.click();
+            URL.revokeObjectURL(url);
+        };
+
+        window.bulkSshDownloadZip = async function () {
+            if (typeof JSZip === 'undefined') { nocToast('JSZip not loaded', 'error'); return; }
+            const zip = new JSZip();
+            let count = 0;
+            bulkSshResults.forEach(r => {
+                if (r.success && r.config) {
+                    const name = (r.identity || r.host).replace(/[^a-zA-Z0-9_.-]/g, '_') + '.rsc';
+                    zip.file(name, r.config);
+                    count++;
+                }
+            });
+            if (!count) { nocToast('No configs to download', 'warning'); return; }
+            const blob = await zip.generateAsync({ type: 'blob' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = 'ssh_fetch_' + new Date().toISOString().slice(0, 10) + '.zip'; a.click();
+            URL.revokeObjectURL(url);
+            nocToast(`Downloaded ${count} configs as ZIP`, 'success');
+        };
+
+        window.bulkSshSaveAll = async function () {
+            const apiBase = (typeof resolveApiBase === 'function') ? resolveApiBase() : '/api';
+            let saved = 0;
+            for (const r of bulkSshResults) {
+                if (!r.success || !r.config) continue;
+                try {
+                    await fetch(apiBase + '/save-config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('auth_token') || '') },
+                        body: JSON.stringify({
+                            device_name: r.identity || r.host,
+                            config_type: 'ssh-fetch',
+                            config_content: r.config,
+                            model: r.model
+                        })
+                    });
+                    saved++;
+                } catch (e) { /* continue */ }
+            }
+            nocToast(`Saved ${saved} configs to database`, 'success');
+        };
+
+        // ═══════════════════════════════════════════════════
+        // BULK MIGRATION ANALYSIS
+        // ═══════════════════════════════════════════════════
+
+        window.bulkMigAnalyze = async function () {
+            const raw = document.getElementById('bulkMigHosts').value.trim();
+            if (!raw) { nocToast('Enter at least one device IP', 'warning'); return; }
+            const hosts = raw.split(/[\n,]+/).map(h => h.trim()).filter(h => h);
+            if (!hosts.length) { nocToast('No valid IPs found', 'warning'); return; }
+
+            const targetModel = document.getElementById('bulkMigTarget').value;
+            const targetVersion = document.getElementById('bulkMigVersion').value;
+            const portsRaw = document.getElementById('bulkMigPorts').value;
+            const ports = portsRaw.split(',').map(p => parseInt(p.trim())).filter(p => p > 0);
+
+            const btn = document.getElementById('bulkMigBtn');
+            btn.disabled = true; btn.textContent = '⏳ Analyzing...';
+
+            const prog = document.getElementById('bulkMigProgress');
+            prog.style.display = 'block';
+            document.getElementById('bulkMigProgressFill').style.width = '0%';
+            document.getElementById('bulkMigProgressText').textContent = `Analyzing ${hosts.length} devices for migration to ${targetModel}...`;
+
+            try {
+                const apiBase = (typeof resolveApiBase === 'function') ? resolveApiBase() : '/api';
+                const resp = await fetch(apiBase + '/bulk-migration-analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('auth_token') || '') },
+                    body: JSON.stringify({ hosts, target_model: targetModel, target_version: targetVersion, ports })
+                });
+                const data = await resp.json();
+                bulkMigResults = data.results || [];
+
+                document.getElementById('bulkMigProgressFill').style.width = '100%';
+                document.getElementById('bulkMigProgressText').textContent = `Done! ${data.succeeded}/${data.total} analyzed`;
+                document.getElementById('bulkMigResultLabel').textContent = `Migration Analysis → ${targetModel} — ${data.succeeded} succeeded, ${data.failed} failed`;
+
+                bulkMigRenderTable();
+                document.getElementById('bulkMigResults').style.display = '';
+                nocToast(`Migration analysis: ${data.succeeded}/${data.total}`, data.failed === 0 ? 'success' : 'warning');
+            } catch (err) {
+                nocToast('Migration analysis failed: ' + err.message, 'error');
+                document.getElementById('bulkMigProgressText').textContent = 'Failed: ' + err.message;
+            }
+
+            btn.disabled = false; btn.textContent = '🔄 Analyze Migration';
+        };
+
+        function bulkMigRenderTable() {
+            const tb = document.getElementById('bulkMigTableBody');
+            if (!tb) return;
+            tb.innerHTML = bulkMigResults.map((r, i) => {
+                if (!r.success) {
+                    return `<tr>
+                        <td>${i+1}</td><td style="font-family:'JetBrains Mono',monospace;font-size:12px">${escHtml(r.host)}</td>
+                        <td colspan="7"><span class="status-badge error">❌ ${escHtml(r.error||'Failed')}</span></td>
+                        <td></td></tr>`;
+                }
+                const cx = r.complexity || {};
+                const complexScore = (cx.ip_addresses || 0) + (cx.vpls_tunnels || 0) * 10 + (cx.firewall_sections || 0) * 5;
+                const complexLevel = complexScore > 100 ? 'high' : complexScore > 30 ? 'medium' : 'low';
+                const complexLabel = complexScore > 100 ? '🔴 High' : complexScore > 30 ? '🟡 Medium' : '🟢 Low';
+                const warnCount = (r.warnings || []).length;
+                const migTypeBadge = r.migration_type.includes('v6→v7')
+                    ? '<span style="background:rgba(155,89,182,.15);color:#9b59b6;padding:2px 6px;border-radius:8px;font-size:10px;font-weight:700">v6→v7</span> '
+                    : '';
+                const devMigBadge = r.needs_device_migration
+                    ? `<span style="background:rgba(230,126,34,.15);color:#e67e22;padding:2px 6px;border-radius:8px;font-size:10px;font-weight:700">${escHtml(r.migration_type)}</span>`
+                    : '<span style="background:rgba(39,174,96,.15);color:#27ae60;padding:2px 6px;border-radius:8px;font-size:10px;font-weight:700">audit only</span>';
+
+                return `<tr>
+                    <td>${i+1}</td>
+                    <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${escHtml(r.host)}</td>
+                    <td style="font-weight:600">${escHtml(r.identity||'-')}</td>
+                    <td><code style="font-size:11px;background:var(--input-bg);padding:2px 6px;border-radius:3px">${escHtml(r.current_model)}</code></td>
+                    <td>${escHtml(r.current_version)}</td>
+                    <td>${migTypeBadge}${devMigBadge}</td>
+                    <td><span class="bulk-complexity-badge ${complexLevel}">${complexLabel}</span></td>
+                    <td>${warnCount > 0 ? `<span style="color:#f39c12;font-weight:600">⚠️ ${warnCount}</span>` : '✅'}</td>
+                    <td><span class="status-badge success">✅ Analyzed</span></td>
+                    <td><button onclick="bulkMigShowDetail(${i})" style="background:var(--accent-color);color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px">🔍 Details</button></td>
+                </tr>`;
+            }).join('');
+        }
+
+        window.bulkMigShowDetail = function (idx) {
+            const r = bulkMigResults[idx];
+            if (!r || !r.success) return;
+            const cx = r.complexity || {};
+            const imap = r.interface_map || {};
+            let mapHtml = '';
+            if (Object.keys(imap).length) {
+                mapHtml = `<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:8px">
+                    <thead><tr><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border-color)">Source Port</th><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border-color)">→ Target Port</th></tr></thead>
+                    <tbody>${Object.entries(imap).map(([s, t]) => `<tr><td style="padding:3px 8px;font-family:'JetBrains Mono',monospace">${escHtml(s)}</td><td style="padding:3px 8px;font-family:'JetBrains Mono',monospace">${escHtml(t)}</td></tr>`).join('')}</tbody></table>`;
+            }
+            let warningsHtml = '';
+            if (r.warnings && r.warnings.length) {
+                warningsHtml = '<div style="margin-top:12px"><strong>⚠️ Warnings:</strong><ul style="margin:4px 0;padding-left:20px">' + r.warnings.map(w => `<li style="color:#f39c12;font-size:12px">${escHtml(w)}</li>`).join('') + '</ul></div>';
+            }
+            const html = `
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                    <div>
+                        <h4 style="margin:0 0 8px;color:var(--accent-color)">Device Info</h4>
+                        <div style="font-size:12px;line-height:1.8">
+                            <strong>Host:</strong> ${escHtml(r.host)}<br>
+                            <strong>Identity:</strong> ${escHtml(r.identity || 'N/A')}<br>
+                            <strong>Current Model:</strong> ${escHtml(r.current_model)}<br>
+                            <strong>Current ROS:</strong> ${escHtml(r.current_version)} (${escHtml(r.ros_major)})<br>
+                            <strong>Config Lines:</strong> ${r.config_lines}<br>
+                            <strong>SSH Port:</strong> ${r.port}
+                        </div>
+                    </div>
+                    <div>
+                        <h4 style="margin:0 0 8px;color:var(--accent-color)">Complexity Analysis</h4>
+                        <div style="font-size:12px;line-height:1.8">
+                            <strong>IP Addresses:</strong> ${cx.ip_addresses || 0}<br>
+                            <strong>Bridges:</strong> ${cx.bridges || 0}<br>
+                            <strong>VPLS Tunnels:</strong> ${cx.vpls_tunnels || 0}<br>
+                            <strong>Firewall Sections:</strong> ${cx.firewall_sections || 0}<br>
+                            <strong>Protocols:</strong> ${[cx.ospf && 'OSPF', cx.bgp && 'BGP', cx.mpls && 'MPLS/VPLS'].filter(Boolean).join(', ') || 'None'}<br>
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-top:16px"><h4 style="margin:0 0 8px;color:var(--accent-color)">Migration: ${escHtml(r.migration_type)}</h4>
+                    <div style="font-size:12px"><strong>Version Migration:</strong> ${r.needs_version_migration ? '✅ v6→v7 required' : '—'}<br>
+                    <strong>Device Migration:</strong> ${r.needs_device_migration ? `✅ ${escHtml(r.current_model)} → ${escHtml(r.target_model)}` : '— Same model or upgrade-only'}</div>
+                    ${Object.keys(imap).length ? '<h4 style="margin:12px 0 4px;color:var(--accent-color)">Interface Migration Map</h4>' + mapHtml : ''}
+                </div>
+                ${warningsHtml}
+                <div style="margin-top:12px"><h4 style="margin:0 0 4px;color:var(--accent-color)">Config Preview (first 15 lines)</h4>
+                    <pre style="background:var(--bg-color);border:1px solid var(--border-color);border-radius:4px;padding:10px;font-size:11px;font-family:'JetBrains Mono',monospace;max-height:200px;overflow:auto">${escHtml(r.config_preview || '')}</pre>
+                </div>`;
+            document.getElementById('bulkMigDetailTitle').textContent = `Migration Details — ${r.host} (${r.identity || r.current_model})`;
+            document.getElementById('bulkMigDetailContent').innerHTML = html;
+            document.getElementById('bulkMigDetail').style.display = '';
+        };
+
+        window.bulkMigExportReport = function () {
+            if (!bulkMigResults.length) { nocToast('No results to export', 'warning'); return; }
+            let csv = 'Host,Identity,Current Model,Current Version,Target Model,Migration Type,Config Lines,IP Addresses,VPLS Tunnels,OSPF,BGP,MPLS,Warnings\n';
+            bulkMigResults.forEach(r => {
+                if (!r.success) {
+                    csv += `${r.host},,,,,FAILED,,,,,,,"${escHtml(r.error||'')}"\n`;
+                    return;
+                }
+                const cx = r.complexity || {};
+                csv += `${r.host},${r.identity||''},${r.current_model},${r.current_version},${r.target_model},"${r.migration_type}",${r.config_lines},${cx.ip_addresses||0},${cx.vpls_tunnels||0},${cx.ospf},${cx.bgp},${cx.mpls},"${(r.warnings||[]).join('; ')}"\n`;
+            });
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = 'migration_report_' + new Date().toISOString().slice(0, 10) + '.csv'; a.click();
+            URL.revokeObjectURL(url);
+            nocToast('Migration report exported', 'success');
         };
 
         /* ──────────────────────────────────────────────────

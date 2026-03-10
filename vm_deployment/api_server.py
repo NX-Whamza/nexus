@@ -16002,6 +16002,463 @@ def serve_ui_catchall(path: str):
     return serve_app_html()
 
 
+# ========================================
+# BULK OPERATIONS CENTER
+# ========================================
+
+@app.route('/api/bulk-ssh-fetch', methods=['POST'])
+def bulk_ssh_fetch():
+    """
+    Bulk SSH fetch: connect to multiple MikroTik devices concurrently and
+    retrieve their running configuration.
+
+    Body:
+        hosts       – list of IP address strings (required)
+        ros_version – "6" | "7" (default "7")
+        command     – export command (default "export")
+        ports       – list of port numbers to try (default [22, 5022])
+    """
+    try:
+        import paramiko
+    except ImportError:
+        return jsonify({'error': 'paramiko library not installed'}), 500
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    data = request.get_json(force=True) or {}
+    hosts = data.get('hosts', [])
+    if not hosts or not isinstance(hosts, list):
+        return jsonify({'error': 'hosts must be a non-empty list of IP addresses'}), 400
+
+    ros_version = data.get('ros_version', '7')
+    command = data.get('command', 'export').strip()
+    allowed_commands = ['export', 'export show-sensitive', 'export hide-sensitive']
+    if command not in allowed_commands:
+        return jsonify({'error': f'Invalid command. Allowed: {", ".join(allowed_commands)}'}), 400
+
+    # Parse ports
+    raw_ports = data.get('ports', [22, 5022])
+    if isinstance(raw_ports, str):
+        raw_ports = [int(p.strip()) for p in raw_ports.split(',') if p.strip().isdigit()]
+    ssh_ports = [int(p) for p in raw_ports if isinstance(p, (int, float))]
+    if not ssh_ports:
+        ssh_ports = [22, 5022]
+
+    SSH_USERNAME = (data.get('username') or os.getenv('NEXTLINK_SSH_USERNAME', '')).strip()
+    SSH_PASSWORD = (data.get('password') or os.getenv('NEXTLINK_SSH_PASSWORD', '')).strip()
+    if not SSH_USERNAME or not SSH_PASSWORD:
+        return jsonify({'error': 'SSH credentials required'}), 400
+
+    MAX_CONCURRENT = 3  # conservative
+
+    def _fetch_one(host_ip):
+        """Fetch config from a single device. Returns a result dict."""
+        host_ip = host_ip.strip()
+        try:
+            ipaddress.IPv4Address(host_ip)
+        except ValueError:
+            return {'host': host_ip, 'success': False, 'error': 'Invalid IP address'}
+
+        for port in ssh_ports:
+            client = None
+            try:
+                client = paramiko.SSHClient()
+                client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                client.connect(
+                    hostname=host_ip, port=port,
+                    username=SSH_USERNAME, password=SSH_PASSWORD,
+                    timeout=10, banner_timeout=10, auth_timeout=10
+                )
+                stdin, stdout, stderr = client.exec_command(command, timeout=30)
+                output = stdout.read().decode('utf-8', errors='replace')
+                err_out = stderr.read().decode('utf-8', errors='replace')
+                if err_out and 'error' in err_out.lower():
+                    return {'host': host_ip, 'success': False, 'error': err_out[:300], 'port': port}
+                if not output or not output.strip():
+                    continue  # try next port
+                output = normalize_line_breaks(output)
+
+                # Auto-detect device info from config header
+                model = 'Unknown'
+                version = 'Unknown'
+                identity = ''
+                m_model = re.search(r'(?m)^\s*#\s*model\s*=\s*(.+)', output)
+                if m_model:
+                    model = m_model.group(1).strip()
+                m_ver = re.search(r'(?m)^\s*#\s*software id.*RouterOS\s+(\S+)', output)
+                if not m_ver:
+                    m_ver = re.search(r'(?m)^\s*#.*RouterOS\s+(\S+)', output)
+                if m_ver:
+                    version = m_ver.group(1).strip()
+                m_id = re.search(r'/system identity\s*\n\s*set name=(\S+)', output)
+                if m_id:
+                    identity = m_id.group(1).strip()
+
+                return {
+                    'host': host_ip, 'success': True, 'port': port,
+                    'config': output,
+                    'config_lines': len(output.splitlines()),
+                    'model': model, 'version': version, 'identity': identity
+                }
+            except paramiko.AuthenticationException:
+                return {'host': host_ip, 'success': False, 'error': 'Authentication failed', 'port': port}
+            except Exception as e:
+                pass  # try next port
+            finally:
+                if client:
+                    try:
+                        client.close()
+                    except Exception:
+                        pass
+        return {'host': host_ip, 'success': False, 'error': f'Connection failed on all ports ({", ".join(map(str, ssh_ports))})'}
+
+    results = []
+    with ThreadPoolExecutor(max_workers=MAX_CONCURRENT) as pool:
+        future_map = {pool.submit(_fetch_one, h): h for h in hosts}
+        for future in as_completed(future_map):
+            results.append(future.result())
+
+    # Sort results back to original order
+    host_order = {h: i for i, h in enumerate(hosts)}
+    results.sort(key=lambda r: host_order.get(r['host'], 999))
+
+    success_count = sum(1 for r in results if r.get('success'))
+    return jsonify({
+        'success': True,
+        'total': len(hosts),
+        'succeeded': success_count,
+        'failed': len(hosts) - success_count,
+        'results': results
+    })
+
+
+@app.route('/api/bulk-generate', methods=['POST'])
+def bulk_generate():
+    """
+    Bulk config generation for multiple sites.
+
+    Body:
+        sites       – list of site config objects (required)
+        config_type – "tower" | "non-mpls" | "mpls" | "bng2" (required)
+    """
+    data = request.get_json(force=True) or {}
+    sites = data.get('sites', [])
+    config_type = data.get('config_type', 'non-mpls')
+
+    if not sites or not isinstance(sites, list):
+        return jsonify({'error': 'sites must be a non-empty list'}), 400
+
+    results = []
+    for idx, site in enumerate(sites):
+        site_name = site.get('site_name') or site.get('tower_name') or f'Site_{idx + 1}'
+        try:
+            if config_type == 'tower':
+                # Use MTTowerConfig if available, otherwise fall back to AI-based
+                if HAS_MT_CONFIG_GEN:
+                    apply_compliance = bool(site.pop('apply_compliance', True))
+                    payload_loopback = site.get('loopback_subnet') or site.get('loop_ip')
+                    cfg = MTTowerConfig(**site)
+                    config_text = cfg.generate_config()
+                    if apply_compliance and HAS_ENGINEERING_COMPLIANCE:
+                        config_text = apply_engineering_compliance(config_text, payload_loopback)
+                    results.append({
+                        'index': idx, 'site_name': site_name,
+                        'success': True, 'config': config_text
+                    })
+                else:
+                    results.append({
+                        'index': idx, 'site_name': site_name,
+                        'success': False, 'error': 'Tower config generator unavailable (BASE_CONFIG_PATH not set)'
+                    })
+
+            elif config_type == 'non-mpls':
+                # Re-use existing gen_enterprise_non_mpls logic inline
+                device = (site.get('device') or site.get('model') or 'RB5009').upper()
+                target_version = site.get('target_version', '7.19.4')
+                public_cidr = site.get('public_cidr', '')
+                bh_cidr = site.get('bh_cidr', '')
+                loopback_ip = site.get('loopback_ip', '')
+                if not (public_cidr and bh_cidr and loopback_ip):
+                    results.append({
+                        'index': idx, 'site_name': site_name,
+                        'success': False, 'error': 'Missing required fields: public_cidr, bh_cidr, loopback_ip'
+                    })
+                    continue
+
+                # Build the config using the same logic as gen_enterprise_non_mpls
+                # Create a mock request context with site data
+                import flask
+                with app.test_request_context(
+                    '/api/gen-enterprise-non-mpls',
+                    method='POST',
+                    json=site,
+                    content_type='application/json'
+                ):
+                    resp = gen_enterprise_non_mpls()
+                    if isinstance(resp, tuple):
+                        resp_obj, status_code = resp
+                    else:
+                        resp_obj = resp
+                        status_code = 200
+                    resp_data = resp_obj.get_json()
+                    if status_code == 200 and resp_data.get('success'):
+                        results.append({
+                            'index': idx, 'site_name': site_name,
+                            'success': True,
+                            'config': resp_data.get('config', ''),
+                            'device': resp_data.get('device', device)
+                        })
+                    else:
+                        results.append({
+                            'index': idx, 'site_name': site_name,
+                            'success': False,
+                            'error': resp_data.get('error', 'Generation failed')
+                        })
+
+            elif config_type == 'bng2':
+                if HAS_MT_CONFIG_GEN:
+                    apply_compliance = bool(site.pop('apply_compliance', True))
+                    payload_loopback = site.get('loopback_subnet') or site.get('loop_ip')
+                    cfg = MTBNG2Config(**site)
+                    config_text = cfg.generate_config()
+                    config_text = _sanitize_bng2_transport_output(config_text)
+                    if apply_compliance and HAS_ENGINEERING_COMPLIANCE:
+                        config_text = apply_engineering_compliance(config_text, payload_loopback)
+                    results.append({
+                        'index': idx, 'site_name': site_name,
+                        'success': True, 'config': config_text
+                    })
+                else:
+                    results.append({
+                        'index': idx, 'site_name': site_name,
+                        'success': False, 'error': 'BNG2 config generator unavailable'
+                    })
+
+            else:
+                results.append({
+                    'index': idx, 'site_name': site_name,
+                    'success': False, 'error': f'Unknown config_type: {config_type}'
+                })
+
+        except Exception as exc:
+            results.append({
+                'index': idx, 'site_name': site_name,
+                'success': False, 'error': str(exc)
+            })
+
+    success_count = sum(1 for r in results if r.get('success'))
+    return jsonify({
+        'success': True,
+        'total': len(sites),
+        'succeeded': success_count,
+        'failed': len(sites) - success_count,
+        'results': results
+    })
+
+
+@app.route('/api/bulk-migration-analyze', methods=['POST'])
+def bulk_migration_analyze():
+    """
+    Bulk migration analysis: SSH-fetch configs from multiple devices,
+    auto-detect model/version, and generate migration recommendations.
+
+    Body:
+        hosts          – list of IP addresses (required)
+        target_model   – target device model key, e.g. "CCR2004-1G-12S+2XS" (required)
+        target_version – target RouterOS version, e.g. "7" (default "7")
+        ports          – SSH ports to try (default [22, 5022])
+    """
+    try:
+        import paramiko
+    except ImportError:
+        return jsonify({'error': 'paramiko library not installed'}), 500
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    data = request.get_json(force=True) or {}
+    hosts = data.get('hosts', [])
+    target_model = data.get('target_model', 'CCR2004-1G-12S+2XS')
+    target_version = data.get('target_version', '7')
+
+    if not hosts or not isinstance(hosts, list):
+        return jsonify({'error': 'hosts must be a non-empty list'}), 400
+
+    if target_model not in ROUTERBOARD_INTERFACES:
+        return jsonify({'error': f'Unknown target_model: {target_model}. Available: {", ".join(ROUTERBOARD_INTERFACES.keys())}'}), 400
+
+    raw_ports = data.get('ports', [22, 5022])
+    if isinstance(raw_ports, str):
+        raw_ports = [int(p.strip()) for p in raw_ports.split(',') if p.strip().isdigit()]
+    ssh_ports = [int(p) for p in raw_ports if isinstance(p, (int, float))]
+    if not ssh_ports:
+        ssh_ports = [22, 5022]
+
+    SSH_USERNAME = (data.get('username') or os.getenv('NEXTLINK_SSH_USERNAME', '')).strip()
+    SSH_PASSWORD = (data.get('password') or os.getenv('NEXTLINK_SSH_PASSWORD', '')).strip()
+    if not SSH_USERNAME or not SSH_PASSWORD:
+        return jsonify({'error': 'SSH credentials required'}), 400
+
+    MAX_CONCURRENT = 3
+
+    def _analyze_one(host_ip):
+        host_ip = host_ip.strip()
+        try:
+            ipaddress.IPv4Address(host_ip)
+        except ValueError:
+            return {'host': host_ip, 'success': False, 'error': 'Invalid IP address'}
+
+        # Step 1: SSH fetch
+        config_text = None
+        connected_port = None
+        for port in ssh_ports:
+            client = None
+            try:
+                client = paramiko.SSHClient()
+                client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                client.connect(
+                    hostname=host_ip, port=port,
+                    username=SSH_USERNAME, password=SSH_PASSWORD,
+                    timeout=10, banner_timeout=10, auth_timeout=10
+                )
+                stdin, stdout, stderr = client.exec_command('export', timeout=30)
+                output = stdout.read().decode('utf-8', errors='replace')
+                if output and output.strip():
+                    config_text = normalize_line_breaks(output)
+                    connected_port = port
+                    break
+            except paramiko.AuthenticationException:
+                return {'host': host_ip, 'success': False, 'error': 'Authentication failed'}
+            except Exception:
+                pass
+            finally:
+                if client:
+                    try:
+                        client.close()
+                    except Exception:
+                        pass
+
+        if not config_text:
+            return {'host': host_ip, 'success': False, 'error': 'Could not fetch config from any port'}
+
+        # Step 2: Auto-detect model, version, identity
+        current_model = 'Unknown'
+        current_version = 'Unknown'
+        identity = ''
+        ros_major = 'unknown'
+
+        m_model = re.search(r'(?m)^\s*#\s*model\s*=\s*(.+)', config_text)
+        if m_model:
+            current_model = m_model.group(1).strip()
+        m_ver = re.search(r'(?m)^\s*#.*RouterOS\s+(\S+)', config_text)
+        if m_ver:
+            current_version = m_ver.group(1).strip()
+            ros_major = 'v7' if current_version.startswith('7') else 'v6' if current_version.startswith('6') else 'unknown'
+        m_id = re.search(r'/system identity\s*\n\s*set name=(\S+)', config_text)
+        if m_id:
+            identity = m_id.group(1).strip()
+
+        # Step 3: Detect source model key for interface migration
+        source_model_key = None
+        for model_key in ROUTERBOARD_INTERFACES:
+            if model_key.lower() in current_model.lower() or current_model.lower() in model_key.lower():
+                source_model_key = model_key
+                break
+        # Fallback: try pattern matching
+        if not source_model_key:
+            digits = re.search(r'(\d{4})', current_model)
+            if digits:
+                d = digits.group(1)
+                for model_key in ROUTERBOARD_INTERFACES:
+                    if d in model_key:
+                        source_model_key = model_key
+                        break
+
+        # Step 4: Build interface migration map
+        interface_map = {}
+        migration_warnings = []
+        if source_model_key and source_model_key != target_model:
+            interface_map = build_interface_migration_map(source_model_key, target_model) or {}
+            if not interface_map:
+                migration_warnings.append(f'Could not build interface map from {source_model_key} to {target_model}')
+            # Check for port exhaustion
+            source_ports = ROUTERBOARD_INTERFACES[source_model_key].get('total_ports', 0)
+            target_ports = ROUTERBOARD_INTERFACES[target_model].get('total_ports', 0)
+            if source_ports > target_ports:
+                migration_warnings.append(f'Port count mismatch: source has {source_ports} ports, target has {target_ports}. Some ports may need reassignment.')
+        elif source_model_key == target_model:
+            migration_warnings.append('Source and target are the same model — version upgrade only')
+
+        # Step 5: Determine migration type
+        needs_version_migration = ros_major == 'v6' and target_version.startswith('7')
+        needs_device_migration = source_model_key is not None and source_model_key != target_model
+
+        migration_type = []
+        if needs_version_migration:
+            migration_type.append('v6→v7')
+        if needs_device_migration:
+            migration_type.append(f'{source_model_key}→{target_model}')
+        if not migration_type:
+            migration_type.append('config-audit')
+
+        # Step 6: Count significant config elements
+        ip_count = len(re.findall(r'\b(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?\b', config_text))
+        bridge_count = len(re.findall(r'/interface bridge\s', config_text))
+        vpls_count = len(re.findall(r'/interface vpls', config_text))
+        firewall_count = len(re.findall(r'/ip firewall', config_text))
+        ospf_found = '/routing ospf' in config_text
+        bgp_found = '/routing bgp' in config_text
+        mpls_found = '/mpls' in config_text or '/interface vpls' in config_text
+
+        return {
+            'host': host_ip,
+            'success': True,
+            'port': connected_port,
+            'identity': identity,
+            'current_model': current_model,
+            'current_version': current_version,
+            'ros_major': ros_major,
+            'target_model': target_model,
+            'target_version': target_version,
+            'migration_type': ' + '.join(migration_type),
+            'needs_version_migration': needs_version_migration,
+            'needs_device_migration': needs_device_migration,
+            'interface_map': interface_map,
+            'warnings': migration_warnings,
+            'config_lines': len(config_text.splitlines()),
+            'config_preview': '\n'.join(config_text.splitlines()[:15]),
+            'complexity': {
+                'ip_addresses': ip_count,
+                'bridges': bridge_count,
+                'vpls_tunnels': vpls_count,
+                'firewall_sections': firewall_count,
+                'ospf': ospf_found,
+                'bgp': bgp_found,
+                'mpls': mpls_found
+            }
+        }
+
+    results = []
+    with ThreadPoolExecutor(max_workers=MAX_CONCURRENT) as pool:
+        future_map = {pool.submit(_analyze_one, h): h for h in hosts}
+        for future in as_completed(future_map):
+            results.append(future.result())
+
+    # Sort back to original order
+    host_order = {h: i for i, h in enumerate(hosts)}
+    results.sort(key=lambda r: host_order.get(r['host'], 999))
+
+    success_count = sum(1 for r in results if r.get('success'))
+    return jsonify({
+        'success': True,
+        'total': len(hosts),
+        'succeeded': success_count,
+        'failed': len(hosts) - success_count,
+        'target_model': target_model,
+        'target_version': target_version,
+        'results': results
+    })
+
+
 if __name__ == '__main__':
     print("\n" + "=" * 50)
     print("NOC Config Maker - AI Backend Server")
