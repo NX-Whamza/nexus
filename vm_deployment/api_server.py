@@ -16460,6 +16460,251 @@ def bulk_migration_analyze():
     })
 
 
+@app.route('/api/bulk-compliance-scan', methods=['POST'])
+def bulk_compliance_scan():
+    """
+    Bulk compliance scanner: validate multiple configs against RFC-09-10-25.
+
+    Input modes:
+      A) {configs: [{name, config_text}, ...]}               — scan provided configs
+      B) {hosts: [...], ports: [22,5022]}                     — SSH fetch then scan
+      C) {configs: [{name, config_text}], apply_fix: true}    — scan + auto-fix
+
+    Returns per-device:
+      name, compliant, score (0-100), grade (A-F),
+      missing_items, warnings, total_checks, passed_checks,
+      checks (detailed pass/fail per check), identity, model, version
+    """
+    if not HAS_COMPLIANCE:
+        return jsonify({'error': 'Compliance reference module not available'}), 500
+
+    data = request.get_json(force=True) or {}
+    configs = data.get('configs', [])
+    hosts = data.get('hosts', [])
+    apply_fix = data.get('apply_fix', False)
+    raw_ports = data.get('ports', [22, 5022])
+
+    # Mode B: SSH fetch configs first
+    if hosts and isinstance(hosts, list) and not configs:
+        try:
+            import paramiko
+        except ImportError:
+            return jsonify({'error': 'paramiko not installed'}), 500
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        if isinstance(raw_ports, str):
+            raw_ports = [int(p.strip()) for p in raw_ports.split(',') if p.strip().isdigit()]
+        ssh_ports = [int(p) for p in raw_ports if isinstance(p, (int, float))]
+        if not ssh_ports:
+            ssh_ports = [22, 5022]
+
+        SSH_USERNAME = os.getenv('NEXTLINK_SSH_USERNAME', '').strip()
+        SSH_PASSWORD = os.getenv('NEXTLINK_SSH_PASSWORD', '').strip()
+        if not SSH_USERNAME or not SSH_PASSWORD:
+            return jsonify({'error': 'SSH credentials not configured on server'}), 400
+
+        def _fetch_one(host_ip):
+            host_ip = host_ip.strip()
+            for port in ssh_ports:
+                client = None
+                try:
+                    client = paramiko.SSHClient()
+                    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                    client.connect(hostname=host_ip, port=port,
+                                   username=SSH_USERNAME, password=SSH_PASSWORD,
+                                   timeout=10, banner_timeout=10, auth_timeout=10)
+                    stdin, stdout, stderr = client.exec_command('export', timeout=30)
+                    output = stdout.read().decode('utf-8', errors='replace')
+                    if output and output.strip():
+                        return {'name': host_ip, 'config_text': normalize_line_breaks(output), 'port': port}
+                except paramiko.AuthenticationException:
+                    return {'name': host_ip, 'config_text': None, 'error': 'Authentication failed'}
+                except Exception:
+                    pass
+                finally:
+                    if client:
+                        try: client.close()
+                        except Exception: pass
+            return {'name': host_ip, 'config_text': None, 'error': 'Could not connect'}
+
+        fetched = []
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            futures = {pool.submit(_fetch_one, h): h for h in hosts}
+            for f in as_completed(futures):
+                fetched.append(f.result())
+        # Preserve original order
+        order = {h: i for i, h in enumerate(hosts)}
+        fetched.sort(key=lambda r: order.get(r['name'], 999))
+        configs = fetched
+
+    if not configs:
+        return jsonify({'error': 'No configs or hosts provided'}), 400
+
+    # Define all compliance checks with their patterns
+    COMPLIANCE_CHECKS = [
+        {'id': 'svc_telnet',     'category': 'IP Services',    'label': 'Telnet disabled (port 5023)',      'pattern': r'telnet.*disabled=yes'},
+        {'id': 'svc_www',        'category': 'IP Services',    'label': 'HTTP disabled (port 1234)',        'pattern': r'www.*disabled=yes.*port=1234|www.*port=1234.*disabled=yes'},
+        {'id': 'svc_www_ssl',    'category': 'IP Services',    'label': 'HTTPS enabled (port 443)',         'pattern': r'www-ssl.*disabled=no.*port=443|www-ssl.*port=443.*disabled=no'},
+        {'id': 'svc_winbox',     'category': 'IP Services',    'label': 'Winbox on port 8291',              'pattern': r'winbox.*port=8291'},
+        {'id': 'svc_ssh',        'category': 'IP Services',    'label': 'SSH on port 22',                   'pattern': r'ssh.*port=22'},
+        {'id': 'dns_primary',    'category': 'DNS',            'label': 'Primary DNS (142.147.112.3)',      'pattern': r'142\.147\.112\.3'},
+        {'id': 'dns_secondary',  'category': 'DNS',            'label': 'Secondary DNS (142.147.112.19)',   'pattern': r'142\.147\.112\.19'},
+        {'id': 'fw_eoip',        'category': 'Firewall',       'label': 'EOIP-ALLOW address list',          'pattern': r'list=eoip-allow'},
+        {'id': 'fw_mgr',         'category': 'Firewall',       'label': 'managerIP address list',           'pattern': r'list=managerip'},
+        {'id': 'fw_bgp',         'category': 'Firewall',       'label': 'BGP-ALLOW address list',           'pattern': r'list=bgp-allow'},
+        {'id': 'fw_snmp',        'category': 'Firewall',       'label': 'SNMP address list',                'pattern': r'list=snmp'},
+        {'id': 'fw_input_est',   'category': 'Firewall',       'label': 'Input chain: allow est/rel',       'pattern': r'chain=input.*allow est rel|chain=input.*established'},
+        {'id': 'fw_input_drop',  'category': 'Firewall',       'label': 'Input chain: drop rule',           'pattern': r'chain=input.*drop input|chain=input.*action=drop'},
+        {'id': 'fw_raw_udp',     'category': 'Firewall',       'label': 'Raw: drop bad UDP port=0',        'pattern': r'chain=prerouting.*drop bad udp|port=0.*action=drop'},
+        {'id': 'fw_udp_timeout', 'category': 'Firewall',       'label': 'UDP timeout = 30s',                'pattern': r'udp-timeout=30s'},
+        {'id': 'fw_sip_off',     'category': 'Firewall',       'label': 'SIP ALG disabled',                 'pattern': r'sip.*disabled=yes'},
+        {'id': 'sys_tz',         'category': 'System',         'label': 'Timezone America/Chicago',         'pattern': r'america/chicago'},
+        {'id': 'sys_ntp',        'category': 'System',         'label': 'NTP: ntp-pool.nxlink.com',         'pattern': r'ntp-pool\.nxlink\.com'},
+        {'id': 'sys_snmp',       'category': 'SNMP',           'label': 'SNMP community configured',        'pattern': r'name=fbz1yydphf|name=FBZ1yYdphf'},
+        {'id': 'sys_watchdog',   'category': 'System',         'label': 'Watchdog timer enabled',           'pattern': r'watchdog-timer=yes'},
+        {'id': 'sys_autoupg',    'category': 'System',         'label': 'Auto-upgrade enabled',             'pattern': r'auto-upgrade=yes'},
+        {'id': 'log_syslog',     'category': 'Logging',        'label': 'Remote syslog (142.147.116.215)',  'pattern': r'142\.147\.116\.215'},
+    ]
+
+    SOFT_CHECKS = [
+        {'id': 'aaa_radius',     'category': 'AAA',            'label': 'User AAA: use-radius=no',          'pattern': r'use-radius=no'},
+        {'id': 'dhcp_opt43',     'category': 'DHCP',           'label': 'DHCP Option 43 (uss.nxlink.com)',  'pattern': r'uss\.nxlink\.com'},
+        {'id': 'radius_primary', 'category': 'RADIUS',         'label': 'RADIUS server 142.147.112.2',     'pattern': r'142\.147\.112\.2[^0-9]'},
+        {'id': 'radius_secondary','category': 'RADIUS',        'label': 'RADIUS server 142.147.112.18',    'pattern': r'142\.147\.112\.18[^0-9]'},
+    ]
+
+    total_hard = len(COMPLIANCE_CHECKS)
+    total_soft = len(SOFT_CHECKS)
+    total_all = total_hard + total_soft
+
+    results = []
+    grade_counts = {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0}
+
+    for entry in configs:
+        name = entry.get('name', 'Unknown')
+        config_text = entry.get('config_text', '')
+        fetch_error = entry.get('error', '')
+
+        if not config_text:
+            results.append({
+                'name': name, 'success': False, 'error': fetch_error or 'No config text',
+                'compliant': False, 'score': 0, 'grade': 'F'
+            })
+            grade_counts['F'] += 1
+            continue
+
+        config_lower = config_text.lower()
+
+        # Auto-detect identity, model, version
+        identity = ''
+        model = ''
+        version = ''
+        m_id = re.search(r'/system identity\s*\n\s*set name=(\S+)', config_text)
+        if m_id: identity = m_id.group(1).strip()
+        m_model = re.search(r'(?m)^\s*#\s*model\s*=\s*(.+)', config_text)
+        if m_model: model = m_model.group(1).strip()
+        m_ver = re.search(r'(?m)^\s*#.*RouterOS\s+(\S+)', config_text)
+        if m_ver: version = m_ver.group(1).strip()
+
+        # Run detailed checks
+        checks = []
+        hard_passed = 0
+        soft_passed = 0
+
+        for chk in COMPLIANCE_CHECKS:
+            passed = bool(re.search(chk['pattern'], config_lower if chk['id'] not in ('sys_snmp',) else config_text))
+            if passed: hard_passed += 1
+            checks.append({
+                'id': chk['id'], 'category': chk['category'], 'label': chk['label'],
+                'severity': 'hard', 'passed': passed
+            })
+
+        for chk in SOFT_CHECKS:
+            passed = bool(re.search(chk['pattern'], config_lower if chk['id'] not in ('radius_primary','radius_secondary') else config_text))
+            if passed: soft_passed += 1
+            checks.append({
+                'id': chk['id'], 'category': chk['category'], 'label': chk['label'],
+                'severity': 'soft', 'passed': passed
+            })
+
+        # Score: hard checks = 80% weight, soft checks = 20% weight
+        hard_pct = (hard_passed / total_hard * 100) if total_hard else 100
+        soft_pct = (soft_passed / total_soft * 100) if total_soft else 100
+        score = round(hard_pct * 0.8 + soft_pct * 0.2)
+
+        grade = 'A' if score >= 90 else 'B' if score >= 75 else 'C' if score >= 60 else 'D' if score >= 40 else 'F'
+        grade_counts[grade] += 1
+
+        # Also run official validate_compliance for missing_items/warnings
+        try:
+            official = validate_compliance(config_text)
+            missing_items = official.get('missing_items', [])
+            warnings = official.get('warnings', [])
+            compliant = official.get('compliant', False)
+        except Exception:
+            missing_items = []
+            warnings = []
+            compliant = score == 100
+
+        result = {
+            'name': name,
+            'success': True,
+            'identity': identity,
+            'model': model,
+            'version': version,
+            'compliant': compliant,
+            'score': score,
+            'grade': grade,
+            'total_checks': total_all,
+            'hard_passed': hard_passed,
+            'hard_total': total_hard,
+            'soft_passed': soft_passed,
+            'soft_total': total_soft,
+            'checks': checks,
+            'missing_items': missing_items,
+            'warnings': warnings,
+            'config_lines': len(config_text.splitlines())
+        }
+
+        # Apply fix if requested
+        if apply_fix and not compliant:
+            try:
+                loopback_ip = ''
+                lm = re.search(r'/ip address\s+add address=([0-9.]+/[0-9]+)\s+interface=loop0', config_text, re.IGNORECASE)
+                if lm: loopback_ip = lm.group(1)
+                if not loopback_ip: loopback_ip = '10.0.0.1/32'
+                _lip = loopback_ip.split('/')[0]
+                compliance_blocks = _get_dynamic_compliance_blocks(loopback_ip)
+                fixed_config = inject_compliance_blocks(config_text, compliance_blocks, loopback_ip=_lip)
+                recheck = validate_compliance(fixed_config)
+                result['fixed_config'] = fixed_config
+                result['fixed_compliant'] = recheck.get('compliant', False)
+                result['fixed_score'] = 100 if recheck.get('compliant') else score + 10
+                result['fixed_missing'] = recheck.get('missing_items', [])
+            except Exception as e:
+                result['fix_error'] = str(e)
+
+        results.append(result)
+
+    total = len(results)
+    succeeded = sum(1 for r in results if r.get('success'))
+    compliant_count = sum(1 for r in results if r.get('compliant'))
+    avg_score = round(sum(r.get('score', 0) for r in results) / total) if total else 0
+    fleet_grade = 'A' if avg_score >= 90 else 'B' if avg_score >= 75 else 'C' if avg_score >= 60 else 'D' if avg_score >= 40 else 'F'
+
+    return jsonify({
+        'success': True,
+        'total': total,
+        'succeeded': succeeded,
+        'compliant_count': compliant_count,
+        'non_compliant_count': total - compliant_count,
+        'average_score': avg_score,
+        'fleet_grade': fleet_grade,
+        'grade_distribution': grade_counts,
+        'results': results
+    })
+
+
 @app.route('/api/bulk-migration-execute', methods=['POST'])
 def bulk_migration_execute():
     """

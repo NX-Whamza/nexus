@@ -3152,6 +3152,22 @@
         .bulk-complexity-badge.high{background:rgba(231,76,60,.15);color:#e74c3c}
 
         /* ═══════════════════════════════════════════════════
+           COMPLIANCE SCANNER
+           ═══════════════════════════════════════════════════ */
+        .comp-grade{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;font-weight:800;font-size:14px;color:#fff}
+        .comp-grade.A{background:#27ae60}
+        .comp-grade.B{background:#2ecc71}
+        .comp-grade.C{background:#f39c12}
+        .comp-grade.D{background:#e67e22}
+        .comp-grade.F{background:#e74c3c}
+        .comp-score-bar{height:6px;border-radius:3px;background:var(--border-color);overflow:hidden;flex:1}
+        .comp-score-fill{height:100%;border-radius:3px;transition:width .4s ease}
+        .comp-check-row{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;border-bottom:1px solid rgba(128,128,128,.1)}
+        .comp-check-row .check-icon{width:20px;text-align:center}
+        .comp-check-row .check-label{flex:1;color:var(--text-color)}
+        .comp-check-row .check-cat{font-size:10px;color:var(--text-color-secondary);background:var(--input-bg);padding:1px 6px;border-radius:8px}
+
+        /* ═══════════════════════════════════════════════════
            SCHEDULED MAINTENANCE
            ═══════════════════════════════════════════════════ */
         .maint-timeline{position:relative;padding-left:32px}
@@ -3300,6 +3316,10 @@
                         <a data-tab="maintenance">
                              Scheduled Maintenance
                             <span class="desc">Plan and track maintenance windows &amp; tasks</span>
+                        </a>
+                        <a data-tab="compliance-scanner">
+                             Compliance Scanner
+                            <span class="desc">Scan configs against RFC-09-10-25 standards</span>
                         </a>
                     </div>
                 </div>
@@ -8371,6 +8391,118 @@ show mac address-table | include &lt;mac&gt;</div>
                         <pre id="bulkMigExecPreviewCode" style="background:var(--bg-color);color:var(--text-color);border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:16px;font-size:12px;font-family:'JetBrains Mono',monospace;max-height:400px;overflow:auto;white-space:pre-wrap;word-break:break-all"></pre>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         COMPLIANCE SCANNER TAB
+         ═══════════════════════════════════════════════════════ -->
+    <div class="content-pane" id="compliance-scanner-pane">
+        <div class="container">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:20px">
+                <div>
+                    <h1 style="margin:0;color:var(--text-color);">🛡️ Compliance Scanner</h1>
+                    <p style="margin:4px 0 0;color:var(--text-color-secondary);font-size:13px">Scan device configs against <strong>RFC-09-10-25</strong> NextLink standards — 22 hard checks + 4 soft checks</p>
+                </div>
+            </div>
+
+            <!-- Input Modes -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+                <!-- Mode A: SSH Fetch -->
+                <div style="background:var(--card-bg);border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:16px">
+                    <h3 style="margin:0 0 10px;font-size:14px;color:var(--accent-color)">📡 Scan via SSH Fetch</h3>
+                    <p style="margin:0 0 8px;font-size:12px;color:var(--text-color-secondary)">Enter device IPs — configs will be fetched via SSH and scanned</p>
+                    <textarea id="compScanHosts" class="form-input" rows="4" placeholder="10.42.12.203&#10;10.42.13.101&#10;10.42.14.15" style="font-family:'JetBrains Mono',monospace;font-size:12px;width:100%;resize:vertical;margin-bottom:8px"></textarea>
+                    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+                        <label style="font-size:12px;color:var(--text-color-secondary);white-space:nowrap">SSH Ports:</label>
+                        <input type="text" id="compScanPorts" value="22, 5022" style="padding:5px 8px;background:var(--input-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:var(--radius-sm);font-size:12px;font-family:'JetBrains Mono',monospace;width:120px">
+                    </div>
+                    <button onclick="compScanSSH()" id="compScanSshBtn" style="background:var(--accent-color);color:#fff;padding:10px 20px;border:none;border-radius:var(--radius-sm);font-weight:700;cursor:pointer;font-size:13px;width:100%">📡 Fetch & Scan</button>
+                </div>
+
+                <!-- Mode B: Paste Config -->
+                <div style="background:var(--card-bg);border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:16px">
+                    <h3 style="margin:0 0 10px;font-size:14px;color:var(--accent-color)">📋 Scan Pasted Config</h3>
+                    <p style="margin:0 0 8px;font-size:12px;color:var(--text-color-secondary)">Paste a RouterOS config export to scan for compliance</p>
+                    <textarea id="compScanPaste" class="form-input" rows="4" placeholder="Paste /export output here..." style="font-family:'JetBrains Mono',monospace;font-size:11px;width:100%;resize:vertical;margin-bottom:8px"></textarea>
+                    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+                        <label style="font-size:12px;color:var(--text-color-secondary);white-space:nowrap">Device Name:</label>
+                        <input type="text" id="compScanPasteName" placeholder="e.g. RTR-VENUS" style="padding:5px 8px;background:var(--input-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:var(--radius-sm);font-size:12px;flex:1">
+                    </div>
+                    <button onclick="compScanPasteConfig()" style="background:#27ae60;color:#fff;padding:10px 20px;border:none;border-radius:var(--radius-sm);font-weight:700;cursor:pointer;font-size:13px;width:100%">🔍 Scan Config</button>
+                </div>
+            </div>
+
+            <!-- Progress -->
+            <div class="bulk-progress" id="compScanProgress" style="display:none">
+                <div class="bulk-progress-bar"><div class="bulk-progress-fill" id="compScanProgressFill"></div></div>
+                <div class="bulk-progress-text" id="compScanProgressText">Scanning...</div>
+            </div>
+
+            <!-- Fleet Dashboard -->
+            <div id="compScanDashboard" style="display:none;margin-bottom:20px">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px">
+                    <div style="background:var(--card-bg);border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:14px;text-align:center">
+                        <div style="font-size:28px;font-weight:800;color:var(--accent-color)" id="compFleetGrade">-</div>
+                        <div style="font-size:11px;color:var(--text-color-secondary)">Fleet Grade</div>
+                    </div>
+                    <div style="background:var(--card-bg);border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:14px;text-align:center">
+                        <div style="font-size:28px;font-weight:800;color:var(--text-color)" id="compFleetScore">-</div>
+                        <div style="font-size:11px;color:var(--text-color-secondary)">Avg Score</div>
+                    </div>
+                    <div style="background:var(--card-bg);border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:14px;text-align:center">
+                        <div style="font-size:28px;font-weight:800;color:#27ae60" id="compCompliantCount">-</div>
+                        <div style="font-size:11px;color:var(--text-color-secondary)">Compliant</div>
+                    </div>
+                    <div style="background:var(--card-bg);border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:14px;text-align:center">
+                        <div style="font-size:28px;font-weight:800;color:#e74c3c" id="compNonCompliantCount">-</div>
+                        <div style="font-size:11px;color:var(--text-color-secondary)">Non-Compliant</div>
+                    </div>
+                    <div style="background:var(--card-bg);border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:14px;text-align:center">
+                        <div style="font-size:28px;font-weight:800;color:var(--text-color)" id="compTotalScanned">-</div>
+                        <div style="font-size:11px;color:var(--text-color-secondary)">Total Scanned</div>
+                    </div>
+                </div>
+
+                <!-- Grade Distribution Bar -->
+                <div style="background:var(--card-bg);border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:14px;margin-bottom:16px">
+                    <div style="font-size:12px;font-weight:700;color:var(--text-color);margin-bottom:8px">Grade Distribution</div>
+                    <div id="compGradeBar" style="display:flex;height:28px;border-radius:4px;overflow:hidden;font-size:11px;font-weight:700;color:#fff"></div>
+                    <div id="compGradeLegend" style="display:flex;gap:16px;margin-top:6px;font-size:11px;color:var(--text-color-secondary)"></div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div style="display:flex;gap:8px;margin-bottom:12px">
+                    <button onclick="compScanFixAll()" id="compFixAllBtn" style="background:#e67e22;color:#fff;padding:8px 18px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:13px;font-weight:700">🔧 Fix All Non-Compliant</button>
+                    <button onclick="compScanExport()" style="background:#27ae60;color:#fff;padding:8px 18px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:600">📄 Export Report</button>
+                </div>
+            </div>
+
+            <!-- Results Table -->
+            <div id="compScanResults" style="display:none">
+                <div class="bulk-table-wrap" style="max-height:50vh;overflow-y:auto">
+                    <table class="bulk-table">
+                        <thead><tr>
+                            <th>#</th><th>Device</th><th>Identity</th><th>Model</th><th>Version</th>
+                            <th>Score</th><th>Grade</th><th>Hard Checks</th><th>Soft Checks</th>
+                            <th>Status</th><th>Actions</th>
+                        </tr></thead>
+                        <tbody id="compScanTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Detail Panel -->
+            <div id="compScanDetail" style="display:none;margin-top:16px;background:var(--input-bg);border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:16px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                    <span style="font-size:14px;font-weight:700;color:var(--text-color)" id="compScanDetailTitle">Compliance Details</span>
+                    <div style="display:flex;gap:8px">
+                        <button onclick="compScanFixOne()" id="compFixOneBtn" style="background:#e67e22;color:#fff;border:none;padding:6px 14px;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:600;display:none">🔧 Apply Compliance Fix</button>
+                        <button onclick="document.getElementById('compScanDetail').style.display='none'" style="background:var(--card-bg);color:var(--text-color);border:1px solid var(--border-color);padding:4px 12px;border-radius:var(--radius-sm);cursor:pointer;font-size:12px">Close</button>
+                    </div>
+                </div>
+                <div id="compScanDetailContent" style="font-size:13px;color:var(--text-color)"></div>
             </div>
         </div>
     </div>
@@ -27956,6 +28088,7 @@ Ready for translation!`);
             { cat: 'Power Tools', icon: '', label: 'Config Diff Viewer', desc: 'Side-by-side config comparison', action: () => window.navigateToTab('config-diff'), shortcut: '' },
             { cat: 'Power Tools', icon: '', label: 'Bulk Operations Center', desc: 'Generate, fetch & migrate at scale', action: () => window.navigateToTab('bulk-config') },
             { cat: 'Power Tools', icon: '', label: 'Scheduled Maintenance', desc: 'Plan maintenance windows', action: () => window.navigateToTab('maintenance') },
+            { cat: 'Power Tools', icon: '', label: 'Compliance Scanner', desc: 'RFC-09-10-25 bulk compliance audit', action: () => window.navigateToTab('compliance-scanner') },
             // Actions
             { cat: 'Actions', icon: '', label: 'Settings', desc: 'Theme, font size, password', action: () => window.openSettingsModal && window.openSettingsModal() },
             { cat: 'Actions', icon: '', label: 'Submit Feedback', desc: 'Send feedback or bug report', action: () => window.openFeedbackModal && window.openFeedbackModal() },
@@ -29099,7 +29232,335 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
         };
 
         /* ──────────────────────────────────────────────────
-           5. SCHEDULED MAINTENANCE
+           5. COMPLIANCE SCANNER
+           ────────────────────────────────────────────────── */
+        let compScanResults = [];
+        let compScanDetailIdx = -1;
+
+        const GRADE_COLORS = { A: '#27ae60', B: '#2ecc71', C: '#f39c12', D: '#e67e22', F: '#e74c3c' };
+
+        // ── SSH Fetch + Scan ──
+        window.compScanSSH = async function () {
+            const raw = document.getElementById('compScanHosts').value.trim();
+            if (!raw) { nocToast('Enter at least one device IP', 'warning'); return; }
+            const hosts = raw.split(/[\n,]+/).map(h => h.trim()).filter(h => h);
+            if (!hosts.length) { nocToast('No valid IPs', 'warning'); return; }
+
+            const portsRaw = document.getElementById('compScanPorts').value;
+            const ports = portsRaw.split(',').map(p => parseInt(p.trim())).filter(p => p > 0);
+
+            const btn = document.getElementById('compScanSshBtn');
+            btn.disabled = true; btn.textContent = '⏳ Scanning...';
+            compShowProgress(`Fetching & scanning ${hosts.length} devices...`);
+
+            try {
+                const apiBase = (typeof resolveApiBase === 'function') ? resolveApiBase() : '/api';
+                const resp = await fetch(apiBase + '/bulk-compliance-scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('auth_token') || '') },
+                    body: JSON.stringify({ hosts, ports })
+                });
+                const data = await resp.json();
+                if (data.error) { nocToast(data.error, 'error'); btn.disabled = false; btn.textContent = '📡 Fetch & Scan'; return; }
+                compScanResults = data.results || [];
+                compRenderDashboard(data);
+                compRenderTable();
+                nocToast(`Compliance scan: ${data.compliant_count}/${data.total} compliant (Grade ${data.fleet_grade})`, data.fleet_grade === 'A' ? 'success' : 'warning');
+            } catch (err) {
+                nocToast('Scan failed: ' + err.message, 'error');
+            }
+            btn.disabled = false; btn.textContent = '📡 Fetch & Scan';
+        };
+
+        // ── Paste Config Scan ──
+        window.compScanPasteConfig = async function () {
+            const config = document.getElementById('compScanPaste').value.trim();
+            if (!config) { nocToast('Paste a config first', 'warning'); return; }
+            const name = document.getElementById('compScanPasteName').value.trim() || 'Pasted Config';
+
+            compShowProgress('Scanning config...');
+            try {
+                const apiBase = (typeof resolveApiBase === 'function') ? resolveApiBase() : '/api';
+                const resp = await fetch(apiBase + '/bulk-compliance-scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('auth_token') || '') },
+                    body: JSON.stringify({ configs: [{ name, config_text: config }] })
+                });
+                const data = await resp.json();
+                if (data.error) { nocToast(data.error, 'error'); return; }
+                compScanResults = data.results || [];
+                compRenderDashboard(data);
+                compRenderTable();
+                const r = compScanResults[0];
+                if (r) nocToast(`Compliance: Grade ${r.grade} (${r.score}%) — ${r.compliant ? 'COMPLIANT' : r.missing_items.length + ' issues'}`, r.compliant ? 'success' : 'warning');
+            } catch (err) {
+                nocToast('Scan failed: ' + err.message, 'error');
+            }
+        };
+
+        function compShowProgress(text) {
+            const prog = document.getElementById('compScanProgress');
+            prog.style.display = 'block';
+            document.getElementById('compScanProgressFill').style.width = '30%';
+            document.getElementById('compScanProgressText').textContent = text;
+        }
+
+        function compRenderDashboard(data) {
+            document.getElementById('compScanProgressFill').style.width = '100%';
+            document.getElementById('compScanProgressText').textContent = `Done — ${data.total} scanned, fleet grade: ${data.fleet_grade}`;
+            document.getElementById('compScanDashboard').style.display = '';
+            document.getElementById('compScanResults').style.display = '';
+
+            document.getElementById('compFleetGrade').textContent = data.fleet_grade;
+            document.getElementById('compFleetGrade').style.color = GRADE_COLORS[data.fleet_grade] || 'var(--text-color)';
+            document.getElementById('compFleetScore').textContent = data.average_score + '%';
+            document.getElementById('compCompliantCount').textContent = data.compliant_count;
+            document.getElementById('compNonCompliantCount').textContent = data.non_compliant_count;
+            document.getElementById('compTotalScanned').textContent = data.total;
+
+            // Grade distribution bar
+            const dist = data.grade_distribution || {};
+            const total = data.total || 1;
+            const bar = document.getElementById('compGradeBar');
+            const legend = document.getElementById('compGradeLegend');
+            let barHtml = '', legHtml = '';
+            for (const g of ['A', 'B', 'C', 'D', 'F']) {
+                const cnt = dist[g] || 0;
+                if (cnt > 0) {
+                    const pct = Math.round(cnt / total * 100);
+                    barHtml += `<div style="width:${pct}%;background:${GRADE_COLORS[g]};display:flex;align-items:center;justify-content:center;min-width:${pct > 5 ? 0 : 20}px">${g}</div>`;
+                }
+                legHtml += `<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${GRADE_COLORS[g]};margin-right:4px"></span>${g}: ${cnt}</span>`;
+            }
+            bar.innerHTML = barHtml;
+            legend.innerHTML = legHtml;
+        }
+
+        function compRenderTable() {
+            const tb = document.getElementById('compScanTableBody');
+            if (!tb) return;
+            tb.innerHTML = compScanResults.map((r, i) => {
+                if (!r.success) {
+                    return `<tr><td>${i+1}</td><td>${escHtml(r.name)}</td><td colspan="8"><span class="status-badge error">❌ ${escHtml(r.error||'Failed')}</span></td><td></td></tr>`;
+                }
+                const scoreFillColor = r.score >= 90 ? '#27ae60' : r.score >= 75 ? '#2ecc71' : r.score >= 60 ? '#f39c12' : r.score >= 40 ? '#e67e22' : '#e74c3c';
+                return `<tr>
+                    <td>${i+1}</td>
+                    <td style="font-weight:600;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r.name)}</td>
+                    <td style="font-weight:600">${escHtml(r.identity || '-')}</td>
+                    <td><code style="font-size:11px;background:var(--input-bg);padding:2px 6px;border-radius:3px">${escHtml(r.model || '-')}</code></td>
+                    <td style="font-size:12px">${escHtml(r.version || '-')}</td>
+                    <td style="min-width:100px">
+                        <div style="display:flex;align-items:center;gap:6px">
+                            <span style="font-weight:700;font-size:12px;color:${scoreFillColor}">${r.score}%</span>
+                            <div class="comp-score-bar"><div class="comp-score-fill" style="width:${r.score}%;background:${scoreFillColor}"></div></div>
+                        </div>
+                    </td>
+                    <td><span class="comp-grade ${r.grade}">${r.grade}</span></td>
+                    <td style="font-size:12px">${r.hard_passed}/${r.hard_total}</td>
+                    <td style="font-size:12px">${r.soft_passed}/${r.soft_total}</td>
+                    <td>${r.compliant
+                        ? '<span class="status-badge success">✅ Compliant</span>'
+                        : `<span class="status-badge error">❌ ${r.missing_items.length} issues</span>`}</td>
+                    <td><button onclick="compShowDetail(${i})" style="background:var(--accent-color);color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px">🔍</button></td>
+                </tr>`;
+            }).join('');
+        }
+
+        window.compShowDetail = function (idx) {
+            const r = compScanResults[idx];
+            if (!r || !r.success) return;
+            compScanDetailIdx = idx;
+
+            document.getElementById('compScanDetailTitle').textContent = `Compliance: ${r.name} (${r.identity || r.model || 'device'}) — Grade ${r.grade}`;
+            document.getElementById('compFixOneBtn').style.display = r.compliant ? 'none' : '';
+
+            // Group checks by category
+            const cats = {};
+            (r.checks || []).forEach(c => {
+                if (!cats[c.category]) cats[c.category] = [];
+                cats[c.category].push(c);
+            });
+
+            let html = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+                <div>
+                    <h4 style="margin:0 0 6px;color:var(--accent-color)">Device Info</h4>
+                    <div style="font-size:12px;line-height:1.8">
+                        <strong>Name/Host:</strong> ${escHtml(r.name)}<br>
+                        <strong>Identity:</strong> ${escHtml(r.identity || 'N/A')}<br>
+                        <strong>Model:</strong> ${escHtml(r.model || 'N/A')}<br>
+                        <strong>RouterOS:</strong> ${escHtml(r.version || 'N/A')}<br>
+                        <strong>Config Lines:</strong> ${r.config_lines || '-'}
+                    </div>
+                </div>
+                <div>
+                    <h4 style="margin:0 0 6px;color:var(--accent-color)">Score Breakdown</h4>
+                    <div style="font-size:12px;line-height:1.8">
+                        <strong>Overall:</strong> <span style="font-weight:800;color:${GRADE_COLORS[r.grade]}">${r.score}% (${r.grade})</span><br>
+                        <strong>Hard Checks:</strong> ${r.hard_passed}/${r.hard_total} passed (80% weight)<br>
+                        <strong>Soft Checks:</strong> ${r.soft_passed}/${r.soft_total} passed (20% weight)<br>
+                        <strong>Compliant:</strong> ${r.compliant ? '✅ Yes' : '❌ No — ' + r.missing_items.length + ' missing items'}
+                    </div>
+                </div>
+            </div>`;
+
+            // Check list by category
+            html += '<h4 style="margin:12px 0 8px;color:var(--accent-color)">All Checks</h4>';
+            for (const [cat, checks] of Object.entries(cats)) {
+                const catPassed = checks.filter(c => c.passed).length;
+                html += `<div style="margin-bottom:10px">
+                    <div style="font-size:11px;font-weight:700;color:var(--text-color-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${escHtml(cat)} (${catPassed}/${checks.length})</div>`;
+                for (const c of checks) {
+                    html += `<div class="comp-check-row">
+                        <span class="check-icon">${c.passed ? '✅' : '❌'}</span>
+                        <span class="check-label" style="${c.passed ? '' : 'color:#e74c3c;font-weight:600'}">${escHtml(c.label)}</span>
+                        <span class="check-cat">${c.severity === 'hard' ? 'Required' : 'Recommended'}</span>
+                    </div>`;
+                }
+                html += '</div>';
+            }
+
+            // Warnings
+            if (r.warnings && r.warnings.length) {
+                html += '<h4 style="margin:12px 0 4px;color:#f39c12">⚠️ Warnings</h4>';
+                html += '<ul style="margin:0;padding-left:20px;font-size:12px">';
+                r.warnings.forEach(w => html += `<li style="color:#f39c12">${escHtml(w)}</li>`);
+                html += '</ul>';
+            }
+
+            document.getElementById('compScanDetailContent').innerHTML = html;
+            document.getElementById('compScanDetail').style.display = '';
+        };
+
+        // ── Fix All Non-Compliant ──
+        window.compScanFixAll = async function () {
+            const nonComp = compScanResults.filter(r => r.success && !r.compliant);
+            if (!nonComp.length) { nocToast('All devices are already compliant!', 'success'); return; }
+
+            // We need to re-scan with apply_fix=true but we need the config texts
+            // Check if we have them from SSH fetch
+            const hasConfigs = nonComp.some(r => r._config_text);
+            if (!hasConfigs) {
+                nocToast('Fix requires re-fetching — use SSH mode to enable auto-fix', 'warning');
+                // Re-run SSH scan with apply_fix
+                const raw = document.getElementById('compScanHosts').value.trim();
+                if (!raw) { nocToast('No hosts to re-scan', 'warning'); return; }
+                const hosts = raw.split(/[\n,]+/).map(h => h.trim()).filter(h => h);
+                const portsRaw = document.getElementById('compScanPorts').value;
+                const ports = portsRaw.split(',').map(p => parseInt(p.trim())).filter(p => p > 0);
+
+                const btn = document.getElementById('compFixAllBtn');
+                btn.disabled = true; btn.textContent = '⏳ Fixing...';
+
+                try {
+                    const apiBase = (typeof resolveApiBase === 'function') ? resolveApiBase() : '/api';
+                    const resp = await fetch(apiBase + '/bulk-compliance-scan', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('auth_token') || '') },
+                        body: JSON.stringify({ hosts, ports, apply_fix: true })
+                    });
+                    const data = await resp.json();
+                    compScanResults = data.results || [];
+                    compRenderDashboard(data);
+                    compRenderTable();
+
+                    // Offer downloads for fixed configs
+                    const fixed = compScanResults.filter(r => r.fixed_config);
+                    if (fixed.length) {
+                        nocToast(`${fixed.length} configs fixed — click devices to download`, 'success');
+                        compOfferFixDownloads(fixed);
+                    } else {
+                        nocToast('No configs could be auto-fixed', 'warning');
+                    }
+                } catch (err) {
+                    nocToast('Fix failed: ' + err.message, 'error');
+                }
+                btn.disabled = false; btn.textContent = '🔧 Fix All Non-Compliant';
+                return;
+            }
+        };
+
+        function compOfferFixDownloads(fixed) {
+            // Add download column to results
+            fixed.forEach(r => {
+                const idx = compScanResults.indexOf(r);
+                const row = document.querySelector(`#compScanTableBody tr:nth-child(${idx + 1})`);
+                if (row) {
+                    const lastTd = row.querySelector('td:last-child');
+                    if (lastTd && !lastTd.querySelector('.comp-fix-dl')) {
+                        lastTd.innerHTML += ` <button class="comp-fix-dl" onclick="compDownloadFixed(${idx})" style="background:#27ae60;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px">📥 Fixed</button>`;
+                    }
+                }
+            });
+        }
+
+        window.compDownloadFixed = function (idx) {
+            const r = compScanResults[idx];
+            if (!r || !r.fixed_config) { nocToast('No fixed config available', 'warning'); return; }
+            const name = (r.identity || r.name || 'config').replace(/[^a-zA-Z0-9_.-]/g, '_') + '_compliant';
+            const blob = new Blob([r.fixed_config], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = name + '.rsc'; a.click();
+            URL.revokeObjectURL(url);
+        };
+
+        window.compScanFixOne = async function () {
+            if (compScanDetailIdx < 0) return;
+            const r = compScanResults[compScanDetailIdx];
+            if (!r || r.compliant) return;
+
+            // Use paste config if available, otherwise re-fetch via SSH
+            const pastedConfig = document.getElementById('compScanPaste').value.trim();
+            if (pastedConfig) {
+                try {
+                    const apiBase = (typeof resolveApiBase === 'function') ? resolveApiBase() : '/api';
+                    const resp = await fetch(apiBase + '/bulk-compliance-scan', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('auth_token') || '') },
+                        body: JSON.stringify({ configs: [{ name: r.name, config_text: pastedConfig }], apply_fix: true })
+                    });
+                    const data = await resp.json();
+                    const fixed = (data.results || [])[0];
+                    if (fixed && fixed.fixed_config) {
+                        compDownloadFixedDirect(fixed);
+                        nocToast(`Compliance fix applied — Grade ${fixed.fixed_compliant ? 'A' : fixed.grade}`, 'success');
+                    }
+                } catch (err) {
+                    nocToast('Fix failed: ' + err.message, 'error');
+                }
+            } else {
+                nocToast('Paste the config in the right panel or use SSH Fix All', 'info');
+            }
+        };
+
+        function compDownloadFixedDirect(r) {
+            const name = (r.identity || r.name || 'config').replace(/[^a-zA-Z0-9_.-]/g, '_') + '_compliant';
+            const blob = new Blob([r.fixed_config], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = name + '.rsc'; a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // ── Export Report ──
+        window.compScanExport = function () {
+            if (!compScanResults.length) { nocToast('No results to export', 'warning'); return; }
+            let csv = 'Device,Identity,Model,Version,Score,Grade,Hard Passed,Hard Total,Soft Passed,Soft Total,Compliant,Missing Items,Warnings\n';
+            compScanResults.forEach(r => {
+                if (!r.success) {
+                    csv += `${r.name},,,,0,F,,,,,"FAILED","${escHtml(r.error||'')}",\n`;
+                    return;
+                }
+                csv += `${r.name},${r.identity||''},${r.model||''},${r.version||''},${r.score},${r.grade},${r.hard_passed},${r.hard_total},${r.soft_passed},${r.soft_total},${r.compliant},"${(r.missing_items||[]).join('; ')}","${(r.warnings||[]).join('; ')}"\n`;
+            });
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = 'compliance_report_' + new Date().toISOString().slice(0, 10) + '.csv'; a.click();
+            URL.revokeObjectURL(url);
+            nocToast('Compliance report exported', 'success');
+        };
+
+        /* ──────────────────────────────────────────────────
+           6. SCHEDULED MAINTENANCE
            ────────────────────────────────────────────────── */
         const MAINT_KEY = 'noc_maintenance_windows';
         let maintWindows = [];
