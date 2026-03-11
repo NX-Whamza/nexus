@@ -14734,6 +14734,7 @@ show mac address-table | include &lt;mac&gt;</div>
                 if (v.includes('ccr1036') || v.includes('mt1036')) return 'ccr1036';
                 if (v.includes('ccr1072') || v.includes('mt1072')) return 'ccr1072';
                 if (v.includes('ccr2004') || v.includes('mt2004')) return 'ccr2004';
+                if (v.includes('ccr2116')) return 'ccr2116';
                 if (v.includes('ccr2216') || v.includes('mt2216')) return 'ccr2216';
                 if (v.includes('rb1009') || v.includes('mt1009')) return 'rb1009';
                 if (v.includes('rb5009')) return 'rb5009';
@@ -15782,8 +15783,11 @@ show mac address-table | include &lt;mac&gt;</div>
                 const normalized = normalizeRouterModelToLegacy(targetDevice);
                 const map = {
                     rb1009: 'MT1009',
+                    rb5009: 'MT1009',   // RB5009 uses same template as RB1009 (8 ether + 1 SFP+)
+                    rb2011: 'MT1009',   // RB2011 uses same template as RB1009 (10 ether + 1 SFP)
                     ccr1036: 'MT1036',
                     ccr1072: 'MT1072',
+                    ccr2116: 'MT1036',  // CCR2116 uses same template as CCR1036 (12 ether + 4 SFP+)
                     ccr2004: 'MT2004',
                     ccr2216: 'MT2216'
                 };
@@ -28670,7 +28674,7 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
             if (configType === 'non-mpls') {
                 div.innerHTML = `
                     <input type="text" placeholder="Site Name" data-field="site_name">
-                    <select data-field="model"><option value="RB5009">RB5009</option><option value="CCR2004">CCR2004</option><option value="CCR2216">CCR2216</option><option value="CCR1036">CCR1036</option></select>
+                    <select data-field="model"><option value="RB5009">RB5009</option><option value="CCR2004">CCR2004</option><option value="CCR2216">CCR2216</option><option value="CCR2116">CCR2116</option><option value="CCR1036">CCR1036</option><option value="CCR1072">CCR1072</option><option value="RB1009">RB1009</option><option value="RB2011">RB2011</option></select>
                     <input type="text" placeholder="Loopback IP/32" data-field="loopback_ip">
                     <input type="text" placeholder="Public CIDR" data-field="public_cidr">
                     <input type="text" placeholder="BH CIDR" data-field="bh_cidr">
@@ -28679,7 +28683,7 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
                 div.style.gridTemplateColumns = '1fr 120px 60px 150px 90px 40px';
                 div.innerHTML = `
                     <input type="text" placeholder="Tower Name" data-field="tower_name">
-                    <select data-field="router_type"><option value="MT2004">CCR2004</option><option value="MT2216">CCR2216</option><option value="MT1036">CCR1036</option><option value="MT1072">CCR1072</option></select>
+                    <select data-field="router_type"><option value="MT2004">CCR2004</option><option value="MT2216">CCR2216</option><option value="MT1036">CCR1036</option><option value="MT1072">CCR1072</option><option value="MT1009">RB5009</option><option value="MT1009">RB1009</option></select>
                     <input type="text" placeholder="TX" data-field="state_code" maxlength="2" style="text-transform:uppercase">
                     <input type="text" placeholder="Loopback /32" data-field="loopback_subnet">
                     <input type="text" placeholder="ASN" data-field="asn" value="64700">
