@@ -8624,22 +8624,19 @@ def gen_enterprise_non_mpls():
                       f"add address-pool=private interface=nat-bridge lease-time=1h name=nat-server\n")
         
         # DHCP Server Network (tab-specific configuration)
+        # NOTE: dhcp-option-set=optset is NOT included in add commands because
+        # optset is defined later by the compliance section. Instead, we add
+        # set commands at the end that will apply optset after compliance creates it.
         dhcp_net_block = "/ip dhcp-server network\n"
         # Public DHCP network
         pub_gateway = pub_router_ip
-        # Add dhcp-option-set=optset if address doesn't start with "10."
-        pub_dhcp_optset = "" if pub_network.startswith("10.") else " dhcp-option-set=optset"
-        dhcp_net_block += f"add address={pub_network}/{pub['prefix']} dns-server={dns1},{dns2} gateway={pub_gateway}{pub_dhcp_optset}\n"
+        dhcp_net_block += f"add address={pub_network}/{pub['prefix']} dns-server={dns1},{dns2} gateway={pub_gateway}\n"
         # Private DHCP network
         if private_cidr and private_gateway:
-            # Add dhcp-option-set=optset if address doesn't start with "10."
-            private_dhcp_optset = "" if private_network.startswith("10.") else " dhcp-option-set=optset"
-            dhcp_net_block += f"add address={private_network}/{private_parts[1]} comment=PRIVATES dns-server={dns1},{dns2} gateway={private_gateway}{private_dhcp_optset}\n"
+            dhcp_net_block += f"add address={private_network}/{private_parts[1]} comment=PRIVATES dns-server={dns1},{dns2} gateway={private_gateway}\n"
         else:
             private_base = pub['first_host'].rsplit('.', 1)[0]
-            # Add dhcp-option-set=optset if address doesn't start with "10."
-            private_dhcp_optset = "" if private_base.startswith("10.") else " dhcp-option-set=optset"
-            dhcp_net_block += f"add address={private_base}.0/24 comment=PRIVATES dns-server={dns1},{dns2} gateway={private_base}.1{private_dhcp_optset}\n"
+            dhcp_net_block += f"add address={private_base}.0/24 comment=PRIVATES dns-server={dns1},{dns2} gateway={private_base}.1\n"
         blocks.append(dhcp_net_block)
         
         # Firewall NAT (tab-specific rules - NTP, private NAT)
@@ -8718,6 +8715,22 @@ def gen_enterprise_non_mpls():
         
         # Normalize and deduplicate configuration before returning
         cfg = normalize_config(cfg)
+        
+        # Apply dhcp-option-set=optset to non-10.x DHCP networks
+        # Must come AFTER normalize_config (which groups sections) and AFTER
+        # compliance creates optset. These set commands go at the very end
+        # so optset already exists when RouterOS processes them.
+        dhcp_optset_suffix = ""
+        if not pub_network.startswith("10."):
+            dhcp_optset_suffix += f'\n/ip dhcp-server network set [find where address="{pub_network}/{pub["prefix"]}"] dhcp-option-set=optset'
+        if private_cidr and private_gateway and not private_network.startswith("10."):
+            dhcp_optset_suffix += f'\n/ip dhcp-server network set [find where address="{private_network}/{private_parts[1]}"] dhcp-option-set=optset'
+        elif not private_cidr and not pub['first_host'].rsplit(".", 1)[0].startswith("10."):
+            _priv_base = pub['first_host'].rsplit('.', 1)[0]
+            dhcp_optset_suffix += f'\n/ip dhcp-server network set [find where address="{_priv_base}.0/24"] dhcp-option-set=optset'
+        if dhcp_optset_suffix:
+            cfg = cfg.rstrip() + "\n" + dhcp_optset_suffix.strip() + "\n"
+        
         return jsonify({'success': True, 'config': cfg, 'device': device, 'version': target_version})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 400
