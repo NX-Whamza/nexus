@@ -12868,6 +12868,27 @@ def infrastructure_config():
         },
     })
 
+@app.route('/api/feedback/my-status', methods=['GET'])
+def get_my_feedback_status():
+    """Get feedback status for a given user (by name). Returns their recent submissions with current status."""
+    try:
+        name = request.args.get('name', '').strip()
+        if not name:
+            return jsonify([])
+        feedback_db = init_feedback_db()
+        conn = sqlite3.connect(str(feedback_db))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute(
+            'SELECT id, subject, status, admin_notes, timestamp FROM feedback WHERE name = ? ORDER BY id DESC LIMIT 20',
+            (name,)
+        )
+        rows = [dict(r) for r in cursor.fetchall()]
+        conn.close()
+        return jsonify(rows)
+    except Exception as e:
+        return jsonify([])
+
 @app.route('/api/admin/feedback', methods=['GET'])
 @require_auth
 def get_feedback():
