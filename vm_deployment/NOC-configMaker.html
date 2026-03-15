@@ -215,6 +215,37 @@
             --shadow-lg: 0 8px 30px rgba(0,0,0,0.6);
         }
 
+        :root[data-theme="infara"] {
+            --bg-color: #0b0f1f;
+            --text-color: #eef2ff;
+            --text-color-secondary: #c6cedf;
+            --text-muted: #8b96b2;
+            --container-bg: #0f142a;
+            --border-color: #1f2a44;
+            --input-bg: #101728;
+            --button-bg: #8b5cf6;
+            --button-hover: #7c3aed;
+            --button-primary: #8b5cf6;
+            --accent-color: #8b5cf6;
+            --output-bg: #0a0e1c;
+            --sidebar-bg: #0b0f1f;
+            --sidebar-active: #8b5cf6;
+            --sidebar-hover: #141b34;
+            --card-bg: #0f142a;
+            --panel-bg: #0f142a;
+            --shadow-sm: 0 1px 3px rgba(2,6,20,0.4);
+            --shadow-md: 0 4px 16px rgba(2,6,20,0.5);
+            --shadow-lg: 0 10px 24px rgba(2,6,20,0.45);
+        }
+
+        /* ========== SIDEBAR LAYOUT VARIABLES ========== */
+        :root {
+            --sidebar-collapsed: 54px;
+            --sidebar-expanded: 240px;
+            --sidebar-current: var(--sidebar-collapsed);
+            --sidebar-transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -228,8 +259,190 @@
             color: var(--text-color);
             margin: 0;
             padding: 0;
-            transition: all 0.3s ease;
+            transition: background-color 0.3s ease, color 0.3s ease;
             overflow-x: hidden;
+        }
+
+        /* ========== SIDEBAR STYLES ========== */
+        .app-sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: var(--sidebar-current);
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            transition: width var(--sidebar-transition);
+            overflow: hidden;
+        }
+        .app-sidebar:hover,
+        .app-sidebar.expanded {
+            --sidebar-current: var(--sidebar-expanded);
+        }
+
+        .sidebar-logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 13px;
+            min-height: 54px;
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+        .sidebar-logo-icon {
+            width: 28px; height: 28px; min-width: 28px;
+            background: linear-gradient(135deg, var(--accent-color) 0%, var(--button-hover) 100%);
+            border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; color: #fff; font-weight: bold;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+        }
+        .sidebar-logo-text {
+            opacity: 0;
+            transform: translateX(-8px);
+            transition: opacity 0.2s ease 0.05s, transform 0.2s ease 0.05s;
+            font-size: 12px; font-weight: 700; color: var(--accent-color);
+            text-transform: uppercase; letter-spacing: 0.5px;
+            line-height: 1.3;
+        }
+        .sidebar-logo-text .sub { display: block; font-size: 9px; font-weight: 400; color: var(--text-muted); letter-spacing: 0; text-transform: none; }
+        .app-sidebar:hover .sidebar-logo-text,
+        .app-sidebar.expanded .sidebar-logo-text { opacity: 1; transform: translateX(0); }
+
+        .sidebar-scroll {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 8px 0;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border-color) transparent;
+        }
+        .sidebar-scroll::-webkit-scrollbar { width: 4px; }
+        .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+        .sidebar-scroll::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
+
+        .sidebar-section-label {
+            padding: 16px 16px 6px;
+            font-size: 9px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 1px;
+            color: var(--text-muted);
+            opacity: 0;
+            transition: opacity 0.2s ease 0.05s;
+            white-space: nowrap;
+            overflow: hidden;
+        }
+        .app-sidebar:hover .sidebar-section-label,
+        .app-sidebar.expanded .sidebar-section-label { opacity: 1; }
+
+        .sb-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 0 13px;
+            height: 40px;
+            cursor: pointer;
+            color: var(--text-color-secondary);
+            font-size: 12px;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            transition: background 0.15s ease, color 0.15s ease;
+            border-left: 3px solid transparent;
+            text-decoration: none;
+            position: relative;
+        }
+        .sb-item:hover {
+            background: var(--sidebar-hover);
+            color: var(--text-color);
+        }
+        .sb-item.active {
+            background: rgba(139,92,246,0.12);
+            color: var(--accent-color);
+            border-left-color: var(--accent-color);
+            font-weight: 600;
+        }
+        .sb-item-icon {
+            width: 28px; min-width: 28px; height: 28px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 15px;
+            border-radius: 6px;
+            transition: background 0.15s ease;
+        }
+        .sb-item:hover .sb-item-icon { background: rgba(255,255,255,0.05); }
+        .sb-item.active .sb-item-icon { background: rgba(139,92,246,0.15); }
+
+        .sb-item-label {
+            opacity: 0;
+            transform: translateX(-6px);
+            transition: opacity 0.15s ease 0.03s, transform 0.15s ease 0.03s;
+            flex: 1;
+        }
+        .app-sidebar:hover .sb-item-label,
+        .app-sidebar.expanded .sb-item-label { opacity: 1; transform: translateX(0); }
+
+        .sb-item-arrow {
+            opacity: 0;
+            font-size: 10px;
+            color: var(--text-muted);
+            transition: opacity 0.15s ease 0.03s, transform 0.25s ease;
+            margin-left: auto;
+        }
+        .app-sidebar:hover .sb-item-arrow,
+        .app-sidebar.expanded .sb-item-arrow { opacity: 1; }
+        .sb-group.open > .sb-item-header .sb-item-arrow { transform: rotate(90deg); }
+
+        .sb-group-children {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .sb-group.open .sb-group-children {
+            max-height: 500px;
+        }
+        .sb-group-children .sb-item {
+            padding-left: 26px;
+            height: 34px;
+            font-size: 11.5px;
+        }
+        .sb-group-children .sb-item-icon {
+            width: 22px; min-width: 22px; height: 22px;
+            font-size: 11px;
+        }
+
+        /* Sidebar bottom section */
+        .sidebar-bottom {
+            border-top: 1px solid var(--border-color);
+            padding: 6px 0;
+            flex-shrink: 0;
+        }
+
+        /* Tooltip for collapsed sidebar */
+        .sb-item[data-tooltip]:not(.app-sidebar:hover .sb-item)::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            left: calc(var(--sidebar-collapsed) + 8px);
+            top: 50%;
+            transform: translateY(-50%);
+            background: var(--container-bg);
+            color: var(--text-color);
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            white-space: nowrap;
+            box-shadow: var(--shadow-md);
+            border: 1px solid var(--border-color);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.15s ease;
+            z-index: 1001;
+        }
+        .app-sidebar:not(:hover) .sb-item:hover[data-tooltip]::after {
+            opacity: 1;
         }
 
         /* ========== UTILITY CLASSES ========== */
@@ -294,25 +507,41 @@
 
         .main-container {
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
             min-height: 100vh;
         }
 
-        /* Header Navigation */
-        .top-header {
+        .app-body {
+            margin-left: var(--sidebar-collapsed);
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            transition: margin-left var(--sidebar-transition);
+        }
+        .app-sidebar:hover ~ .app-body,
+        .app-sidebar.expanded ~ .app-body {
+            margin-left: var(--sidebar-expanded);
+        }
+
+        /* Top bar (compact, for search/user/settings only) */
+        .top-bar {
             background: var(--sidebar-bg);
-            color: white;
-            padding: 0;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-            position: sticky;
-            top: 0;
-            z-index: 1000;
+            border-bottom: 1px solid var(--border-color);
             display: flex;
             align-items: center;
-            justify-content: space-between;
+            justify-content: flex-end;
             min-height: 42px;
-            height: auto;
-            border-bottom: 1px solid rgba(255,255,255,0.06);
+            padding: 0 16px;
+            gap: 8px;
+            position: sticky;
+            top: 0;
+            z-index: 999;
+        }
+
+        /* Header Navigation - HIDDEN (replaced by sidebar) */
+        .top-header {
+            display: none !important;
         }
 
         .header-logo {
@@ -3201,147 +3430,201 @@
 
 <body>
     <div class="main-container">
-        <!-- Header Navigation -->
-        <header class="top-header">
-            <div class="header-logo">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <div
-                        style="width: 28px; height: 28px; background: linear-gradient(135deg, #e67e22 0%, #d35400 100%); border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(230, 126, 34, 0.3);">
-                        <span style="font-size: 16px; color: white; font-weight: bold;"></span>
+        <!-- Sidebar Navigation -->
+        <aside class="app-sidebar" id="appSidebar">
+            <div class="sidebar-logo">
+                <div class="sidebar-logo-icon">N</div>
+                <div class="sidebar-logo-text">NOC Config Suite<span class="sub">Network Operations Center</span></div>
+            </div>
+            <div class="sidebar-scroll">
+                <div class="sidebar-section-label">Main</div>
+                <div class="sb-item active" data-sb-tab="home" data-tooltip="Home">
+                    <span class="sb-item-icon">&#127968;</span>
+                    <span class="sb-item-label">Home</span>
+                </div>
+
+                <!-- MikroTik Config group -->
+                <div class="sb-group" data-sb-group="mikrotik">
+                    <div class="sb-item sb-item-header" data-tooltip="MikroTik Config">
+                        <span class="sb-item-icon">&#9881;</span>
+                        <span class="sb-item-label">MikroTik Config</span>
+                        <span class="sb-item-arrow">&#9654;</span>
                     </div>
-                    <div>
-                        <div style="font-size: 13px; font-weight: bold; color: var(--sidebar-active);">NOC OPERATIONS CONFIG SUITE
+                    <div class="sb-group-children">
+                        <div class="sb-item" data-sb-tab="tower">
+                            <span class="sb-item-icon">&#128225;</span>
+                            <span class="sb-item-label">Config Generator</span>
                         </div>
-                        <span class="subtitle">Network Operations Center Tool</span>
+                        <div class="sb-item" data-sb-tab="enterprise">
+                            <span class="sb-item-icon">&#127970;</span>
+                            <span class="sb-item-label">Non-MPLS Enterprise</span>
+                        </div>
+                        <div class="sb-item" data-sb-tab="enterprise-mpls">
+                            <span class="sb-item-icon">&#128200;</span>
+                            <span class="sb-item-label">MPLS Enterprise</span>
+                        </div>
+                        <div class="sb-item" data-sb-tab="tarana">
+                            <span class="sb-item-icon">&#128752;</span>
+                            <span class="sb-item-label">Tarana Sectors</span>
+                        </div>
+                        <div class="sb-item" data-sb-tab="enterprise-feeding">
+                            <span class="sb-item-icon">&#128268;</span>
+                            <span class="sb-item-label">Enterprise Feeding</span>
+                        </div>
+                        <div class="sb-item" data-sb-tab="ccr2004">
+                            <span class="sb-item-icon">&#128246;</span>
+                            <span class="sb-item-label">6GHz Switch Port</span>
+                        </div>
+                        <div class="sb-item" data-sb-tab="switch-maker">
+                            <span class="sb-item-icon">&#128421;</span>
+                            <span class="sb-item-label">Switch Maker</span>
+                        </div>
                     </div>
+                </div>
+
+                <!-- Field Config Studio group -->
+                <div class="sb-group" data-sb-group="field-studio">
+                    <div class="sb-item sb-item-header" data-tooltip="Field Config Studio">
+                        <span class="sb-item-icon">&#128295;</span>
+                        <span class="sb-item-label">Field Config Studio</span>
+                        <span class="sb-item-arrow">&#9654;</span>
+                    </div>
+                    <div class="sb-group-children">
+                        <div class="sb-item" data-sb-tab="field-config-studio">
+                            <span class="sb-item-icon">&#128187;</span>
+                            <span class="sb-item-label">Device Config Studio</span>
+                        </div>
+                        <div class="sb-item" data-sb-tab="nokia7250-maker">
+                            <span class="sb-item-icon">&#127981;</span>
+                            <span class="sb-item-label">Nokia 7250 Config</span>
+                        </div>
+                        <div class="sb-item" data-sb-tab="mikrotik-to-nokia">
+                            <span class="sb-item-icon">&#128260;</span>
+                            <span class="sb-item-label">Nokia Migration</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sb-item" data-sb-tab="ido-tools" data-tooltip="IDO Tools">
+                    <span class="sb-item-icon">&#128736;</span>
+                    <span class="sb-item-label">IDO Tools</span>
+                </div>
+                <div class="sb-item" data-sb-tab="aviat-backhaul" data-tooltip="Aviat Backhaul">
+                    <span class="sb-item-icon">&#128225;</span>
+                    <span class="sb-item-label">Aviat Backhaul</span>
+                </div>
+
+                <!-- FTTH group -->
+                <div class="sb-group" data-sb-group="ftth">
+                    <div class="sb-item sb-item-header" data-tooltip="FTTH">
+                        <span class="sb-item-icon">&#127968;</span>
+                        <span class="sb-item-label">FTTH Home</span>
+                        <span class="sb-item-arrow">&#9654;</span>
+                    </div>
+                    <div class="sb-group-children">
+                        <div class="sb-item" data-sb-tab="ftth-home" data-sb-subtab="olt">
+                            <span class="sb-item-icon">&#128293;</span>
+                            <span class="sb-item-label">OLT Configuration</span>
+                        </div>
+                        <div class="sb-item" data-sb-tab="ftth-home" data-sb-subtab="bng">
+                            <span class="sb-item-icon">&#128300;</span>
+                            <span class="sb-item-label">BNG Config</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Command Vault group -->
+                <div class="sb-group" data-sb-group="command-vault">
+                    <div class="sb-item sb-item-header" data-tooltip="Command Vault">
+                        <span class="sb-item-icon">&#128218;</span>
+                        <span class="sb-item-label">Command Vault</span>
+                        <span class="sb-item-arrow">&#9654;</span>
+                    </div>
+                    <div class="sb-group-children">
+                        <div class="sb-item" data-sb-tab="command-vault" data-sb-subtab="nokia">
+                            <span class="sb-item-icon">&#127981;</span>
+                            <span class="sb-item-label">Nokia</span>
+                        </div>
+                        <div class="sb-item" data-sb-tab="command-vault" data-sb-subtab="cisco">
+                            <span class="sb-item-icon">&#127760;</span>
+                            <span class="sb-item-label">Cisco</span>
+                        </div>
+                        <div class="sb-item" data-sb-tab="command-vault" data-sb-subtab="mikrotik">
+                            <span class="sb-item-icon">&#9881;</span>
+                            <span class="sb-item-label">MikroTik</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sb-item" data-sb-tab="cisco-config" data-tooltip="Cisco Config">
+                    <span class="sb-item-icon">&#127760;</span>
+                    <span class="sb-item-label">Cisco Config</span>
+                </div>
+
+                <div class="sidebar-section-label">Power Tools</div>
+                <!-- Power Tools group -->
+                <div class="sb-group" data-sb-group="power-tools">
+                    <div class="sb-item sb-item-header" data-tooltip="Power Tools">
+                        <span class="sb-item-icon">&#9889;</span>
+                        <span class="sb-item-label">Power Tools</span>
+                        <span class="sb-item-arrow">&#9654;</span>
+                    </div>
+                    <div class="sb-group-children">
+                        <div class="sb-item" data-sb-tab="config-diff">
+                            <span class="sb-item-icon">&#128196;</span>
+                            <span class="sb-item-label">Config Diff Viewer</span>
+                        </div>
+                        <div class="sb-item" data-sb-tab="bulk-config">
+                            <span class="sb-item-icon">&#128230;</span>
+                            <span class="sb-item-label">Bulk Operations</span>
+                        </div>
+                        <div class="sb-item" data-sb-tab="maintenance">
+                            <span class="sb-item-icon">&#128197;</span>
+                            <span class="sb-item-label">Maintenance</span>
+                        </div>
+                        <div class="sb-item" data-sb-tab="compliance-scanner">
+                            <span class="sb-item-icon">&#9989;</span>
+                            <span class="sb-item-label">Compliance Scanner</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar-section-label">History</div>
+                <div class="sb-item" data-sb-tab="completed-configs" data-tooltip="Configs">
+                    <span class="sb-item-icon">&#128196;</span>
+                    <span class="sb-item-label">Saved Configs</span>
+                </div>
+                <div class="sb-item" data-sb-tab="log-history" data-tooltip="Log History">
+                    <span class="sb-item-icon">&#128202;</span>
+                    <span class="sb-item-label">Log History</span>
                 </div>
             </div>
-            <nav class="main-nav">
-                <button class="nav-item active" data-tab="home">HOME</button>
-                <div class="nav-item dropdown" data-default-tab="tower">
-                    <button>MIKROTIK CONFIG </button>
-                    <div class="dropdown-menu">
-                        <a data-tab="tower">
-                             MikroTik Config Generator
-                            <span class="desc">Full BGP/OSPF/MPLS for tower sites</span>
-                        </a>
-                        <a data-tab="enterprise">
-                             Non-MPLS Enterprise
-                            <span class="desc">Simplified configs for enterprise (no MPLS)</span>
-                        </a>
-                        <a data-tab="enterprise-mpls">
-                             MPLS Enterprise
-                            <span class="desc">Enterprise with MPLS/OSPF/BGP support</span>
-                        </a>
-                        <a data-tab="tarana">
-                             Tarana Sectors
-                            <span class="desc">ALPHA/BETA/GAMMA/DELTA sector configuration</span>
-                        </a>
-                        <a data-tab="enterprise-feeding">
-                             Enterprise Feeding
-                            <span class="desc">Commercial/enterprise uplink provisioning</span>
-                        </a>
-                        <a data-tab="ccr2004">
-                             6GHz Switch Port
-                            <span class="desc">6GHz switch configuration with VLAN 3000/4000</span>
-                        </a>
-                        <a data-tab="switch-maker">
-                             MikroTik Switch Maker
-                            <span class="desc">Full switch configuration generator (309/326/2004)</span>
-                        </a>
-                    </div>
+            <!-- Sidebar bottom -->
+            <div class="sidebar-bottom">
+                <div class="sb-item" data-sb-action="feedback" data-tooltip="Feedback">
+                    <span class="sb-item-icon">&#128172;</span>
+                    <span class="sb-item-label">Feedback</span>
                 </div>
-                <div class="nav-item dropdown" data-default-tab="field-config-studio">
-                    <button>FIELD CONFIG STUDIO <span style="font-size: 10px;"></span></button>
-                    <div class="dropdown-menu">
-                        <a data-tab="field-config-studio">
-                             DEVICE CONFIG STUDIO
-                            <span class="desc">Unified AP/SM/Switch/UPS/RPC/Aviat/Wave/7250 workspace</span>
-                        </a>
-                        <a data-tab="nokia7250-maker">
-                             IN-STATE Nokia 7250 Configuration Maker
-                            <span class="desc">Full Nokia 7250 configuration form</span>
-                        </a>
-                        <a data-tab="mikrotik-to-nokia">
-                             NOKIA MIGRATION
-                            <span class="desc">Convert RouterOS configs to Nokia syntax</span>
-                        </a>
-                    </div>
+                <div class="sb-item" data-sb-action="settings" data-tooltip="Settings">
+                    <span class="sb-item-icon">&#9881;</span>
+                    <span class="sb-item-label">Settings</span>
                 </div>
-                <button class="nav-item" data-tab="ido-tools">IDO TOOLS</button>
-                <button class="nav-item" data-tab="aviat-backhaul">AVIAT BACKHAUL UPDATER</button>
-                <div class="nav-item dropdown" data-tab="ftth-home">
-                    <button>FTTH HOME</button>
-                    <div class="dropdown-menu">
-                        <a data-tab="ftth-home" data-ftth-home-tab="olt">
-                             OLT CONFIGURATION
-                            <span class="desc">FTTH OLT configuration package builder</span>
-                        </a>
-                        <a data-tab="ftth-home" data-ftth-home-tab="bng">
-                             FTTH BNG CONFIG
-                            <span class="desc">FTTH BNG configuration generator</span>
-                        </a>
-                        <a data-tab="ftth" style="display:none;">FTTH</a>
-                    </div>
+                <div class="sb-item" id="sidebarAdminBtn" data-sb-tab="admin-panel" data-tooltip="Admin">
+                    <span class="sb-item-icon">&#128274;</span>
+                    <span class="sb-item-label">Admin</span>
                 </div>
-                <div class="nav-item dropdown" data-tab="command-vault">
-                    <button>COMMAND VAULT</button>
-                    <div class="dropdown-menu">
-                        <a data-tab="command-vault" data-command-vault-tab="nokia">
-                            Nokia Command Vault
-                            <span class="desc">Nokia 7750 BNG &amp; 7250 Port Setup</span>
-                        </a>
-                        <a data-tab="command-vault" data-command-vault-tab="cisco">
-                            Cisco Command Vault
-                            <span class="desc">Cisco command quick reference (coming soon)</span>
-                        </a>
-                        <a data-tab="command-vault" data-command-vault-tab="mikrotik">
-                            MikroTik Command Vault
-                            <span class="desc">MikroTik command quick reference (coming soon)</span>
-                        </a>
-                    </div>
-                </div>
-                <button class="nav-item" data-tab="cisco-config">CISCO CONFIG</button>
-                <div class="nav-item dropdown" data-default-tab="config-diff">
-                    <button>POWER TOOLS </button>
-                    <div class="dropdown-menu">
-                        <a data-tab="config-diff">
-                             Config Diff Viewer
-                            <span class="desc">Side-by-side config comparison &amp; diff</span>
-                        </a>
-                        <a data-tab="bulk-config">
-                             Bulk Operations Center
-                            <span class="desc">Generate, SSH fetch &amp; migrate configs at scale</span>
-                        </a>
-                        <a data-tab="maintenance">
-                             Scheduled Maintenance
-                            <span class="desc">Plan and track maintenance windows &amp; tasks</span>
-                        </a>
-                        <a data-tab="compliance-scanner">
-                             Compliance Scanner
-                            <span class="desc">Scan configs against RFC-09-10-25 standards</span>
-                        </a>
-                    </div>
-                </div>
-                <button class="nav-item" data-tab="completed-configs"> CONFIGS</button>
-                <button class="nav-item" data-tab="log-history"> LOG HISTORY</button>
-                <button class="nav-item"
-                    onclick="window.openFeedbackModal && window.openFeedbackModal()">FEEDBACK</button>
-                <button class="nav-item" id="adminNavBtn" data-tab="admin-panel" style="background: #d35400;">
-                    ADMIN</button>
-            </nav>
-            <div class="nav-overflow" id="navOverflow">
-                <button class="nav-toggle" id="navToggleBtn" aria-label="More navigation" aria-expanded="false">
-                    &#9776;
-                </button>
-                <div class="nav-overflow-menu" id="navOverflowMenu"></div>
             </div>
-            <div class="user-section">
+        </aside>
+
+        <!-- App Body (right of sidebar) -->
+        <div class="app-body">
+            <!-- Compact Top Bar -->
+            <div class="top-bar">
                 <button class="toggle-dark" onclick="window.openCommandPalette && window.openCommandPalette()"
                     title="Search everything (Ctrl+K)"
-                    style="font-size: 9px; padding: 4px 8px; margin-right: 2px;"> SEARCH</button>
+                    style="font-size: 9px; padding: 4px 8px;"> SEARCH</button>
                 <span id="userEmailDisplay"
-                    style="color: #bbb; font-size: 9px; margin-right: 10px; text-transform: uppercase;"></span>
+                    style="color: var(--text-muted); font-size: 9px; text-transform: uppercase;"></span>
                 <div class="header-status" id="globalUpdatedPill" title="Last UI refresh time (live)">
                     <span class="status-dot" id="globalUpdatedDot" style="width: 6px; height: 6px;"></span>
                     <span class="status-kv"><span class="k">Updated</span><span class="v"
@@ -3352,7 +3635,62 @@
                     style="font-size: 9px; padding: 4px 8px;"> SETTINGS</button>
                 <button class="toggle-dark" id="darkToggle" style="font-size: 9px; padding: 4px 8px;"> Dark</button>
                 <button class="toggle-dark" onclick="handleLogout()"
-                    style="margin-left: 8px; font-size: 9px; padding: 4px 8px;">LOG OUT</button>
+                    style="font-size: 9px; padding: 4px 8px;">LOG OUT</button>
+            </div>
+
+        <!-- OLD Header (hidden, kept for JS compatibility) -->
+        <header class="top-header" style="display:none !important">
+            <nav class="main-nav">
+                <button class="nav-item active" data-tab="home">HOME</button>
+                <div class="nav-item dropdown" data-default-tab="tower"><button>MIKROTIK CONFIG</button>
+                    <div class="dropdown-menu">
+                        <a data-tab="tower">MikroTik Config Generator</a>
+                        <a data-tab="enterprise">Non-MPLS Enterprise</a>
+                        <a data-tab="enterprise-mpls">MPLS Enterprise</a>
+                        <a data-tab="tarana">Tarana Sectors</a>
+                        <a data-tab="enterprise-feeding">Enterprise Feeding</a>
+                        <a data-tab="ccr2004">6GHz Switch Port</a>
+                        <a data-tab="switch-maker">MikroTik Switch Maker</a>
+                    </div>
+                </div>
+                <div class="nav-item dropdown" data-default-tab="field-config-studio"><button>FIELD CONFIG STUDIO</button>
+                    <div class="dropdown-menu">
+                        <a data-tab="field-config-studio">DEVICE CONFIG STUDIO</a>
+                        <a data-tab="nokia7250-maker">Nokia 7250 Config</a>
+                        <a data-tab="mikrotik-to-nokia">NOKIA MIGRATION</a>
+                    </div>
+                </div>
+                <button class="nav-item" data-tab="ido-tools">IDO TOOLS</button>
+                <button class="nav-item" data-tab="aviat-backhaul">AVIAT BACKHAUL UPDATER</button>
+                <div class="nav-item dropdown" data-tab="ftth-home"><button>FTTH HOME</button>
+                    <div class="dropdown-menu">
+                        <a data-tab="ftth-home" data-ftth-home-tab="olt">OLT CONFIGURATION</a>
+                        <a data-tab="ftth-home" data-ftth-home-tab="bng">FTTH BNG CONFIG</a>
+                    </div>
+                </div>
+                <div class="nav-item dropdown" data-tab="command-vault"><button>COMMAND VAULT</button>
+                    <div class="dropdown-menu">
+                        <a data-tab="command-vault" data-command-vault-tab="nokia">Nokia</a>
+                        <a data-tab="command-vault" data-command-vault-tab="cisco">Cisco</a>
+                        <a data-tab="command-vault" data-command-vault-tab="mikrotik">MikroTik</a>
+                    </div>
+                </div>
+                <button class="nav-item" data-tab="cisco-config">CISCO CONFIG</button>
+                <div class="nav-item dropdown" data-default-tab="config-diff"><button>POWER TOOLS</button>
+                    <div class="dropdown-menu">
+                        <a data-tab="config-diff">Config Diff Viewer</a>
+                        <a data-tab="bulk-config">Bulk Operations Center</a>
+                        <a data-tab="maintenance">Scheduled Maintenance</a>
+                        <a data-tab="compliance-scanner">Compliance Scanner</a>
+                    </div>
+                </div>
+                <button class="nav-item" data-tab="completed-configs">CONFIGS</button>
+                <button class="nav-item" data-tab="log-history">LOG HISTORY</button>
+                <button class="nav-item" id="adminNavBtn" data-tab="admin-panel">ADMIN</button>
+            </nav>
+            <div class="nav-overflow" id="navOverflow">
+                <button class="nav-toggle" id="navToggleBtn" aria-label="More navigation" aria-expanded="false">&#9776;</button>
+                <div class="nav-overflow-menu" id="navOverflowMenu"></div>
             </div>
         </header>
 
@@ -3574,6 +3912,7 @@
                             <option value="ocean">Ocean (clean)</option>
                             <option value="neon-holo">Neon (holographic)</option>
                             <option value="neon-aero">Neon Aero</option>
+                            <option value="infara">Infara (deep violet)</option>
                             <option value="light">Light</option>
                         </select>
                         <p>Choose how components render across the app. Your selection follows you on every sign-in.</p>
@@ -8558,8 +8897,9 @@ show mac address-table | include &lt;mac&gt;</div>
         </div>
     </div>
 
-    </div>
-    </div>
+    </div> <!-- content-area -->
+    </div> <!-- app-body -->
+    </div> <!-- main-container -->
 
     <!-- ═══════════════════════════════════════════════════════
          COMMAND PALETTE OVERLAY
@@ -29194,11 +29534,97 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
 
     })();
     </script>
+
+    <!-- ═══════════════════════════════════════════════════════
+         SIDEBAR NAVIGATION CONTROLLER
+         ═══════════════════════════════════════════════════════ -->
+    <script>
+    (function() {
+        const sidebar = document.getElementById('appSidebar');
+        if (!sidebar) return;
+
+        // --- Group expand/collapse ---
+        sidebar.querySelectorAll('.sb-group > .sb-item-header').forEach(header => {
+            header.addEventListener('click', () => {
+                const group = header.closest('.sb-group');
+                // Close other groups
+                sidebar.querySelectorAll('.sb-group').forEach(g => {
+                    if (g !== group) g.classList.remove('open');
+                });
+                group.classList.toggle('open');
+            });
+        });
+
+        // --- Tab navigation via sidebar ---
+        sidebar.querySelectorAll('.sb-item[data-sb-tab]').forEach(item => {
+            item.addEventListener('click', () => {
+                const tabId = item.getAttribute('data-sb-tab');
+                const subtab = item.getAttribute('data-sb-subtab');
+
+                // Call existing navigateToTab
+                if (typeof window.navigateToTab === 'function') {
+                    window.navigateToTab(tabId);
+                }
+
+                // Handle subtabs (FTTH, Command Vault)
+                if (tabId === 'ftth-home' && subtab && typeof window.showFtthHomeSubTab === 'function') {
+                    window.showFtthHomeSubTab(subtab);
+                }
+                if (tabId === 'command-vault' && subtab && typeof window.showCommandVaultSubTab === 'function') {
+                    window.showCommandVaultSubTab(subtab);
+                }
+
+                // Update sidebar active state
+                updateSidebarActive(tabId);
+            });
+        });
+
+        // --- Action buttons (feedback, settings) ---
+        sidebar.querySelectorAll('.sb-item[data-sb-action]').forEach(item => {
+            item.addEventListener('click', () => {
+                const action = item.getAttribute('data-sb-action');
+                if (action === 'feedback' && typeof window.openFeedbackModal === 'function') {
+                    window.openFeedbackModal();
+                } else if (action === 'settings' && typeof window.openSettingsModal === 'function') {
+                    window.openSettingsModal();
+                }
+            });
+        });
+
+        // --- Update sidebar active state ---
+        function updateSidebarActive(tabId) {
+            sidebar.querySelectorAll('.sb-item').forEach(el => el.classList.remove('active'));
+            const activeItem = sidebar.querySelector(`.sb-item[data-sb-tab="${tabId}"]`);
+            if (activeItem) {
+                activeItem.classList.add('active');
+                // Open parent group if in one
+                const parentGroup = activeItem.closest('.sb-group');
+                if (parentGroup) parentGroup.classList.add('open');
+            }
+        }
+
+        // --- Monkey-patch navigateToTab to sync sidebar ---
+        const _origNavigateToTab = window.navigateToTab;
+        if (_origNavigateToTab) {
+            window.navigateToTab = async function(tabId) {
+                const result = await _origNavigateToTab(tabId);
+                updateSidebarActive(tabId);
+                return result;
+            };
+        }
+
+        // --- Add Infara theme to settings if not already there ---
+        // (handled by settings modal code — the theme is available via CSS)
+
+        // Set initial sidebar state from URL hash or default
+        const hash = window.location.hash.replace('#', '');
+        if (hash) updateSidebarActive(hash);
+        else updateSidebarActive('home');
+    })();
+    </script>
+
 </body>
 
 </html>
-
-
-
 
 
