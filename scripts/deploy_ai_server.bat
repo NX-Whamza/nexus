@@ -3,7 +3,9 @@ REM ========================================
 REM AI SERVER DEPLOYMENT SCRIPT
 REM Deploy NOC Config Maker AI Server
 REM ========================================
-cd /d "%~dp0"
+set "SCRIPT_DIR=%~dp0"
+for %%I in ("%SCRIPT_DIR%..") do set "REPO_ROOT=%%~fI"
+cd /d "%REPO_ROOT%"
 
 echo ========================================
 echo NOC AI SERVER DEPLOYMENT
@@ -59,22 +61,22 @@ netsh advfirewall firewall add rule name="NOC AI Server WebUI" dir=in action=all
 
 echo [7/8] Creating auto-start service...
 echo @echo off > "%USERPROFILE%\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\start_ai_server.bat"
-echo cd /d "%~dp0" >> "%USERPROFILE%\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\start_ai_server.bat"
+echo cd /d "%REPO_ROOT%" >> "%USERPROFILE%\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\start_ai_server.bat"
 echo timeout /t 10 /nobreak ^>nul >> "%USERPROFILE%\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\start_ai_server.bat"
 echo set ROS_TRAINING_DIR=%CD%\ros-migration-trainer-v3 >> "%USERPROFILE%\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\start_ai_server.bat"
-echo python api_server.py >> "%USERPROFILE%\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\start_ai_server.bat"
+echo py -3.11 -m uvicorn --app-dir vm_deployment fastapi_server:app --host 0.0.0.0 --port 5000 >> "%USERPROFILE%\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\start_ai_server.bat"
 
 echo [8/8] Starting AI server...
 set ROS_TRAINING_DIR=%CD%\ros-migration-trainer-v3
 
 echo [CHAT] Initializing chat history database...
-python -c "import sqlite3; conn = sqlite3.connect('chat_history.db'); conn.close(); print('Chat database ready')"
+py -3.11 -c "import sqlite3; conn = sqlite3.connect('chat_history.db'); conn.close(); print('Chat database ready')"
 
 echo [MEMORY] Chat history and user preferences will be saved
 echo [CONTEXT] AI will remember conversations across sessions
 echo [EXPORT] Chat history can be exported via API
 
-python api_server.py
+py -3.11 -m uvicorn --app-dir vm_deployment fastapi_server:app --host 0.0.0.0 --port 5000
 
 echo ========================================
 echo AI SERVER DEPLOYMENT COMPLETE!

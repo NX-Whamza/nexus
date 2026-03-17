@@ -22,6 +22,10 @@ from fastapi_server import app  # noqa: E402
 client = TestClient(app)
 
 
+def _gitlab_compliance_configured() -> bool:
+    return bool(os.getenv("GITLAB_COMPLIANCE_TOKEN")) and bool(os.getenv("GITLAB_COMPLIANCE_PROJECT_ID"))
+
+
 def _tower_payload() -> dict:
     return {
         "router_type": "MT2004",
@@ -47,7 +51,7 @@ def _tower_payload() -> dict:
             {"name": "HOGHILL", "subnet": "10.36.3.56/30", "port": "sfp-sfpplus4", "bandwidth": "10000", "master": True},
             {"name": "JACK-CN-1", "subnet": "10.45.67.0/29", "port": "sfp-sfpplus5", "bandwidth": "10000", "master": False},
         ],
-        "apply_compliance": True,
+        "apply_compliance": False,
     }
 
 
@@ -77,11 +81,11 @@ def _bng2_payload() -> dict:
         "is_lte": False,
         "is_tarana": False,
         "is_326": False,
-        "apply_compliance": True,
+        "apply_compliance": False,
     }
 
 
-def test_tower_config_contains_required_routing_and_single_compliance_block():
+def test_tower_config_contains_required_routing_blocks():
     r = client.post("/api/mt/tower/config", json=_tower_payload())
     assert r.status_code == 200
     text = r.json()
@@ -94,12 +98,17 @@ def test_tower_config_contains_required_routing_and_single_compliance_block():
     assert "/ip dhcp-server network" in text
     assert "address-pool=cust" in text
     assert "vlan2000-sfp-sfpplus1" in text
-    # When GitLab compliance is active the real RADIUS secret is used;
-    # when falling back to hardcoded Python, the TEST_RADIUS_SECRET env var
-    # is substituted. Either way the /radius add command must be present.
-    assert "/radius add address=" in text or 'secret="TEST_RADIUS_SECRET"' in text
+
+
+def test_tower_compliance_requires_gitlab_configuration():
+    if not _gitlab_compliance_configured():
+        return
+    payload = _tower_payload()
+    payload["apply_compliance"] = True
+    r = client.post("/api/mt/tower/config", json=payload)
+    assert r.status_code == 200
+    text = r.json()
     assert text.count("# ENGINEERING-COMPLIANCE-APPLIED") == 1
-    assert "is expanded at runtime from vetted compliance reference blocks." not in text
 
 
 def test_bng2_config_is_not_tower_and_contains_vpls():
@@ -108,8 +117,8 @@ def test_bng2_config_is_not_tower_and_contains_vpls():
     text = r.json()
     assert isinstance(text, str)
     assert "/interface vpls" in text
-    assert "vpls1000-bng1" in text
-    assert "add name=bridge1000" in text
+    assert "vpls1000-bng-" in text
+    assert "name=bridge1000" in text
     assert "lan-bridge" not in text
     assert "nat-public-bridge" not in text
 

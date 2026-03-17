@@ -4,7 +4,9 @@ REM NOC Config Maker - Unified Backend Startup
 REM Starts all required backend services in one script
 REM ========================================
 setlocal enabledelayedexpansion
-cd /d "%~dp0"
+set "SCRIPT_DIR=%~dp0"
+for %%I in ("%SCRIPT_DIR%..") do set "REPO_ROOT=%%~fI"
+cd /d "%REPO_ROOT%"
 
 echo ========================================
 echo NOC Config Maker - Unified Backend Startup
@@ -17,14 +19,32 @@ echo.
 echo ========================================
 echo.
 
-REM ===== Check Python Installation =====
-python --version >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo [ERROR] Python is not installed or not in PATH
-    echo Please install Python 3.8+ and add it to your PATH
+REM ===== Resolve Python Runner =====
+set "PY_CMD="
+if exist "%REPO_ROOT%\.venv\Scripts\python.exe" (
+    set "PY_CMD=%REPO_ROOT%\.venv\Scripts\python.exe"
+) else (
+    py -3.13 --version >nul 2>&1
+    if %ERRORLEVEL% EQU 0 (
+        set "PY_CMD=py -3.13"
+    ) else (
+        py -3.11 --version >nul 2>&1
+        if %ERRORLEVEL% EQU 0 (
+            set "PY_CMD=py -3.11"
+        ) else (
+            python --version >nul 2>&1
+            if %ERRORLEVEL% EQU 0 set "PY_CMD=python"
+        )
+    )
+)
+
+if not defined PY_CMD (
+    echo [ERROR] No supported Python runtime found
+    echo Install Python 3.11 or 3.13, or create .venv in the repo root
     pause
     exit /b 1
 )
+echo [INFO] Using Python runner: %PY_CMD%
 
 REM ===== Step 1: Start Backend API =====
 echo [1/2] Starting Backend API...
@@ -39,7 +59,7 @@ if %ERRORLEVEL% EQU 0 (
     echo [1/2]    Skipping startup to avoid conflicts
 ) else (
     echo [1/2] Launching FastAPI backend (uvicorn)...
-    start "NOC Backend API" /min cmd /c "cd /d %~dp0 && uvicorn --app-dir vm_deployment fastapi_server:app --host 0.0.0.0 --port 5000"
+    start "NOC Backend API" /min cmd /c "cd /d %REPO_ROOT% && %PY_CMD% -m uvicorn --app-dir vm_deployment fastapi_server:app --host 0.0.0.0 --port 5000"
     echo [1/2] Waiting for backend to initialize...
     timeout /t 5 /nobreak >nul
     
@@ -61,8 +81,8 @@ if %ERRORLEVEL% EQU 0 (
     echo [2/2] WARNING: Frontend server is already running on port 8000
     echo [2/2]    Skipping startup to avoid conflicts
 ) else (
-    echo [2/2] Launching serve_html.py...
-    start "NOC HTML Frontend" /min cmd /c "cd /d %~dp0 && python serve_html.py"
+    echo [2/2] Launching builtin HTTP server for vm_deployment\...
+    start "NOC HTML Frontend" /min cmd /c "cd /d %REPO_ROOT% && %PY_CMD% -m http.server 8000 --directory vm_deployment"
     echo [2/2] Waiting for frontend to initialize...
     timeout /t 2 /nobreak >nul
     echo [2/2] Frontend server started

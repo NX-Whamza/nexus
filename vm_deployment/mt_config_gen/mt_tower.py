@@ -94,10 +94,10 @@ TARANA_SECTORS = {
         {"name": "Delta", "port": "ether12", "address_offset": 5},
     ],
     "MT2004": [
-        {"name": "Alpha", "port": "sfp-sfpplus8", "address_offset": 2},
-        {"name": "Beta", "port": "sfp-sfpplus9", "address_offset": 3},
-        {"name": "Gamma", "port": "sfp-sfpplus10", "address_offset": 4},
-        {"name": "Delta", "port": "sfp-sfpplus11", "address_offset": 5},
+        {"name": "Alpha", "port": "sfp-sfpplus6", "address_offset": 2},
+        {"name": "Beta", "port": "sfp-sfpplus8", "address_offset": 3},
+        {"name": "Gamma", "port": "sfp-sfpplus9", "address_offset": 4},
+        {"name": "Delta", "port": "sfp-sfpplus10", "address_offset": 5},
     ],
     "MT2216": [
         {"name": "Alpha", "port": "sfp28-8", "address_offset": 2},

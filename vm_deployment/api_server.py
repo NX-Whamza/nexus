@@ -11270,7 +11270,8 @@ def _build_nokia_config(parsed: dict, nokia_params: dict = None) -> str:
             autonomous_system, card_type, nokia_creds, ldp_deny_prefixes,
             ntp_servers, mgmt_acl
     """
-    p = nokia_params or {}
+    p = dict(nokia_params or {})
+    preserve_ips = bool(p.pop('preserve_ips', True))
 
     # ── State/region profile ──
     state_code = (p.get('state_code') or parsed.get('detected_state', {}).get('state_code') or 'TX').upper()
@@ -11624,6 +11625,24 @@ def _build_nokia_config(parsed: dict, nokia_params: dict = None) -> str:
     L.append('    router management')
     L.append('    exit')
     L.append('')
+    if preserve_ips:
+        L.append('# CLASSIC CLI INTERFACE STANZAS')
+        L.append(f'/configure router interface "system" address {loopback}')
+        L.append('/configure router interface "system" no shutdown')
+        seen_cli_ports = set()
+        for ri in router_ifaces:
+            if not ri.get('port') or ri['port'] == 'A/1':
+                continue
+            ri_key = ri['port']
+            if ri_key in seen_cli_ports:
+                continue
+            seen_cli_ports.add(ri_key)
+            L.append(f'/configure router interface "{ri["name"]}" address {ri["address"]}')
+            for sec_addr in ri.get('secondary_addresses', []):
+                L.append(f'/configure router interface "{ri["name"]}" secondary {sec_addr}')
+            L.append(f'/configure router interface "{ri["name"]}" port {ri["port"]}')
+            L.append(f'/configure router interface "{ri["name"]}" no shutdown')
+        L.append('')
 
     # ── ROUTER BASE ──
     echo('"Router (Network Side) Configuration"')
@@ -12059,7 +12078,7 @@ def migrate_mikrotik_to_nokia():
         data = request.json
         source_config = (data.get('source_config', '') or '').strip()
         preserve_ips = data.get('preserve_ips', True)
-        nokia_params = data.get('nokia_params', {})
+        nokia_params = dict(data.get('nokia_params', {}) or {})
 
         if not source_config:
             return jsonify({'error': 'Source configuration is required'}), 400
@@ -12068,6 +12087,7 @@ def migrate_mikrotik_to_nokia():
         parsed = _parse_mikrotik_for_nokia(source_config)
 
         # Build Nokia config
+        nokia_params.setdefault('preserve_ips', preserve_ips)
         nokia_config = _build_nokia_config(parsed, nokia_params=nokia_params)
 
         return jsonify({

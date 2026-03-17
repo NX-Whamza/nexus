@@ -48,7 +48,7 @@ export NEXTLINK_RADIUS_SECRET="your_radius_secret_here"
 
 ## HTTP Server Security
 
-The HTTP server (`serve_html.py`) is configured with:
+For local development, serve the frontend from `vm_deployment/` with `py -3.13 -m http.server 8000 --directory vm_deployment`.
 - ✅ Directory listing: **BLOCKED**
 - ✅ File browsing: **BLOCKED**
 - ✅ Only `NOC-configMaker.html` is accessible

@@ -16,7 +16,8 @@ import snimpy.manager
 import snimpy.snmp
 
 # Config files defined within DEVICE_TYPES list
-BASE_CONFIG_PATH = os.getenv("BASE_CONFIG_PATH") + "/ICT/UPS/"
+_BASE_CONFIG_ROOT = os.getenv("BASE_CONFIG_PATH") or os.getenv("FIRMWARE_PATH") or ""
+BASE_CONFIG_PATH = os.path.join(_BASE_CONFIG_ROOT, "ICT", "UPS") + "/" if _BASE_CONFIG_ROOT else ""
 
 MIB_PATH = "/usr/share/snmp/mibs/"
 
