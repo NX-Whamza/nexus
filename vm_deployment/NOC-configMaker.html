@@ -20416,22 +20416,25 @@ show mac address-table | include &lt;mac&gt;</div>
             const method = document.querySelector('input[name="upgradeMethod"]:checked')?.value || 'ssh';
             const fileMethod = document.getElementById('fileUploadMethod');
             const sshMethod = document.getElementById('sshFetchMethod');
+            const sshStatus = document.getElementById('sshStatus');
+            const uploadedFileName = document.getElementById('uploadedFileName');
+            const upgradeTargetSelection = document.getElementById('upgradeTargetSelection');
 
             if (method === 'file') {
-                fileMethod.style.display = 'block';
-                sshMethod.style.display = 'none';
+                if (fileMethod) fileMethod.style.display = 'block';
+                if (sshMethod) sshMethod.style.display = 'none';
                 // Clear SSH status
-                document.getElementById('sshStatus').style.display = 'none';
+                if (sshStatus) sshStatus.style.display = 'none';
                 uploadedConfigContent = null;
-                document.getElementById('uploadedFileName').style.display = 'none';
-                document.getElementById('upgradeTargetSelection').style.display = 'none';
+                if (uploadedFileName) uploadedFileName.style.display = 'none';
+                if (upgradeTargetSelection) upgradeTargetSelection.style.display = 'none';
             } else {
-                fileMethod.style.display = 'none';
-                sshMethod.style.display = 'block';
+                if (fileMethod) fileMethod.style.display = 'none';
+                if (sshMethod) sshMethod.style.display = 'block';
                 // Clear file upload status
                 uploadedConfigContent = null;
-                document.getElementById('uploadedFileName').style.display = 'none';
-                document.getElementById('upgradeTargetSelection').style.display = 'none';
+                if (uploadedFileName) uploadedFileName.style.display = 'none';
+                if (upgradeTargetSelection) upgradeTargetSelection.style.display = 'none';
             }
         }
 
@@ -20724,11 +20727,14 @@ show mac address-table | include &lt;mac&gt;</div>
                 sshStatus.innerHTML = ` Config fetched successfully from ${deviceIP}${portInfo}<br><small>Config size: ${normalizedConfig.length} characters</small>`;
 
                 // Show file name (using device IP as identifier)
-                document.getElementById('fileName').textContent = `SSH-${deviceIP}-export.rsc`;
-                document.getElementById('uploadedFileName').style.display = 'block';
+                const fileNameEl = document.getElementById('fileName');
+                const uploadedFileName = document.getElementById('uploadedFileName');
+                const upgradeTargetSelection = document.getElementById('upgradeTargetSelection');
+                if (fileNameEl) fileNameEl.textContent = `SSH-${deviceIP}-export.rsc`;
+                if (uploadedFileName) uploadedFileName.style.display = 'block';
 
                 // Show target selection
-                document.getElementById('upgradeTargetSelection').style.display = 'block';
+                if (upgradeTargetSelection) upgradeTargetSelection.style.display = 'block';
 
                 // Show ready message
                 showUpgradeStatus(' Config loaded. Select target device/version and click "Start Upgrade" button.', 'success');
@@ -20775,11 +20781,14 @@ show mac address-table | include &lt;mac&gt;</div>
                 uploadedConfigContent = normalizedContent;
 
                 // Show file name
-                document.getElementById('fileName').textContent = fileName;
-                document.getElementById('uploadedFileName').style.display = 'block';
+                const fileNameEl = document.getElementById('fileName');
+                const uploadedFileName = document.getElementById('uploadedFileName');
+                const upgradeTargetSelection = document.getElementById('upgradeTargetSelection');
+                if (fileNameEl) fileNameEl.textContent = fileName;
+                if (uploadedFileName) uploadedFileName.style.display = 'block';
 
                 // Show target selection
-                document.getElementById('upgradeTargetSelection').style.display = 'block';
+                if (upgradeTargetSelection) upgradeTargetSelection.style.display = 'block';
 
                 // Show ready message
                 showUpgradeStatus(' Config loaded. Select target device/version and click "Start Upgrade" button.', 'success');
@@ -28468,9 +28477,13 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
             }
             bulkResults = {};
             bulkRenderTable();
-            document.getElementById('bulkTableWrap').style.display = '';
-            document.getElementById('bulkGenerateBtn').disabled = false;
-            document.getElementById('bulkGenerateBtn').style.opacity = '1';
+            const bulkTableWrap = document.getElementById('bulkTableWrap');
+            const bulkGenerateBtn = document.getElementById('bulkGenerateBtn');
+            if (bulkTableWrap) bulkTableWrap.style.display = '';
+            if (bulkGenerateBtn) {
+                bulkGenerateBtn.disabled = false;
+                bulkGenerateBtn.style.opacity = '1';
+            }
             nocToast(`Parsed ${bulkSites.length} sites from CSV`, 'success');
         }
 
@@ -28481,9 +28494,13 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
                 bulkSites = arr.map((obj, i) => ({ ...obj, _idx: i, _status: 'pending' }));
                 bulkResults = {};
                 bulkRenderTable();
-                document.getElementById('bulkTableWrap').style.display = '';
-                document.getElementById('bulkGenerateBtn').disabled = false;
-                document.getElementById('bulkGenerateBtn').style.opacity = '1';
+                const bulkTableWrap = document.getElementById('bulkTableWrap');
+                const bulkGenerateBtn = document.getElementById('bulkGenerateBtn');
+                if (bulkTableWrap) bulkTableWrap.style.display = '';
+                if (bulkGenerateBtn) {
+                    bulkGenerateBtn.disabled = false;
+                    bulkGenerateBtn.style.opacity = '1';
+                }
                 nocToast(`Parsed ${bulkSites.length} sites from JSON`, 'success');
             } catch (e) {
                 nocToast('Invalid JSON: ' + e.message, 'error');
