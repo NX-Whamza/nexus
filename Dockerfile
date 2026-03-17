@@ -22,12 +22,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Non-root user for security (platform compliance)
-# Note: secure_data volume must be writable by uid 1001
-RUN mkdir -p /app/secure_data && chown -R appuser:appgroup /app/secure_data
-
-USER appuser
-
 EXPOSE 5000
 
 CMD ["uvicorn", "--app-dir", "vm_deployment", "fastapi_server:app", "--host", "0.0.0.0", "--port", "5000"]
