@@ -13,10 +13,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
+RUN addgroup --system --gid 1001 appgroup && \
+    adduser --system --uid 1001 --gid 1001 appuser
+
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
+
+RUN mkdir -p /app/secure_data && chown -R appuser:appgroup /app/secure_data
+
+USER appuser
 
 EXPOSE 5000
 
