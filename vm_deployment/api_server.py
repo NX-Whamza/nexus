@@ -14741,6 +14741,7 @@ def init_activity_db():
                   site_name TEXT,
                   routeros_version TEXT,
                   success INTEGER,
+                  counts_toward_metrics INTEGER DEFAULT 1,
                   timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
                   timestamp_unix INTEGER,
                   ticket_url TEXT DEFAULT '')''')
@@ -14755,6 +14756,8 @@ def init_activity_db():
             c.execute("ALTER TABLE activities ADD COLUMN timestamp TEXT")
         if 'ticket_url' not in cols:
             c.execute("ALTER TABLE activities ADD COLUMN ticket_url TEXT DEFAULT ''")
+        if 'counts_toward_metrics' not in cols:
+            c.execute("ALTER TABLE activities ADD COLUMN counts_toward_metrics INTEGER DEFAULT 1")
     except Exception as e:
         safe_print(f"[ACTIVITY] Column migration skipped: {e}")
 
@@ -14802,6 +14805,7 @@ def log_activity():
         routeros = data.get('routeros', '')
         ticket_url = data.get('ticketUrl', '')
         success = 1 if data.get('success', True) else 0
+        counts_toward_metrics = 0 if data.get('countsTowardMetrics') is False else 1
         
         # Initialize DB if needed
         init_activity_db()
@@ -14814,9 +14818,9 @@ def log_activity():
         ts_unix = get_unix_timestamp()
         ts_iso = get_utc_timestamp()
         c.execute('''INSERT INTO activities 
-                     (username, activity_type, device, site_name, routeros_version, success, timestamp, timestamp_unix, ticket_url)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                  (username, activity_type, device, site_name, routeros, success, ts_iso, ts_unix, ticket_url))
+                     (username, activity_type, device, site_name, routeros_version, success, counts_toward_metrics, timestamp, timestamp_unix, ticket_url)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                  (username, activity_type, device, site_name, routeros, success, counts_toward_metrics, ts_iso, ts_unix, ticket_url))
         conn.commit()
         conn.close()
         
@@ -14941,6 +14945,7 @@ def get_activity():
                 'siteName': row['site_name'],
                 'routeros': row['routeros_version'],
                 'success': bool(row['success']),
+                'countsTowardMetrics': bool(row['counts_toward_metrics']) if 'counts_toward_metrics' in row.keys() else True,
                 'timestamp': timestamp_iso,
                 'timestamp_unix': int(ts_unix) if ts_unix else None,
                 'formattedTime': formatted_time,

@@ -13148,6 +13148,12 @@ show mac address-table | include &lt;mac&gt;</div>
                 return localStorage.getItem('auth_token');
             }
 
+            function createValidationBlockedError(message) {
+                const err = new Error(message);
+                err.validationBlocked = true;
+                return err;
+            }
+
             // LocalStorage helper functions for config history
             window.saveConfigToHistory = function (configData) {
                 const username = getUsername();
@@ -13160,7 +13166,8 @@ show mac address-table | include &lt;mac&gt;</div>
                     siteName: configData.siteName || 'N/A',
                     routeros: configData.routeros || 'N/A',
                     username: username,
-                    success: configData.success !== false  // Support explicit success/failure tracking
+                    success: configData.success !== false,  // Support explicit success/failure tracking
+                    countsTowardMetrics: configData.countsTowardMetrics !== false
                 };
                 history.unshift(entry); // Add to beginning
                 if (history.length > 100) history = history.slice(0, 100); // Keep last 100
@@ -13228,6 +13235,7 @@ show mac address-table | include &lt;mac&gt;</div>
                     siteName: activity.siteName || '',
                     routeros: activity.routeros || '',
                     success: activity.success !== false,
+                    countsTowardMetrics: activity.countsTowardMetrics !== false,
                     ticketUrl: activity.ticketUrl || ''
                 };
 
@@ -13287,7 +13295,11 @@ show mac address-table | include &lt;mac&gt;</div>
                             // Calculate ACTUAL success rate from ALL activities
                             const successCount = allActivities.filter(e => e.success === true || e.success === 1).length;
                             const failCount = allActivities.filter(e => e.success === false || e.success === 0).length;
-                            const nonAviatActivities = allActivities.filter(entry => entry.type !== 'aviat-upgrade' && !(entry.type || '').startsWith('maintenance'));
+                            const nonAviatActivities = allActivities.filter(entry =>
+                                entry.countsTowardMetrics !== false &&
+                                entry.type !== 'aviat-upgrade' &&
+                                !(entry.type || '').startsWith('maintenance')
+                            );
                             const totalCount = nonAviatActivities.length;
                             const successCountFiltered = nonAviatActivities.filter(e => e.success === true).length;
                             const successRate = totalCount > 0 ?
@@ -13336,7 +13348,11 @@ show mac address-table | include &lt;mac&gt;</div>
                 const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
                 // Calculate TODAY's configs (since midnight) - resets every 24 hours
-                const nonAviatHistory = history.filter(entry => entry.type !== 'aviat-upgrade' && !(entry.type || '').startsWith('maintenance'));
+                const nonAviatHistory = history.filter(entry =>
+                    entry.countsTowardMetrics !== false &&
+                    entry.type !== 'aviat-upgrade' &&
+                    !(entry.type || '').startsWith('maintenance')
+                );
                 const todayCount = nonAviatHistory.filter(entry => {
                     const entryDate = new Date(entry.timestamp);
                     return entryDate >= todayStart;
@@ -17760,10 +17776,10 @@ show mac address-table | include &lt;mac&gt;</div>
                     window.__mtBackendArtifacts = { portMapText: '', source: '' };
 
                     if (!siteName) {
-                        throw new Error('Site Name is required.');
+                        throw createValidationBlockedError('Site Name is required.');
                     }
                     if (!/^7\./.test(targetRouterOS)) {
-                        throw new Error('RouterOS 7.19.4 or newer is required.');
+                        throw createValidationBlockedError('RouterOS 7.19.4 or newer is required.');
                     }
                     if (mtType === 'bng2') {
                         const v1000 = (document.getElementById('mtBng2Vpls1000')?.value || '').trim();
@@ -17771,7 +17787,7 @@ show mac address-table | include &lt;mac&gt;</div>
                         const v3000 = (document.getElementById('mtBng2Vpls3000')?.value || '').trim();
                         const v4000 = (document.getElementById('mtBng2Vpls4000')?.value || '').trim();
                         if (!v1000 || !v2000 || !v3000 || !v4000) {
-                            throw new Error('BNG2 requires VPLS 1000/2000/3000/4000 IDs.');
+                            throw createValidationBlockedError('BNG2 requires VPLS 1000/2000/3000/4000 IDs.');
                         }
                     }
 
@@ -17779,7 +17795,7 @@ show mac address-table | include &lt;mac&gt;</div>
                     updateProgressPercent(30);
                     const backendResult = await tryGenerateTowerFromBackend();
                     if (!backendResult?.configText) {
-                        throw new Error('Missing required fields for backend template generation.');
+                        throw createValidationBlockedError('Missing required fields for backend template generation.');
                     }
                     addProgressLog('info', 'Backend render completed. Running cautious live validation...');
                     await cautiousPostRenderValidation(backendResult.configType || 'tower', backendResult.configText);
@@ -17841,7 +17857,7 @@ show mac address-table | include &lt;mac&gt;</div>
                     addProgressLog('error', `Generation failed: ${error.message}`);
                     completeProgressTracker(false);
 
-                    if (typeof saveConfigToHistory === 'function') {
+                    if (typeof saveConfigToHistory === 'function' && !error?.validationBlocked) {
                         saveConfigToHistory({
                             type: 'new-config',
                             device: targetDevice || 'Unknown',
@@ -17851,7 +17867,11 @@ show mac address-table | include &lt;mac&gt;</div>
                         });
                     }
 
-                    alert(`MikroTik backend generation failed: ${error.message}`);
+                    if (error?.validationBlocked) {
+                        alert(`Please fill in the required fields before generating:\n\n${error.message}`);
+                    } else {
+                        alert(`MikroTik backend generation failed: ${error.message}`);
+                    }
                 }
             
             }
