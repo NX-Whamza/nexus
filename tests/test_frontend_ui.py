@@ -54,11 +54,27 @@ def test_ftth_speed_controls_and_backend_payload_hooks_exist():
         'Found stale /save-config endpoint reference in NOC-configMaker.html'
 
 
+def test_sidebar_and_nokia_7250_layout_updates_exist():
+    content = UI_FILE.read_text(encoding='utf-8')
+    assert 'IDO Tools Space' not in content, 'Standalone IDO Tools pane should be removed from NOC-configMaker.html'
+    assert 'data-sb-tab="ido-tools"' not in content, 'Sidebar should not include the removed IDO Tools entry'
+    assert 'data-tab="ido-tools"' not in content, 'Top navigation should not include the removed IDO Tools tab'
+    assert 'data-tool="nokia-7250"' not in content, 'Field Config Studio should not include the Nokia 7250 subtab'
+    assert '>Nokia 7250 Configuration Maker<' in content, 'Missing unified Nokia 7250 page title'
+    assert 'IN-STATE Nokia 7250 Configuration Maker' not in content, 'Old Nokia 7250 in-state-only title should be removed'
+    assert 'id="nokia7250_output_format"' in content, 'Missing Nokia 7250 output format selector'
+    assert 'Classic Hierarchy' in content, 'Missing Nokia 7250 classic hierarchy option'
+    assert 'Command Lines' in content, 'Missing Nokia 7250 command-line option'
+    assert 'buildNokia7250CommandLineOutput' in content, 'Missing Nokia 7250 command-line conversion helper'
+    assert 'setNokia7250OutputFormat' in content, 'Missing Nokia 7250 output format switcher'
+
+
 
 if __name__ == '__main__':
     try:
         test_ftth_modal_exists()
         test_ftth_speed_controls_and_backend_payload_hooks_exist()
+        test_sidebar_and_nokia_7250_layout_updates_exist()
         print('[OK] test_ftth_modal_exists')
         raise SystemExit(0)
     except AssertionError as e:
