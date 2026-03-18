@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 
 def _load_modules():
@@ -310,3 +311,56 @@ def test_trigger_firmware_download_falls_back_to_config_mode_and_clears_error(mo
     assert msg == "Firmware download started"
     assert commands[:3] == ["show software-status status", "config terminal", "software abort"]
     assert commands.count("config terminal") >= 2
+
+
+def test_resume_remaining_tasks_runs_deferred_steps(monkeypatch):
+    _, api_server = _load_modules()
+    events = []
+
+    monkeypatch.setattr(
+        api_server,
+        "aviat_process_radio",
+        lambda ip, tasks, callback=None, maintenance_params=None: (
+            events.append((ip, tuple(tasks), maintenance_params.get("activation_mode")))
+            or SimpleNamespace(
+                ip=ip,
+                success=True,
+                status="success",
+                firmware_downloaded=False,
+                firmware_downloaded_version=None,
+                firmware_scheduled=False,
+                firmware_activated=False,
+                password_changed=False,
+                snmp_configured=True,
+                buffer_configured=True,
+                sop_checked=True,
+                sop_passed=True,
+                sop_results=[],
+                subnet_ok=True,
+                subnet_actual="255.255.255.248",
+                license_ok=True,
+                license_detail="licensed",
+                stp_ok=True,
+                stp_detail="disabled",
+                target_version="6.1.0",
+                firmware_version_before="6.1.0",
+                firmware_version_after="6.1.0",
+                error=None,
+                output=[],
+                duration=0.0,
+            )
+        ),
+    )
+
+    entry = {
+        "ip": "10.0.0.60",
+        "remaining_tasks": ["snmp", "buffer", "sop"],
+        "maintenance_params": {"activation_mode": "immediate", "firmware_target": "final"},
+        "username": "tester",
+    }
+
+    result = api_server._aviat_resume_remaining_tasks(entry)
+
+    assert result is not None
+    assert result.success is True
+    assert events == [("10.0.0.60", ("snmp", "buffer", "sop"), "immediate")]

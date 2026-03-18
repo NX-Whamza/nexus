@@ -961,22 +961,26 @@ def _aviat_loading_check_loop():
                         f"[{ip}] Active firmware {active_version} already applied; removing from loading queue.",
                         "success",
                     )
-                    _aviat_queue_upsert(ip, {
-                        "status": "pending",
-                        "firmwareStatus": "success",
-                        "username": entry.get("username") or "aviat-tool",
-                    })
+                    resumed = _aviat_resume_remaining_tasks(entry, callback=local_log)
+                    if resumed is None:
+                        _aviat_queue_upsert(ip, {
+                            "status": "success",
+                            "firmwareStatus": "success",
+                            "username": entry.get("username") or "aviat-tool",
+                        })
                     continue
                 if active_version and _aviat_version_tuple(active_version) >= _aviat_version_tuple(AVIAT_CONFIG.firmware_final_version):
                     _aviat_broadcast_log(
                         f"[{ip}] Active firmware {active_version} already final; removing from loading queue.",
                         "success",
                     )
-                    _aviat_queue_upsert(ip, {
-                        "status": "pending",
-                        "firmwareStatus": "success",
-                        "username": entry.get("username") or "aviat-tool",
-                    })
+                    resumed = _aviat_resume_remaining_tasks(entry, callback=local_log)
+                    if resumed is None:
+                        _aviat_queue_upsert(ip, {
+                            "status": "success",
+                            "firmwareStatus": "success",
+                            "username": entry.get("username") or "aviat-tool",
+                        })
                     continue
                 if (
                     not inactive_version
@@ -1080,6 +1084,34 @@ def _start_aviat_background_threads():
         print(f"[AVIAT] Firmware loading checker is ENABLED ({AVIAT_LOADING_CHECK_INTERVAL}s interval)")
         threading.Thread(target=_aviat_loading_check_loop, daemon=True).start()
         _aviat_background_threads_started = True
+
+
+def _aviat_resume_remaining_tasks(entry, callback=None):
+    ip = entry.get("ip")
+    remaining_tasks = _aviat_clean_remaining_tasks(entry.get("remaining_tasks", []))
+    username = entry.get("username") or "aviat-tool"
+    if not ip or not remaining_tasks:
+        return None
+
+    _aviat_queue_upsert(ip, {
+        "status": "processing",
+        "username": username,
+    })
+    _aviat_save_shared_queue()
+    if callback:
+        callback(f"[{ip}] Firmware active; resuming deferred tasks: {', '.join(remaining_tasks)}", "info")
+
+    result = aviat_process_radio(
+        ip,
+        remaining_tasks,
+        callback=callback,
+        maintenance_params=entry.get("maintenance_params", {}),
+    )
+    res_dict = _aviat_result_dict(result, username=username)
+    _log_aviat_activity(res_dict)
+    _aviat_queue_update_from_result(res_dict, username=username)
+    _aviat_save_shared_queue()
+    return result
 
 def _aviat_activate_entries(task_id, to_activate, username=None):
     aviat_tasks[task_id]['status'] = 'running'
