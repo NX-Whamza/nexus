@@ -285,6 +285,8 @@ class MTTowerConfig:
                 if lte_port:
                     reserved.add(lte_port)
             if getattr(self, "is_tarana", False):
+                if self.router_type == "MT2004":
+                    reserved.update({"sfp-sfpplus6", "sfp-sfpplus7", "sfp-sfpplus8"})
                 # Reserve the actual Tarana sector ports (custom or default)
                 custom = getattr(self, "_custom_sectors", None)
                 if custom:

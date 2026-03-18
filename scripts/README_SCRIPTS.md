@@ -2,7 +2,7 @@
 
 ## CURRENT STATUS: Most scripts are OBSOLETE
 
-**Reason**: The NOC ConfigMaker now has a **unified backend** (`api_server.py` + `launcher.py`) that handles everything automatically. The EXE auto-starts all services.
+**Reason**: The NOC ConfigMaker now has a unified backend entrypoint (`api_server.py` from the repo root) and a Docker-first quick start. The EXE auto-starts all services.
 
 ---
 
@@ -80,8 +80,8 @@ Everything auto-starts:
 # Option 1: Quick start
 QUICK_START.bat
 
-# Option 2: Manual Python
-python launcher.py
+# Option 2: Manual backend
+python -m uvicorn --app-dir vm_deployment fastapi_server:app --host 0.0.0.0 --port 5000
 ```
 
 ### After Code Changes:

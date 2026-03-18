@@ -48,15 +48,15 @@ export NEXTLINK_RADIUS_SECRET="your_radius_secret_here"
 
 ## HTTP Server Security
 
-The HTTP server (`serve_html.py`) is configured with:
-- ✅ Directory listing: **BLOCKED**
-- ✅ File browsing: **BLOCKED**
-- ✅ Only `NOC-configMaker.html` is accessible
-- ✅ Sensitive files/directories blocked:
-  - `secure_data/` (databases)
-  - `.git/` (source code)
-  - All `.py`, `.js`, `.db`, `.md`, `.bat` files
-  - Configuration files
+`serve_html.py` is obsolete and should not be used for current deployment guidance.
+
+Current frontend options:
+- Packaged/EXE runtime: `vm_deployment/launcher.py`
+- Local development only: `python -m http.server 8000 --directory vm_deployment`
+
+Security note:
+- `vm_deployment/launcher.py` uses a restricted handler instead of a raw directory listing server
+- `python -m http.server` is not a hardened frontend server and should not be exposed to untrusted networks
 
 ## What's Protected
 

@@ -70,18 +70,22 @@ def test_ftth_ui_contract_outstate_renders_nebraska_style_blocks():
     assert "add comment=DYNAMIC name=bridge1000" in config
     assert "add comment=STATIC name=bridge2000" in config
     assert "/interface vpls" in config
+    assert "/routing bgp template" in config
+    assert "/routing bgp connection" in config
     assert "name=vpls1000-bng1" in config
     assert "cisco-static-id=1249" in config
     assert "# ENGINEERING-COMPLIANCE-APPLIED" in config
-    assert "/ip firewall address-list rem [find list=WALLED-GARDEN]" in config
-    assert "/system note set note=\"COMPLIANCE SCRIPT LAST RUN ON $CurDT\"" in config
-    assert "require-message-auth=no" in config
+    assert "name=CR7" in config
+    assert "name=CR8" in config
+    assert "output.network=bgp-networks" in config
+    assert "WALLED-GARDEN" in config
+    assert 'dst-address-list=!WALLED-GARDEN src-address-list=unauth' in config
+    assert "EOIP-ALLOW" in config
+    assert "managerIP" in config
 
-    # Outstate remains transport-focused: no DHCP servers/pools, but compliance
-    # DHCP option/network-set lines are allowed.
+    # Outstate remains transport-focused: no DHCP servers or pools.
     assert "/ip dhcp-server\n" not in config
     assert "/ip pool" not in config
-    assert "/ip dhcp-server option add code=43 name=opt43" in config
 
 
 def test_ftth_ui_contract_instate_keeps_standard_bridge_layout():
@@ -94,6 +98,10 @@ def test_ftth_ui_contract_instate_keeps_standard_bridge_layout():
     assert "add name=bridge1000" in config
     assert "add comment=DYNAMIC name=bridge1000" not in config
     assert "name=vpls1000-bng1" not in config
+    assert "/routing bgp template" in config
+    assert "/routing bgp connection" in config
+    assert "name=CR7" in config
+    assert "name=CR8" in config
 
 
 def test_ftth_outstate_allows_missing_ftth_pool_fields():
@@ -128,3 +136,55 @@ def test_ftth_outstate_state_profile_ia_maps_ospf_and_vpls_ids():
     assert "/routing ospf area" in config
     assert "area-id=0.0.0.42" in config
     assert "name=area42" in config
+
+
+def test_ftth_auto_speed_renders_auto_negotiation_yes_without_speed():
+    payload = _ui_payload("outstate")
+    payload["uplinks"][0]["speed"] = "auto"
+    payload["uplinks"][0]["auto_negotiation"] = False
+    payload["olt_ports"][0]["speed"] = "auto"
+
+    response = client.post("/api/generate-ftth-bng", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data.get("success") is True
+    config = data.get("config", "")
+
+    assert "set [ find default-name=sfp28-3 ] auto-negotiation=yes comment=NE-WESTERN-EA-1" in config
+    assert "set [ find default-name=sfp28-6 ] auto-negotiation=yes comment=\"NOKIA OLT\"" in config
+    assert "set [ find default-name=sfp28-3 ] auto-negotiation=yes comment=NE-WESTERN-EA-1 l2mtu=9212 mtu=9198 speed=" not in config
+    assert "set [ find default-name=sfp28-6 ] auto-negotiation=yes comment=\"NOKIA OLT\" speed=" not in config
+
+
+def test_ftth_forced_speed_keeps_auto_negotiation_no_with_speed():
+    payload = _ui_payload("outstate")
+    payload["uplinks"][0]["speed"] = "25G-baseSR-LR"
+    payload["olt_ports"][0]["speed"] = "25G-baseSR-LR"
+
+    response = client.post("/api/generate-ftth-bng", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data.get("success") is True
+    config = data.get("config", "")
+
+    assert "set [ find default-name=sfp28-3 ] auto-negotiation=no comment=NE-WESTERN-EA-1 l2mtu=9212 mtu=9198 speed=25G-baseSR-LR" in config
+    assert "set [ find default-name=sfp28-6 ] auto-negotiation=no comment=\"NOKIA OLT\" speed=25G-baseSR-LR" in config
+
+
+def test_ftth_bgp_connections_use_dynamic_peer_inputs_and_loopback_router_id():
+    payload = _ui_payload("instate")
+    payload["loopback_ip"] = "10.26.1.108/32"
+    payload["peer_1_name"] = "CR7"
+    payload["peer_1_address"] = "10.2.0.107/32"
+    payload["peer_2_name"] = "CR8"
+    payload["peer_2_address"] = "10.2.0.108/32"
+
+    response = client.post("/api/generate-ftth-bng", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data.get("success") is True
+    config = data.get("config", "")
+
+    assert "set default as=26077 disabled=no output.network=bgp-networks router-id=10.26.1.108" in config
+    assert "add as=26077 cisco-vpls-nlri-len-fmt=auto-bits connect=yes disabled=no listen=yes local.address=10.26.1.108 .role=ibgp multihop=yes name=CR7 output.network=bgp-networks remote.address=10.2.0.107/32 .as=26077 .port=179 router-id=10.26.1.108 routing-table=main" in config
+    assert "add as=26077 cisco-vpls-nlri-len-fmt=auto-bits connect=yes disabled=no listen=yes local.address=10.26.1.108 .role=ibgp multihop=yes name=CR8 output.network=bgp-networks remote.address=10.2.0.108/32 .as=26077 .port=179 router-id=10.26.1.108 routing-table=main" in config

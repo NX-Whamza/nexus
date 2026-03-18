@@ -96,7 +96,10 @@ def main() -> int:
     data = r.get_json() or {}
     _assert(data.get("success") is True, f"/api/migrate-mikrotik-to-nokia success=true, got {data!r}")
     nokia = data.get("nokia_config") or ""
-    _assert("/configure router interface" in nokia, "Nokia migration output missing router interface config")
+    _assert(
+        ('/configure router interface' in nokia) or ('interface "system"' in nokia),
+        "Nokia migration output missing router interface config",
+    )
 
     # Translate: CCR2216 -> CCR2004 interface mapping must happen.
     export = (

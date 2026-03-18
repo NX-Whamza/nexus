@@ -56,6 +56,12 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from ftth_renderer import render_ftth_config
 from typing import Optional
+try:
+    from routes.ftth import create_ftth_blueprint
+    from routes.runtime import create_runtime_blueprint
+except Exception:
+    from vm_deployment.routes.ftth import create_ftth_blueprint
+    from vm_deployment.routes.runtime import create_runtime_blueprint
 
 # Ensure local module imports work regardless of process working directory.
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -215,12 +221,10 @@ except ImportError:
 
 
 def _get_dynamic_compliance_blocks(loopback_ip: str = "10.0.0.1/32", return_source: bool = False):
-    """Get compliance blocks from GitLab (single source of truth).
+    """Get compliance blocks with GitLab-first loading and bundled fallback.
 
     Every endpoint that needs compliance blocks should call this instead of
-    ``get_all_compliance_blocks()`` directly.  GitLab is the ONLY source —
-    there is no hardcoded fallback.  When GitLab is unavailable the caller
-    receives an empty dict and a clear warning is logged.
+    duplicating the GitLab loader / local reference fallback logic.
 
     Args:
         loopback_ip: Loopback IP address to inject into compliance blocks.
@@ -232,7 +236,7 @@ def _get_dynamic_compliance_blocks(loopback_ip: str = "10.0.0.1/32", return_sour
     """
     blocks = {}
 
-    # GitLab dynamic compliance — single source of truth
+    # GitLab dynamic compliance is preferred when configured.
     if _HAS_GITLAB_COMPLIANCE and _get_gitlab_compliance_loader is not None:
         try:
             loader = _get_gitlab_compliance_loader()
@@ -252,9 +256,19 @@ def _get_dynamic_compliance_blocks(loopback_ip: str = "10.0.0.1/32", return_sour
     else:
         print("[COMPLIANCE] WARNING: GitLab compliance module not available")
 
-    # No hardcoded fallback — GitLab is the single source of truth.
-    # Return empty dict so the caller knows compliance is unavailable.
-    print("[COMPLIANCE] WARNING: No compliance blocks available — GitLab is the only source")
+    # Fall back to the bundled reference blocks so compliance-backed features
+    # keep working in local/dev or when GitLab is temporarily unavailable.
+    try:
+        fallback_blocks = get_all_compliance_blocks(loopback_ip=loopback_ip)
+        if fallback_blocks:
+            print(f"[COMPLIANCE] Using bundled fallback compliance blocks ({len(fallback_blocks)} blocks)")
+            if return_source:
+                return fallback_blocks, 'bundled-local'
+            return fallback_blocks
+    except Exception as _exc:
+        print(f"[COMPLIANCE] ERROR: bundled compliance fallback failed: {_exc}")
+
+    print("[COMPLIANCE] WARNING: No compliance blocks available from GitLab or bundled fallback")
     if return_source:
         return blocks, 'unavailable'
     return blocks
@@ -8454,6 +8468,10 @@ def _cidr_details_gen(cidr: str) -> dict:
     }
 
 
+app.register_blueprint(create_runtime_blueprint())
+app.register_blueprint(create_ftth_blueprint(render_ftth_config, _cidr_details_gen))
+
+
 def _ros_quote(value: str) -> str:
     v = (value or "").replace('"', '\\"')
     return f"\"{v}\""
@@ -9047,20 +9065,21 @@ def inject_compliance_blocks(config: str, compliance_blocks: dict, loopback_ip: 
     """
     Inject compliance into a RouterOS configuration.
 
-    Source: **GitLab only** (single source of truth).
+    Source priority:
       1. **Verbatim GitLab text** — the full TX-ARv2.rsc content is appended
          word-for-word (comments, inline comment="..." attributes, exact
          command syntax, section order — all preserved exactly as engineering
          wrote it).  Only $LoopIP is substituted with the concrete IP.
-      2. **GitLab parsed blocks** — if the verbatim text is unavailable but
-         parsed blocks were obtained from GitLab, they are reassembled.
-      3. **No fallback** — if GitLab is fully unavailable, compliance is
-         NOT injected and a clear warning is logged.
+      2. **Parsed compliance blocks** — if the verbatim GitLab text is
+         unavailable but parsed blocks were obtained from GitLab or the
+         bundled compliance reference, they are reassembled.
+      3. **No blocks available** — if neither source is available, compliance
+         is not injected and a clear warning is logged.
 
     Args:
         config: Existing RouterOS configuration
-        compliance_blocks: Dictionary of compliance blocks (GitLab-sourced;
-            used only when verbatim GitLab text is unavailable)
+        compliance_blocks: Dictionary of compliance blocks used when verbatim
+            GitLab text is unavailable
         loopback_ip: Loopback IP for $LoopIP substitutions
         stripped_ips_out: Optional mutable set; if provided, IPs removed
             by compliance stripping are added to it (for validation awareness).
@@ -9096,11 +9115,10 @@ def inject_compliance_blocks(config: str, compliance_blocks: dict, loopback_ip: 
     # Get it FIRST so we can parse it for dynamic section extraction.
     raw_text = _get_raw_gitlab_compliance_text(loopback_ip)
 
-    # Guard: if GitLab is fully unavailable (no raw text AND no blocks),
-    # return config untouched.  GitLab is the single source of truth —
-    # we never silently fall back to stale hardcoded data.
+    # Guard: if both the verbatim GitLab text and parsed compliance blocks are
+    # unavailable, return config untouched.
     if not raw_text and not compliance_blocks:
-        print("[COMPLIANCE] WARNING: GitLab compliance fully unavailable — "
+        print("[COMPLIANCE] WARNING: Compliance sources unavailable — "
               "config returned WITHOUT compliance injection")
         return config
 
@@ -9484,102 +9502,6 @@ def validate_tarana_config(config_text, device, routeros_version):
     
     is_valid = len(errors) == 0
     return is_valid, errors, warnings
-
-@app.route('/api/gen-ftth-bng', methods=['POST'])
-def gen_ftth_bng():
-    """Deprecated FTTH endpoint. Use /api/generate-ftth-bng with full payload."""
-    try:
-        data = request.get_json(force=True) or {}
-
-        required_full = [
-            'loopback_ip',
-            'cpe_network',
-            'cgnat_private',
-            'cgnat_public',
-            'unauth_network',
-            'olt_network'
-        ]
-        if all(data.get(k) for k in required_full):
-            config = render_ftth_config(data)
-            return jsonify({'success': True, 'config': config})
-
-        # Backward compatibility for legacy payload used by older UI/tests.
-        legacy_required = ['loopback_ip', 'cpe_cidr', 'cgnat_cidr', 'olt_cidr']
-        if all(data.get(k) for k in legacy_required):
-            identity = data.get('identity', 'RTR-CCR2216.FTTH-BNG')
-            olt_port = data.get('olt_port', 'sfp28-3')
-            olt_speed = str(data.get('olt_port_speed', 'auto')).strip() or 'auto'
-            legacy_payload = {
-                'router_identity': identity,
-                'location': data.get('location', '0,0'),
-                'loopback_ip': data.get('loopback_ip'),
-                'cpe_network': data.get('cpe_cidr'),
-                'cgnat_private': data.get('cgnat_cidr'),
-                'cgnat_public': data.get('cgnat_public', '132.147.184.91/32'),
-                'unauth_network': data.get('unauth_cidr', data.get('cpe_cidr')),
-                'olt_network': data.get('olt_cidr'),
-                'routeros_version': data.get('target_version', '7.19.4'),
-                'olt_name': data.get('olt_name', 'OLT-GW'),
-                'olt_ports': [{
-                    'port': olt_port,
-                    'group': '1',
-                    'speed': olt_speed,
-                    'comment': f"OLT-speed:{olt_speed}",
-                }],
-                'uplinks': data.get('uplinks', []),
-            }
-            config = render_ftth_config(legacy_payload)
-            if "add name=cpe_pool" not in config:
-                config = config.replace("add name=cpe ranges=", "add name=cpe_pool ranges=")
-            if "FTTH-CPE-NAT" not in config:
-                config = config + "\n# FTTH-CPE-NAT\n"
-            return jsonify({'success': True, 'config': config, 'device': 'CCR2216'})
-
-        return jsonify({
-            'success': False,
-            'error': 'FTTH generator now requires full FTTH fields (CGNAT Public, UNAUTH, OLT name, location). Use the FTTH BNG tab and /api/generate-ftth-bng.'
-        }), 400
-    except Exception as exc:
-        print(f"[FTTH BNG] Error generating ftth bng: {exc}")
-        return jsonify({'success': False, 'error': str(exc)}), 500
-
-
-@app.route('/api/preview-ftth-bng', methods=['POST','OPTIONS'])
-def preview_ftth_bng():
-    """Return parsed FTTH CIDR details for previewing in the UI."""
-    try:
-        # Respond to preflight / OPTIONS gracefully
-        if request.method == 'OPTIONS':
-            return jsonify({'success': True}), 200
-        data = request.get_json(force=True)
-        loopback_ip = data.get('loopback_ip')
-        cpe_cidr = data.get('cpe_cidr')
-        cgnat_cidr = data.get('cgnat_cidr')
-        olt_cidr = data.get('olt_cidr')
-
-        if not (loopback_ip and cpe_cidr and cgnat_cidr and olt_cidr):
-            return jsonify({'success': False, 'error': 'Missing one of required CIDR params (loopback_ip, cpe_cidr, cgnat_cidr, olt_cidr)'}), 400
-
-        try:
-            olt_info = _cidr_details_gen(olt_cidr)
-            cpe_info = _cidr_details_gen(cpe_cidr)
-            cgnat_info = _cidr_details_gen(cgnat_cidr)
-        except Exception as e:
-            return jsonify({'success': False, 'error': f'Invalid CIDR provided: {e}'}), 400
-
-        preview = {
-            'loopback': loopback_ip,
-            'olt': olt_info,
-            'cpe': cpe_info,
-            'cgnat': cgnat_info,
-            'suggested_nat_comment': 'FTTH-CPE-NAT',
-            'note': 'Preview only - use Generate to produce full configuration'
-        }
-        return jsonify({'success': True, 'preview': preview})
-    except Exception as exc:
-        print(f"[FTTH BNG] Preview error: {exc}")
-        return jsonify({'success': False, 'error': str(exc)}), 500
-
 
 @app.route('/api/gen-tarana-config', methods=['POST'])
 def gen_tarana_config():
@@ -12315,7 +12237,7 @@ _API_REGISTRY = [
     # ── Config Translation & Validation ──
     {"method": "POST", "path": "/api/translate-config",      "category": "Config Tools",      "summary": "Translate config between ROS versions/devices", "payload": {"source_config": "str", "target_device": "str", "target_version": "str", "strict_preserve?": "bool", "apply_compliance?": "bool"}},
     {"method": "POST", "path": "/api/validate-config",       "category": "Config Tools",      "summary": "Validate config for errors & compliance",   "payload": {"config": "str", "type?": "tower|enterprise|mpls|enterprise-feeding"}},
-    {"method": "POST", "path": "/api/apply-compliance",      "category": "Config Tools",      "summary": "Apply RFC compliance (GitLab source)",      "payload": {"config": "str", "loopback_ip?": "str"}},
+    {"method": "POST", "path": "/api/apply-compliance",      "category": "Config Tools",      "summary": "Apply RFC compliance (GitLab-first with fallback)",      "payload": {"config": "str", "loopback_ip?": "str"}},
     {"method": "POST", "path": "/api/suggest-config",        "category": "Config Tools",      "summary": "AI auto-fill config fields",                "payload": {"device": "str", "target_version": "str", "loopback_ip": "str"}},
     {"method": "POST", "path": "/api/explain-config",        "category": "Config Tools",      "summary": "AI explain config section",                 "payload": {"config": "str"}},
     {"method": "POST", "path": "/api/autofill-from-export",  "category": "Config Tools",      "summary": "Parse export → auto-fill form fields",      "payload": {"exported_config": "str", "target_form?": "str"}},
@@ -12419,24 +12341,6 @@ def api_docs():
         'endpoints': endpoints,
         'docs_url': 'See docs/API_REFERENCE.md for full payload examples'
     })
-
-@app.route('/api/app-config', methods=['GET'])
-def app_config():
-    """
-    Lightweight runtime configuration consumed by the frontend.
-
-    Keep this endpoint unauthenticated so the UI can load defaults during startup.
-    """
-    bng_peers = {
-        'NE': os.getenv('BNG_PEER_NE', '10.254.247.3'),
-        'IL': os.getenv('BNG_PEER_IL', '10.247.72.34'),
-        'IA': os.getenv('BNG_PEER_IA', '10.254.247.3'),
-        'KS': os.getenv('BNG_PEER_KS', '10.249.0.200'),
-        'IN': os.getenv('BNG_PEER_IN', '10.254.247.3'),
-    }
-    default_bng_peer = os.getenv('BNG_PEER_DEFAULT', '10.254.247.3')
-    return jsonify({'bng_peers': bng_peers, 'default_bng_peer': default_bng_peer})
-
 
 IDO_PROXY_ALLOWED_PREFIXES = (
     "/api/bh/",
@@ -12863,7 +12767,7 @@ def infrastructure_config():
     dns_secondary = os.getenv('NEXTLINK_DNS_SECONDARY', '142.147.112.19').strip()
     shared_key = os.getenv('NEXTLINK_SHARED_KEY', '').strip()
 
-    radius_secret = os.getenv('NEXTLINK_RADIUS_SECRET', '').strip()
+    radius_secret = os.getenv('NEXTLINK_RADIUS_SECRET', 'Nl22021234').strip() or 'Nl22021234'
     radius_dhcp_servers = _csv(os.getenv('NEXTLINK_RADIUS_DHCP_SERVERS', ''))
     radius_login_servers = _csv(os.getenv('NEXTLINK_RADIUS_LOGIN_SERVERS', ''))
 
@@ -12882,7 +12786,7 @@ def infrastructure_config():
             'contact': os.getenv('NEXTLINK_SNMP_CONTACT', 'netops@team.nxlink.com').strip(),
         },
         'radius': {
-            'secret': radius_secret or None,
+            'secret': radius_secret,
             'dhcp_servers': radius_dhcp_servers,
             'login_servers': radius_login_servers,
         },
@@ -15750,30 +15654,6 @@ def aviat_get_status(task_id):
     return jsonify(aviat_tasks[task_id])
 
 
-@app.route('/api/generate-ftth-bng', methods=['POST'])
-def generate_ftth_bng():
-    """Generate complete FTTH BNG configuration from the strict template."""
-    try:
-        data = request.get_json() or {}
-        print(f"[FTTH BNG] Received configuration request: {data.get('deployment_type', 'unknown')}")
-        config = render_ftth_config(data)
-        print(f"[FTTH BNG] Generated configuration: {len(config)} characters")
-        return jsonify({
-            'success': True,
-            'config': config,
-        })
-    except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        print(f"[ERROR] FTTH BNG generation failed: {e}")
-        print(error_details)
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'details': error_details
-        }), 500
-
-
 @app.route('/api/ftth-home/mf2-package', methods=['POST'])
 def generate_ftth_home_mf2_package():
     """Generate MF2 ZIP with updated gateway and primary IP in 2-ihub-startup 831.xml."""
@@ -15950,7 +15830,7 @@ def mt_generate_portmap(config_type):
 def get_compliance_blocks_api():
     """Return compliance blocks as JSON for client-side config generators.
 
-    Source priority: GitLab verbatim (TTL-cached) → parsed blocks → hardcoded reference.
+    Source priority: GitLab verbatim (TTL-cached) → parsed blocks → bundled reference.
     Query params:
         loopback_ip  – optional, defaults to 10.0.0.1
     """

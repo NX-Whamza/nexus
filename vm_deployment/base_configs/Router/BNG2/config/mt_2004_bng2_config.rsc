@@ -5,12 +5,12 @@
 set name={{ sysname }}
 
 /interface bridge
-add comment=IDEATEK-MGMT name=bridge600 port-cost-mode=short protocol-mode=none
-add comment=IDEATEK-CUST name=bridge800 port-cost-mode=short protocol-mode=none
-add comment=DYNAMIC name=bridge1000 port-cost-mode=short protocol-mode=none
-add comment=STATIC name=bridge2000 port-cost-mode=short protocol-mode=none
-add comment=INFRA name=bridge3000 port-cost-mode=short protocol-mode=none
-add comment=CPE name=bridge4000 port-cost-mode=short protocol-mode=none
+add name=bridge600 comment=IDEATEK-MGMT port-cost-mode=short protocol-mode=none
+add name=bridge800 comment=IDEATEK-CUST port-cost-mode=short protocol-mode=none
+add name=bridge1000 comment=DYNAMIC port-cost-mode=short protocol-mode=none
+add name=bridge2000 comment=STATIC port-cost-mode=short protocol-mode=none
+add name=bridge3000 comment=INFRA port-cost-mode=short protocol-mode=none
+add name=bridge4000 comment=CPE port-cost-mode=short protocol-mode=none
 add name=loop0 port-cost-mode=short
 add name=vpls-bridge port-cost-mode=short
 {% if is_tarana %}
@@ -35,10 +35,10 @@ add cisco-static-id=3 name=vpls-bng1 peer={{ mesh_peer_1 }} pw-l2mtu={{ vpls_l2m
 add cisco-static-id=3 name=vpls-bng2 peer={{ mesh_peer_2 }} pw-l2mtu={{ vpls_l2mtu }} pw-type=raw-ethernet
 add cisco-static-id=600 comment=VPLS600-BNG-{{ state }}-NET name=vpls600-bng-{{ state_lc }}-net peer={{ state_vpls_peer }} pw-l2mtu={{ vpls_l2mtu }} pw-type=raw-ethernet
 add cisco-static-id=800 comment=VPLS800-BNG-{{ state }}-NET name=vpls800-bng-{{ state_lc }}-net peer={{ state_vpls_peer }} pw-l2mtu={{ vpls_l2mtu }} pw-type=raw-ethernet
-add cisco-static-id={{ vpls1000 }} comment=VPLS1000-BNG-{{ state }} name=vpls1000-bng-{{ state_lc }} peer={{ bng1_ip }} pw-l2mtu={{ vpls_l2mtu }} pw-type=raw-ethernet
-add cisco-static-id={{ vpls2000 }} comment=VPLS2000-BNG-{{ state }} name=vpls2000-bng-{{ state_lc }} peer={{ bng1_ip }} pw-l2mtu={{ vpls_l2mtu }} pw-type=raw-ethernet
-add cisco-static-id={{ vpls3000 }} comment=VPLS3000-BNG-{{ state }} name=vpls3000-bng-{{ state_lc }} peer={{ bng1_ip }} pw-l2mtu={{ vpls_l2mtu }} pw-type=raw-ethernet
-add cisco-static-id={{ vpls4000 }} comment=VPLS4000-BNG-{{ state }} name=vpls4000-bng-{{ state_lc }} peer={{ bng1_ip }} pw-l2mtu={{ vpls_l2mtu }} pw-type=raw-ethernet
+add cisco-static-id={{ vpls1000 }} comment=VPLS1000-BNG-{{ state }} name=vpls1000-bng1 peer={{ bng1_ip }} pw-l2mtu={{ vpls_l2mtu }} pw-type=raw-ethernet
+add cisco-static-id={{ vpls2000 }} comment=VPLS2000-BNG-{{ state }} name=vpls2000-bng1 peer={{ bng1_ip }} pw-l2mtu={{ vpls_l2mtu }} pw-type=raw-ethernet
+add cisco-static-id={{ vpls3000 }} comment=VPLS3000-BNG-{{ state }} name=vpls3000-bng1 peer={{ bng1_ip }} pw-l2mtu={{ vpls_l2mtu }} pw-type=raw-ethernet
+add cisco-static-id={{ vpls4000 }} comment=VPLS4000-BNG-{{ state }} name=vpls4000-bng1 peer={{ bng1_ip }} pw-l2mtu={{ vpls_l2mtu }} pw-type=raw-ethernet
 
 /interface bridge port
 {% for sw in switches %}
@@ -48,10 +48,10 @@ add bridge=vpls-bridge edge=yes horizon=1 ingress-filtering=no interface=vpls-bn
 add bridge=vpls-bridge edge=yes horizon=1 ingress-filtering=no interface=vpls-bng2 internal-path-cost=10 path-cost=10
 add bridge=bridge600 edge=yes horizon=1 ingress-filtering=no interface=vpls600-bng-{{ state_lc }}-net internal-path-cost=10 path-cost=10
 add bridge=bridge800 edge=yes horizon=1 ingress-filtering=no interface=vpls800-bng-{{ state_lc }}-net internal-path-cost=10 path-cost=10
-add bridge=bridge1000 edge=yes horizon=1 ingress-filtering=no interface=vpls1000-bng-{{ state_lc }} internal-path-cost=10 path-cost=10
-add bridge=bridge2000 edge=yes horizon=1 ingress-filtering=no interface=vpls2000-bng-{{ state_lc }} internal-path-cost=10 path-cost=10
-add bridge=bridge3000 edge=yes horizon=1 ingress-filtering=no interface=vpls3000-bng-{{ state_lc }} internal-path-cost=10 path-cost=10
-add bridge=bridge4000 edge=yes horizon=1 ingress-filtering=no interface=vpls4000-bng-{{ state_lc }} internal-path-cost=10 path-cost=10
+add bridge=bridge1000 edge=yes horizon=1 ingress-filtering=no interface=vpls1000-bng1 internal-path-cost=10 path-cost=10
+add bridge=bridge2000 edge=yes horizon=1 ingress-filtering=no interface=vpls2000-bng1 internal-path-cost=10 path-cost=10
+add bridge=bridge3000 edge=yes horizon=1 ingress-filtering=no interface=vpls3000-bng1 internal-path-cost=10 path-cost=10
+add bridge=bridge4000 edge=yes horizon=1 ingress-filtering=no interface=vpls4000-bng1 internal-path-cost=10 path-cost=10
 
 /ip address
 add address={{ loopip }} comment=loop0 interface=loop0 network={{ loopip }}

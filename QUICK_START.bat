@@ -40,26 +40,26 @@ echo.
 echo.
 
 REM Start backend in new window
-start "NOC Backend" /MIN cmd /c "python api_server.py"
+start "NOC Backend" /MIN cmd /c "python -m uvicorn --app-dir vm_deployment fastapi_server:app --host 0.0.0.0 --port 5000"
 
 REM Wait for backend to start
 timeout /t 3 /nobreak >nul
 
 REM Start frontend in new window
-start "NOC Frontend" cmd /c "python -m http.server 8000"
+start "NOC Frontend" cmd /c "python -m http.server 8000 --directory vm_deployment"
 
 REM Wait for frontend to start
 timeout /t 3 /nobreak >nul
 
 echo Opening browser...
-start http://localhost:8000/vm_deployment/NOC-configMaker.html
+start http://localhost:8000/NOC-configMaker.html
 
 echo.
 echo ========================================
 echo  Services Started (Fallback Mode)
 echo ========================================
 echo Backend:  http://localhost:5000
-echo Frontend: http://localhost:8000/vm_deployment/NOC-configMaker.html
+echo Frontend: http://localhost:8000/NOC-configMaker.html
 echo.
 echo KEEP THE SERVER WINDOWS OPEN!
 echo.

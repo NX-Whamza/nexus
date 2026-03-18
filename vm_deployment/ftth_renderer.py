@@ -306,7 +306,7 @@ def _fetch_compliance_blocks(loopback_ip: str) -> dict | None:
         try:
             blocks = _get_compliance_blocks(loopback_ip)
             if blocks:
-                print(f"[FTTH-COMPLIANCE] Loaded {len(blocks)} blocks via compliance reference (GitLab)")
+                print(f"[FTTH-COMPLIANCE] Loaded {len(blocks)} blocks via compliance reference")
                 return blocks
         except Exception as exc:
             print(f"[FTTH-COMPLIANCE] Compliance reference error: {exc}")
@@ -520,6 +520,15 @@ def _ftth_quote(value: str) -> str:
     if value is None:
         return "\"\""
     return "\"" + str(value).replace("\"", "") + "\""
+
+
+def _normalize_bgp_peer_address(value, fallback: str) -> str:
+    peer = str(value or fallback).strip()
+    if not peer:
+        peer = fallback
+    if "/" not in peer:
+        peer = f"{peer}/32"
+    return peer
 
 
 def _ftth_user_passwords():
@@ -929,7 +938,9 @@ def render_ftth_config(data: dict) -> str:
         l2mtu = uplink.get('l2mtu', '9212')
         auto_neg = uplink.get('auto_negotiation', False)
         parts = [f"set [ find default-name={port} ]"]
-        if auto_neg is False:
+        if speed == 'auto' or auto_neg is True:
+            parts.append("auto-negotiation=yes")
+        else:
             parts.append("auto-negotiation=no")
         if comment:
             parts.append(f"comment={comment}")
@@ -984,7 +995,11 @@ def render_ftth_config(data: dict) -> str:
             base_name = olt_name_secondary if group == '2' and olt_name_secondary else olt_name
         comment = _fmt_comment(port_cfg.get('comment') or base_name)
         speed = port_cfg.get('speed', 'auto')
-        parts = [f"set [ find default-name={port} ]", "auto-negotiation=no"]
+        parts = [f"set [ find default-name={port} ]"]
+        if speed == 'auto':
+            parts.append("auto-negotiation=yes")
+        else:
+            parts.append("auto-negotiation=no")
         if comment:
             parts.append(f"comment={comment}")
         if speed and speed != 'auto':
@@ -1085,28 +1100,47 @@ def render_ftth_config(data: dict) -> str:
                 f"interfaces=bridge3000 networks={olt2_net.network_address}/{olt2_net.prefixlen} priority=1"
             )
 
+    bgp_as = str(data.get('asn') or os.getenv('NEXTLINK_BGP_ASN', '26077')).strip() or '26077'
+    bgp_md5_key = str(data.get('bgp_md5_key') or os.getenv('NEXTLINK_BGP_MD5_KEY', 'm8M5JwvdYM')).strip()
+    peer_1_name = str(data.get('peer_1_name') or os.getenv('NEXTLINK_BGP_PEER1_NAME', 'CR7')).strip() or 'CR7'
+    peer_2_name = str(data.get('peer_2_name') or os.getenv('NEXTLINK_BGP_PEER2_NAME', 'CR8')).strip() or 'CR8'
+    peer_1_address = _normalize_bgp_peer_address(
+        data.get('peer_1_address'),
+        os.getenv('NEXTLINK_BGP_PEER1_ADDRESS', '10.2.0.107/32'),
+    )
+    peer_2_address = _normalize_bgp_peer_address(
+        data.get('peer_2_address'),
+        os.getenv('NEXTLINK_BGP_PEER2_ADDRESS', '10.2.0.108/32'),
+    )
+
     if routeros_version == '7.20.2':
         bgp_instance_block = "\n".join([
             "/routing bgp instance",
-            f"add as=26077 disabled=no name=bgp-instance-1 router-id={loopback.ip}",
+            f"add as={bgp_as} disabled=no name=bgp-instance-1 router-id={loopback.ip}",
         ])
-        bgp_template_line = "set default as=26077 disabled=no output.network=bgp-networks"
+        bgp_template_line = f"set default as={bgp_as} disabled=no output.network=bgp-networks router-id={loopback.ip}"
         bgp_connection_lines = "\n".join([
-            f"add cisco-vpls-nlri-len-fmt=auto-bits connect=yes disabled=no instance=bgp-instance-1 listen=yes "
-            f"local.address={loopback.ip} .role=ibgp multihop=yes name=CR7 output.network=bgp-networks "
-            f"remote.address=10.2.0.107/32 .as=26077 .port=179 routing-table=main templates=default",
-            f"add cisco-vpls-nlri-len-fmt=auto-bits connect=yes disabled=no instance=bgp-instance-1 listen=yes "
-            f"local.address={loopback.ip} .role=ibgp multihop=yes name=CR8 output.network=bgp-networks "
-            f"remote.address=10.2.0.108/32 .as=26077 .port=179 routing-table=main templates=default",
+            f"add as={bgp_as} cisco-vpls-nlri-len-fmt=auto-bits connect=yes disabled=no instance=bgp-instance-1 listen=yes "
+            f"local.address={loopback.ip} .role=ibgp multihop=yes name={peer_1_name} output.network=bgp-networks "
+            f"remote.address={peer_1_address} .as={bgp_as} .port=179 router-id={loopback.ip} routing-table=main "
+            f"{f'tcp-md5-key={bgp_md5_key} ' if bgp_md5_key else ''}templates=default",
+            f"add as={bgp_as} cisco-vpls-nlri-len-fmt=auto-bits connect=yes disabled=no instance=bgp-instance-1 listen=yes "
+            f"local.address={loopback.ip} .role=ibgp multihop=yes name={peer_2_name} output.network=bgp-networks "
+            f"remote.address={peer_2_address} .as={bgp_as} .port=179 router-id={loopback.ip} routing-table=main "
+            f"{f'tcp-md5-key={bgp_md5_key} ' if bgp_md5_key else ''}templates=default",
         ])
     else:
         bgp_instance_block = ''
-        bgp_template_line = f"set default as=26077 disabled=no output.network=bgp-networks router-id={loopback.ip}"
+        bgp_template_line = f"set default as={bgp_as} disabled=no output.network=bgp-networks router-id={loopback.ip}"
         bgp_connection_lines = "\n".join([
-            f"add cisco-vpls-nlri-len-fmt=auto-bits connect=yes listen=yes local.address={loopback.ip} "
-            f".role=ibgp multihop=yes name=CR7 remote.address=10.2.0.107 .as=26077 .port=179 templates=default",
-            f"add cisco-vpls-nlri-len-fmt=auto-bits connect=yes listen=yes local.address={loopback.ip} "
-            f".role=ibgp multihop=yes name=CR8 remote.address=10.2.0.108 .as=26077 .port=179 templates=default",
+            f"add as={bgp_as} cisco-vpls-nlri-len-fmt=auto-bits connect=yes disabled=no listen=yes local.address={loopback.ip} "
+            f".role=ibgp multihop=yes name={peer_1_name} output.network=bgp-networks remote.address={peer_1_address} "
+            f".as={bgp_as} .port=179 router-id={loopback.ip} routing-table=main "
+            f"{f'tcp-md5-key={bgp_md5_key} ' if bgp_md5_key else ''}templates=default",
+            f"add as={bgp_as} cisco-vpls-nlri-len-fmt=auto-bits connect=yes disabled=no listen=yes local.address={loopback.ip} "
+            f".role=ibgp multihop=yes name={peer_2_name} output.network=bgp-networks remote.address={peer_2_address} "
+            f".as={bgp_as} .port=179 router-id={loopback.ip} routing-table=main "
+            f"{f'tcp-md5-key={bgp_md5_key} ' if bgp_md5_key else ''}templates=default",
         ])
 
     user_passwords = _ftth_user_passwords()

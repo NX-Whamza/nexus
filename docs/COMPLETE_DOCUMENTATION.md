@@ -503,12 +503,13 @@ The TARANA SECTORS section is fully protected and isolated:
 
 ### Server Configuration
 
-**HTML Server (`python -m http.server 8000 --directory vm_deployment`):**
+**HTML Server (current options):**
+- Local development: `python -m http.server 8000 --directory vm_deployment`
+- Packaged/EXE runtime: `vm_deployment/launcher.py`
 - Binds to `0.0.0.0` (all network interfaces)
 - Port 8000
-- CORS enabled for API communication
 
-**API Server (`api_server.py`):**
+**API Server (`fastapi_server.py` via uvicorn, or `api_server.py` compatibility shim):**
 - Binds to `0.0.0.0` (all network interfaces)
 - Port 5000
 - CORS enabled

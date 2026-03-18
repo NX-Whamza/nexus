@@ -7489,6 +7489,24 @@
                 </div>
 
                 <div class="section">
+                    <h2>BGP Peer Configuration</h2>
+                    <p style="margin-bottom: 15px; color: var(--text-color-secondary);">
+                        FTTH BGP uses the loopback IP as `local.address` and `router-id`. The backend automatically
+                        builds the core peers below.
+                    </p>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div style="padding: 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg);">
+                            <strong>CR7</strong><br>
+                            <span style="color: var(--text-color-secondary);">10.2.0.107/32</span>
+                        </div>
+                        <div style="padding: 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg);">
+                            <strong>CR8</strong><br>
+                            <span style="color: var(--text-color-secondary);">10.2.0.108/32</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
                     <h2>Port & Uplink Configuration</h2>
                     <p style="margin-bottom: 15px; color: var(--text-color-secondary);">Configure ports with IP
                         addresses for OSPF routing, bridge assignment, or switch mode. The tool automatically handles
@@ -7675,6 +7693,24 @@
                             <label for="ftth_olt_lag100g_out">OLT LAG Name (200G Ports, Optional):</label>
                             <input type="text" id="ftth_olt_lag100g_out" placeholder="TX-LAB-MF2-100G"
                                 oninput="updateFtthOltLagName('out', '100g')">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>BGP Peer Configuration</h2>
+                    <p style="margin-bottom: 15px; color: var(--text-color-secondary);">
+                        FTTH BGP uses the loopback IP as `local.address` and `router-id`. The backend automatically
+                        builds the core peers below.
+                    </p>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div style="padding: 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg);">
+                            <strong>CR7</strong><br>
+                            <span style="color: var(--text-color-secondary);">10.2.0.107/32</span>
+                        </div>
+                        <div style="padding: 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg);">
+                            <strong>CR8</strong><br>
+                            <span style="color: var(--text-color-secondary);">10.2.0.108/32</span>
                         </div>
                     </div>
                 </div>
@@ -22536,7 +22572,7 @@ Ready for translation!`);
                 })
                 .catch(error => {
                     console.error('[AUTO-SAVE]  Error saving config:', error);
-                    console.error('[AUTO-SAVE] Make sure backend server is running: python api_server.py');
+                    console.error('[AUTO-SAVE] Make sure backend server is running: python -m uvicorn --app-dir vm_deployment fastapi_server:app --host 0.0.0.0 --port 5000');
                 });
         }
 
@@ -22587,7 +22623,7 @@ Ready for translation!`);
                 })
                 .catch(error => {
                     console.error('Error loading configs:', error);
-                    listContainer.innerHTML = `<div style="background: #f8d7da; border: 2px solid #dc3545; border-radius: 8px; padding: 20px; text-align: center;"><strong> Failed to load configurations</strong><br><br>${error.message}<br><br><strong>Make sure:</strong><br>1. Backend server is running: <code style="background: #f5f5f5; padding: 5px 10px; border-radius: 3px;">python api_server.py</code><br>2. HTML is served via HTTP (not file://)</div>`;
+                    listContainer.innerHTML = `<div style="background: #f8d7da; border: 2px solid #dc3545; border-radius: 8px; padding: 20px; text-align: center;"><strong> Failed to load configurations</strong><br><br>${error.message}<br><br><strong>Make sure:</strong><br>1. Backend server is running: <code style="background: #f5f5f5; padding: 5px 10px; border-radius: 3px;">python -m uvicorn --app-dir vm_deployment fastapi_server:app --host 0.0.0.0 --port 5000</code><br>2. HTML is served via HTTP (not file://)</div>`;
                 });
         }
 
@@ -25299,8 +25335,9 @@ Ready for translation!`);
                 if (!isCidr(olt, 29)) { errEl.textContent = 'OLT must be a /29 (e.g., 198.51.100.8/29)'; errEl.style.display = 'block'; return false; }
 
                 try {
-                    const apiBase = (typeof resolveApiBase === 'function') ? resolveApiBase() : '/api';
-                    const r = await fetch(`${apiBase}/preview-ftth-bng`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ loopback_ip: loopback, cpe_cidr: cpe, cgnat_cidr: cgnat, olt_cidr: olt }) });
+                    const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : (window.AI_API_BASE || '/api');
+                    const targetUrl = `${apiBase.replace(/\/+$/, '')}/preview-ftth-bng`;
+                    const r = await fetch(targetUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ loopback_ip: loopback, cpe_cidr: cpe, cgnat_cidr: cgnat, olt_cidr: olt }) });
                     if (!r.ok) {
                         const txt = await r.text();
                         errEl.textContent = 'Preview server responded with status ' + r.status + ': ' + (txt || '');
@@ -26170,7 +26207,7 @@ Ready for translation!`);
                 portDiv.style.cssText = 'margin-bottom: 10px; padding: 15px; background: var(--input-bg); border-radius: 4px; border: 1px solid var(--border-color);';
                 const speedOptions = groupId === '100g'
                     ? '<option value="100G-baseCR4" selected>100G-baseCR4</option>'
-                    : '<option value="auto">Auto</option><option value="10G-baseSR-LR">10G-baseSR-LR</option><option value="10G-baseSR-LR">10G-baseSR-LR</option>';
+                    : '<option value="auto">Auto</option><option value="10G-baseSR-LR">10G-baseSR-LR</option><option value="25G-baseSR-LR">25G-baseSR-LR</option>';
                 const speedDisabled = groupId === '100g' ? 'disabled' : '';
                 portDiv.innerHTML = `
                     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; align-items: center;">
@@ -28788,7 +28825,7 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
             for (const r of bulkSshResults) {
                 if (!r.success || !r.config) continue;
                 try {
-                    await fetch(apiBase + '/save-config', {
+                    await fetch(apiBase + '/save-completed-config', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('auth_token') || '') },
                         body: JSON.stringify({

@@ -117,7 +117,7 @@ def test_bng2_config_is_not_tower_and_contains_vpls():
     text = r.json()
     assert isinstance(text, str)
     assert "/interface vpls" in text
-    assert "vpls1000-bng-" in text
+    assert "vpls1000-bng1" in text
     assert "name=bridge1000" in text
     assert "lan-bridge" not in text
     assert "nat-public-bridge" not in text
@@ -147,3 +147,44 @@ def test_ido_proxy_blocks_site_checker_paths():
     if r.status_code == 403:
         detail = r.json().get("detail", "")
         assert "not allowed" in detail.lower()
+
+
+def test_compliance_blocks_endpoint_returns_blocks_without_gitlab():
+    r = client.get("/api/compliance/blocks", params={"loopback_ip": "10.5.0.1/32"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data.get("success") is True
+    assert data.get("source") in {"gitlab", "bundled-local"}
+    blocks = data.get("blocks", {})
+    assert isinstance(blocks, dict)
+    assert len(blocks) > 5
+    assert "ip_services" in blocks
+    assert "dns" in blocks
+    assert "snmp" in blocks
+
+
+def test_apply_compliance_endpoint_uses_available_compliance_blocks():
+    config = "\n".join(
+        [
+            "# jan/01/1970 00:00:12 by RouterOS 7.16.1",
+            "/system identity",
+            'set name="TEST-CN-1"',
+            "/interface bridge",
+            "add name=bridge1",
+            "/routing ospf instance",
+            "add name=default-v2 router-id=10.248.86.11",
+            "/interface vpls",
+            "add disabled=no l2mtu=1500 mac-address=02:AA:BB:CC:DD:EE name=vpls1000-bng1 remote-peer=10.249.0.200 vpls-id=1000:1",
+        ]
+    )
+    r = client.post("/api/apply-compliance", json={"config": config, "loopback_ip": "10.248.86.11/32"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body.get("success") is True
+    text = body.get("config", "")
+    assert isinstance(text, str)
+    assert 'set name="TEST-CN-1"' in text
+    assert "vpls1000-bng1" in text
+    assert "142.147.112.3" in text
+    assert "ntp-pool.nxlink.com" in text
+    assert "list=managerIP" in text
