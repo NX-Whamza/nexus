@@ -30,7 +30,7 @@ add disabled=yes interface={{UPLINK_PRIMARY_PORT}} mtu={{UPLINK_PRIMARY_MTU}} na
 {{OLT2_VLAN_LINES}}
 
 /ip dhcp-server option
-add code=43 name=opt43 value=0x011768747470733a2f2f7573732e6e786c696e6b2e636f6d2f
+add code=43 name=opt43 value=0x012d68747470733a2f2f6e61342e6e6f6b69616163732e6e6f6b69612e636f6d3a31373534372f6e6578746c696e6b020561646d696e030561646d696e
 
 /ip dhcp-server option sets
 add name=optset options=opt43
@@ -102,7 +102,7 @@ add address-pool=cust dhcp-option-set=optset interface=bridge1000 lease-time=10m
 /ip dhcp-server network
 add address={{CPE_NETWORK_BASE}}/{{CPE_PREFIX}} dns-server=142.147.112.3,142.147.112.19 gateway={{CPE_GATEWAY}} netmask={{CPE_PREFIX}}
 add address={{UNAUTH_NETWORK_BASE}}/{{UNAUTH_PREFIX}} dns-server=142.147.112.3,142.147.112.19 gateway={{UNAUTH_GATEWAY}} netmask={{UNAUTH_PREFIX}}
-add address={{CGNAT_NETWORK_BASE}}/{{CGNAT_PREFIX}} dns-server=142.147.112.3,142.147.112.19 gateway={{CGNAT_GATEWAY}} netmask={{CGNAT_PREFIX}}
+add address={{CGNAT_NETWORK_BASE}}/{{CGNAT_PREFIX}} dhcp-option-set=optset dns-server=142.147.112.3,142.147.112.19 gateway={{CGNAT_GATEWAY}} netmask={{CGNAT_PREFIX}}
 
 /ip dns
 set servers=142.147.112.3,142.147.112.19

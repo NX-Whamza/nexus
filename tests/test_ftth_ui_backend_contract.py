@@ -102,6 +102,16 @@ def test_ftth_ui_contract_instate_keeps_standard_bridge_layout():
     assert "/routing bgp connection" in config
     assert "name=CR7" in config
     assert "name=CR8" in config
+    assert "/ip dhcp-server option" in config
+    assert "add code=43 name=opt43 value=0x012d68747470733a2f2f6e61342e6e6f6b69616163732e6e6f6b69612e636f6d3a31373534372f6e6578746c696e6b020561646d696e030561646d696e" in config
+    assert "/ip dhcp-server option sets" in config
+    assert "add name=optset options=opt43" in config
+    assert "/ip dhcp-server" in config
+    assert "add address-pool=cust dhcp-option-set=optset interface=bridge1000 lease-time=10m name=server1 use-radius=yes" in config
+    assert "/ip dhcp-server network" in config
+    assert "add address=10.249.96.0/22 dns-server=142.147.112.3,142.147.112.19 gateway=10.249.96.1 netmask=22" in config
+    assert "add address=10.149.96.0/22 dns-server=142.147.112.3,142.147.112.19 gateway=10.149.96.1 netmask=22" in config
+    assert "add address=100.64.96.0/22 dhcp-option-set=optset dns-server=142.147.112.3,142.147.112.19 gateway=100.64.96.1 netmask=22" in config
 
 
 def test_ftth_outstate_allows_missing_ftth_pool_fields():
