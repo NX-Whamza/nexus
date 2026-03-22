@@ -4694,6 +4694,10 @@
                                             </div>
                                         </div>
                                     </div>
+                                    <div id="upgradeMigrationAnalysis" style="display:none; margin-bottom:15px; border-radius:6px; overflow:hidden; border:1px solid var(--border-color);">
+                                        <div style="background:#263238; color:#fff; padding:10px 15px; font-weight:bold; font-size:14px;">Migration Analysis</div>
+                                        <div id="upgradeMigrationAnalysisBody" style="padding:12px 15px; background:var(--container-bg); font-size:13px; line-height:1.6;"></div>
+                                    </div>
                                     <textarea id="upgradeOutput" readonly
                                         style="width: 100%; min-height: 500px; padding: 15px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--output-bg); color: var(--text-color); font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.5; white-space: pre; overflow-x: auto; word-wrap: normal;"
                                         spellcheck="false"></textarea>
@@ -8847,7 +8851,7 @@ show mac address-table | include &lt;mac&gt;</div>
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
                         <span style="font-size:14px;font-weight:700;color:var(--accent-color)" id="bulkMigExecLabel">🚀 Migrated Configs</span>
                         <div style="display:flex;gap:8px">
-                            <button onclick="bulkMigPushAll()" id="bulkMigPushAllBtn" style="background:#8e44ad;color:#fff;padding:6px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:600">🚀 Push All to Devices</button>
+                            <span style="font-size:12px;color:var(--text-color-secondary);align-self:center">Download-only workflow</span>
                             <button onclick="bulkMigDownloadAllZip()" style="background:#27ae60;color:#fff;padding:6px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:600">📦 Download All as ZIP</button>
                         </div>
                     </div>
@@ -20996,14 +21000,13 @@ show mac address-table | include &lt;mac&gt;</div>
                         }
                     }, 2500);  // Update every 2.5 seconds - deliberate pace
 
-                    const response = await fetch(`${AI_API_BASE}/translate-config`, {
+                    const response = await fetch(`${AI_API_BASE}/migrate-config`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            source_config: uploadedConfigContent,
+                            config: uploadedConfigContent,
                             target_device: targetDevice,
                             target_version: targetVersion,
-                            strict_preserve: true,
                             apply_compliance: true
                         }),
                         signal: controller.signal
@@ -21123,6 +21126,7 @@ show mac address-table | include &lt;mac&gt;</div>
 
                         // Also put in main output for compatibility
                         document.getElementById('output').value = finalTranslatedConfig;
+                        populateUpgradeMigrationAnalysis(data);
 
                         // Extract site name from the TRANSLATED config identity (must reflect target device)
                         let siteName = 'Unknown Site';
@@ -21239,17 +21243,18 @@ show mac address-table | include &lt;mac&gt;</div>
                             configData.metadata = {
                                 source_device: sourceDevice || 'unknown',
                                 target_device: targetDevice,
-                                source_version: sourceVersion || (data.source_info?.version) || 'unknown',
+                                source_version: sourceVersion || data.source_version || (data.source_info?.version) || 'unknown',
                                 target_version: targetVersion,
                                 migration_timestamp: getCSTTimestamp(),
                                 validation: data.validation || {},
-                                compliance: data.compliance || {}
+                                compliance: data.compliance || {},
+                                migration_analysis: data.migration_analysis || {}
                             };
 
                             saveCompletedConfig(configData);
-                            console.log('[TRANSLATE] Auto-saving migrated config to completed configs');
+                            console.log('[MIGRATION] Auto-saving migrated config to completed configs');
                         } else {
-                            console.warn('[TRANSLATE] saveCompletedConfig function not available');
+                            console.warn('[MIGRATION] saveCompletedConfig function not available');
                         }
 
                         // Scroll to output
@@ -21296,6 +21301,96 @@ show mac address-table | include &lt;mac&gt;</div>
             } else {
                 bar.style.background = 'linear-gradient(90deg, #4CAF50, #8BC34A)';
             }
+        }
+
+        function populateUpgradeMigrationAnalysis(data) {
+            const panel = document.getElementById('upgradeMigrationAnalysis');
+            const body = document.getElementById('upgradeMigrationAnalysisBody');
+            if (!panel || !body) return;
+
+            const analysis = data?.migration_analysis || {};
+            const summary = data?.migration_summary || {};
+            const sourceDevice = data?.source_device || data?.source_info?.model || 'Unknown';
+            const targetDevice = data?.target_device || data?.target_info?.model || 'Unknown';
+            const sourceVersion = String(data?.source_version || data?.detected_source_version || 'Unknown');
+            const targetVersion = String(data?.target_version || data?.target_info?.routeros || 'Unknown');
+            const imap = analysis.interface_map || data?.interface_map || {};
+            const portAnalysis = analysis.port_analysis || [];
+            const policySummary = analysis.policy_summary || {};
+            const cx = analysis.complexity || {};
+            const warnings = analysis.warnings || [];
+
+            let mapHtml = '';
+            if (Object.keys(imap).length) {
+                mapHtml = `<div style="margin-top:12px"><strong style="color:var(--accent-color)">Interface Migration Map</strong>
+                    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px">
+                        <thead><tr><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border-color)">Source Port</th><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border-color)">Target Port</th></tr></thead>
+                        <tbody>${Object.entries(imap).map(([s, t]) => `<tr><td style="padding:3px 8px;font-family:'JetBrains Mono',monospace">${escHtml(s)}</td><td style="padding:3px 8px;font-family:'JetBrains Mono',monospace">${escHtml(t)}</td></tr>`).join('')}</tbody>
+                    </table></div>`;
+            }
+
+            let warningsHtml = '';
+            if (warnings.length) {
+                warningsHtml = `<div style="margin-top:12px;padding:8px 12px;background:#fff3cd;border-left:4px solid #ff9800;border-radius:4px">
+                    <strong style="color:#e65100">Warnings</strong>
+                    <div style="margin-top:4px">${warnings.map(w => `<div>${escHtml(w)}</div>`).join('')}</div>
+                </div>`;
+            }
+
+            let portTableHtml = '';
+            if (portAnalysis.length) {
+                portTableHtml = `<div style="margin-top:12px"><strong style="color:var(--accent-color)">Port Role Analysis</strong>
+                    <div style="font-size:12px;color:var(--text-color-secondary);margin:4px 0 6px">
+                        Management: ${escHtml((policySummary.management_port || 'ether1'))} |
+                        Switch: ${escHtml((policySummary.switch_ports || []).join(', ') || 'n/a')} |
+                        Reserved: ${escHtml((policySummary.reserved_ports || []).join(', ') || 'n/a')} |
+                        Backhaul: ${escHtml((policySummary.backhaul_ports || []).join(', ') || 'n/a')} |
+                        Radio: ${escHtml((policySummary.radio_ports || []).join(', ') || 'n/a')}
+                    </div>
+                    <table style="width:100%;border-collapse:collapse;font-size:12px">
+                        <thead><tr>
+                            <th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border-color)">Source</th>
+                            <th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border-color)">Role</th>
+                            <th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border-color)">Target</th>
+                            <th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border-color)">Evidence</th>
+                        </tr></thead>
+                        <tbody>${portAnalysis.map(row => `<tr>
+                            <td style="padding:4px 8px;font-family:'JetBrains Mono',monospace">${escHtml(row.source_port || '')}${row.policy_conflict ? ' <span style="color:#e74c3c;font-weight:700">!</span>' : ''}</td>
+                            <td style="padding:4px 8px">${escHtml(row.detected_role || 'unknown')} (${escHtml(row.confidence || 'low')})</td>
+                            <td style="padding:4px 8px;font-family:'JetBrains Mono',monospace">${escHtml(row.target_port || 'manual review')}</td>
+                            <td style="padding:4px 8px">${escHtml((row.role_evidence || []).join(', ') || row.policy_slot || '')}</td>
+                        </tr>`).join('')}</tbody>
+                    </table></div>`;
+            }
+
+            body.innerHTML = `
+                <div style="margin-bottom:10px; color:var(--text-color-secondary);">This migration generates config for review and download only. It does not push to the source or target device.</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                    <div>
+                        <strong style="color:var(--accent-color)">Migration Breakdown</strong>
+                        <div style="margin-top:6px">
+                            <strong>Type:</strong> ${escHtml(analysis.migration_type || 'config-audit')}<br>
+                            <strong>Device Migration:</strong> ${data?.device_migrated ? `Yes (${escHtml(sourceDevice)} → ${escHtml(targetDevice)})` : 'No'}<br>
+                            <strong>Version Migration:</strong> ${data?.syntax_migrated ? `Yes (ROS ${escHtml(sourceVersion)} → ${escHtml(targetVersion)})` : 'No'}<br>
+                            <strong>Interfaces Remapped:</strong> ${data?.interfaces_mapped || 0}<br>
+                            <strong>ether1 Preserved:</strong> ${summary.ether1_preserved ? 'Yes' : 'No'}
+                        </div>
+                    </div>
+                    <div>
+                        <strong style="color:var(--accent-color)">Complexity Analysis</strong>
+                        <div style="margin-top:6px">
+                            <strong>Config Lines:</strong> ${analysis.config_lines || 0}<br>
+                            <strong>IP Addresses:</strong> ${cx.ip_addresses || 0}<br>
+                            <strong>Bridges:</strong> ${cx.bridges || 0}<br>
+                            <strong>VPLS Tunnels:</strong> ${cx.vpls_tunnels || 0}<br>
+                            <strong>Protocols:</strong> ${[cx.ospf && 'OSPF', cx.bgp && 'BGP', cx.mpls && 'MPLS/VPLS'].filter(Boolean).join(', ') || 'None'}
+                        </div>
+                    </div>
+                </div>
+                ${mapHtml}
+                ${portTableHtml}
+                ${warningsHtml}`;
+            panel.style.display = 'block';
         }
 
         function hideUpgradeProgress() {
@@ -28931,6 +29026,8 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
             if (!r || !r.success) return;
             const cx = r.complexity || {};
             const imap = r.interface_map || {};
+            const portAnalysis = r.port_analysis || [];
+            const policySummary = r.policy_summary || {};
             let mapHtml = '';
             if (Object.keys(imap).length) {
                 mapHtml = `<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:8px">
@@ -28940,6 +29037,19 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
             let warningsHtml = '';
             if (r.warnings && r.warnings.length) {
                 warningsHtml = '<div style="margin-top:12px"><strong>⚠️ Warnings:</strong><ul style="margin:4px 0;padding-left:20px">' + r.warnings.map(w => `<li style="color:#f39c12;font-size:12px">${escHtml(w)}</li>`).join('') + '</ul></div>';
+            }
+            let portAnalysisHtml = '';
+            if (portAnalysis.length) {
+                portAnalysisHtml = `<div style="margin-top:12px">
+                    <h4 style="margin:0 0 4px;color:var(--accent-color)">Port Role Analysis</h4>
+                    <div style="font-size:12px;color:var(--text-color-secondary);margin-bottom:6px">
+                        Mgmt ${escHtml(policySummary.management_port || 'ether1')} | Switch ${escHtml((policySummary.switch_ports || []).join(', ') || 'n/a')} | Reserved ${escHtml((policySummary.reserved_ports || []).join(', ') || 'n/a')} | Backhaul ${escHtml((policySummary.backhaul_ports || []).join(', ') || 'n/a')} | Radio ${escHtml((policySummary.radio_ports || []).join(', ') || 'n/a')}
+                    </div>
+                    <table style="width:100%;border-collapse:collapse;font-size:12px">
+                        <thead><tr><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border-color)">Source</th><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border-color)">Role</th><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border-color)">Target</th><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border-color)">Evidence</th></tr></thead>
+                        <tbody>${portAnalysis.map(row => `<tr><td style="padding:3px 8px;font-family:'JetBrains Mono',monospace">${escHtml(row.source_port || '')}${row.policy_conflict ? ' <span style="color:#e74c3c;font-weight:700">!</span>' : ''}</td><td style="padding:3px 8px">${escHtml(row.detected_role || 'unknown')} (${escHtml(row.confidence || 'low')})</td><td style="padding:3px 8px;font-family:'JetBrains Mono',monospace">${escHtml(row.target_port || 'manual review')}</td><td style="padding:3px 8px">${escHtml((row.role_evidence || []).join(', ') || row.policy_slot || '')}</td></tr>`).join('')}</tbody>
+                    </table>
+                </div>`;
             }
             const html = `
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
@@ -28970,6 +29080,7 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
                     <strong>Device Migration:</strong> ${r.needs_device_migration ? `✅ ${escHtml(r.current_model)} → ${escHtml(r.target_model)}` : '— Same model or upgrade-only'}</div>
                     ${Object.keys(imap).length ? '<h4 style="margin:12px 0 4px;color:var(--accent-color)">Interface Migration Map</h4>' + mapHtml : ''}
                 </div>
+                ${portAnalysisHtml}
                 ${warningsHtml}
                 <div style="margin-top:12px"><h4 style="margin:0 0 4px;color:var(--accent-color)">Config Preview (first 15 lines)</h4>
                     <pre style="background:var(--bg-color);border:1px solid var(--border-color);border-radius:4px;padding:10px;font-size:11px;font-family:'JetBrains Mono',monospace;max-height:200px;overflow:auto">${escHtml(r.config_preview || '')}</pre>
@@ -29073,7 +29184,6 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
                     <td style="white-space:nowrap">
                         <button onclick="bulkMigPreviewOne(${i})" style="background:var(--accent-color);color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px">👁️</button>
                         <button onclick="bulkMigDownloadOne(${i})" style="background:#27ae60;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px">📥</button>
-                        <button onclick="bulkMigPushOne(${i})" style="background:#8e44ad;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px">🚀</button>
                     </td>
                 </tr>`;
             }).join('');
@@ -29661,26 +29771,10 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
         };
 
         // ── Migration Push: Single Device ──
-        window.bulkMigPushOne = function (idx) {
-            const r = bulkMigratedConfigs[idx];
-            if (!r || !r.migrated_config) { nocToast('No migrated config available', 'warning'); return; }
-            openPushConfirmation([{
-                host: r.host,
-                config_text: r.migrated_config,
-                label: r.identity || r.host
-            }], 'migration');
-        };
+        window.bulkMigPushOne = function () {};
 
         // ── Migration Push: All Devices ──
-        window.bulkMigPushAll = function () {
-            const ready = bulkMigratedConfigs.filter(r => r.success && r.migrated_config);
-            if (!ready.length) { nocToast('No migrated configs available', 'warning'); return; }
-            openPushConfirmation(ready.map(r => ({
-                host: r.host,
-                config_text: r.migrated_config,
-                label: r.identity || r.host
-            })), 'migration');
-        };
+        window.bulkMigPushAll = function () {};
 
         // Show "Push All" button when fixed configs exist
         function compUpdatePushAllVisibility() {
