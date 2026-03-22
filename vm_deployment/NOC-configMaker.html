@@ -279,7 +279,8 @@
             overflow: hidden;
         }
         .app-sidebar:hover,
-        .app-sidebar.expanded {
+        .app-sidebar.expanded,
+        .app-sidebar.pinned {
             --sidebar-current: var(--sidebar-expanded);
         }
 
@@ -293,6 +294,50 @@
             flex-shrink: 0;
             overflow: hidden;
             white-space: nowrap;
+        }
+        .sidebar-pin-btn {
+            margin-left: auto;
+            width: 28px;
+            min-width: 28px;
+            height: 28px;
+            border: 1px solid color-mix(in srgb, var(--border-color) 82%, transparent);
+            background: color-mix(in srgb, var(--panel-bg) 78%, transparent);
+            color: var(--text-muted);
+            border-radius: 8px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: transform 0.22s ease, background 0.18s ease, color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+            flex-shrink: 0;
+        }
+        .sidebar-pin-btn:hover,
+        .sidebar-pin-btn:focus-visible {
+            color: var(--accent-color);
+            border-color: color-mix(in srgb, var(--accent-color) 48%, var(--border-color));
+            background: color-mix(in srgb, var(--accent-color) 14%, var(--panel-bg));
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-color) 14%, transparent);
+            outline: none;
+        }
+        .sidebar-pin-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            line-height: 1;
+            transform: rotate(26deg) scale(0.96);
+            transition: transform 0.26s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.18s ease;
+            filter: saturate(0.6);
+        }
+        .app-sidebar.pinned .sidebar-pin-btn {
+            color: var(--accent-color);
+            border-color: color-mix(in srgb, var(--accent-color) 44%, var(--border-color));
+            background: color-mix(in srgb, var(--accent-color) 18%, var(--panel-bg));
+        }
+        .app-sidebar.pinned .sidebar-pin-icon {
+            transform: rotate(0deg) scale(1.08);
+            filter: saturate(1.05) drop-shadow(0 0 6px color-mix(in srgb, var(--accent-color) 42%, transparent));
         }
         .sidebar-logo-icon {
             width: 28px; height: 28px; min-width: 28px;
@@ -312,7 +357,8 @@
         }
         .sidebar-logo-text .sub { display: block; font-size: 9px; font-weight: 400; color: var(--text-muted); letter-spacing: 0; text-transform: none; }
         .app-sidebar:hover .sidebar-logo-text,
-        .app-sidebar.expanded .sidebar-logo-text { opacity: 1; transform: translateX(0); }
+        .app-sidebar.expanded .sidebar-logo-text,
+        .app-sidebar.pinned .sidebar-logo-text { opacity: 1; transform: translateX(0); }
 
         .sidebar-scroll {
             flex: 1;
@@ -337,7 +383,8 @@
             overflow: hidden;
         }
         .app-sidebar:hover .sidebar-section-label,
-        .app-sidebar.expanded .sidebar-section-label { opacity: 1; }
+        .app-sidebar.expanded .sidebar-section-label,
+        .app-sidebar.pinned .sidebar-section-label { opacity: 1; }
 
         .sb-item {
             display: flex;
@@ -399,7 +446,8 @@
             flex: 1;
         }
         .app-sidebar:hover .sb-item-label,
-        .app-sidebar.expanded .sb-item-label { opacity: 1; transform: translateX(0); }
+        .app-sidebar.expanded .sb-item-label,
+        .app-sidebar.pinned .sb-item-label { opacity: 1; transform: translateX(0); }
 
         .sb-item-arrow {
             opacity: 0;
@@ -409,7 +457,8 @@
             margin-left: auto;
         }
         .app-sidebar:hover .sb-item-arrow,
-        .app-sidebar.expanded .sb-item-arrow { opacity: 1; }
+        .app-sidebar.expanded .sb-item-arrow,
+        .app-sidebar.pinned .sb-item-arrow { opacity: 1; }
         .sb-group.open > .sb-item-header .sb-item-arrow { transform: rotate(90deg); }
 
         .sb-group-children {
@@ -474,7 +523,8 @@
             letter-spacing: 0.5px;
         }
         .app-sidebar:hover .sidebar-version,
-        .app-sidebar.expanded .sidebar-version { opacity: 1; }
+        .app-sidebar.expanded .sidebar-version,
+        .app-sidebar.pinned .sidebar-version { opacity: 1; }
         .sidebar-version .ver-tag {
             display: inline-block;
             background: rgba(139,92,246,0.15);
@@ -612,7 +662,8 @@
             transition: margin-left var(--sidebar-transition);
         }
         .app-sidebar:hover ~ .app-body,
-        .app-sidebar.expanded ~ .app-body {
+        .app-sidebar.expanded ~ .app-body,
+        .app-sidebar.pinned ~ .app-body {
             margin-left: var(--sidebar-expanded);
         }
 
@@ -1002,6 +1053,15 @@
             margin-top: 10px;
             color: var(--text-color-secondary);
             font-size: 13px;
+        }
+
+        .nokia7250-output-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
         }
 
         .ftth-home-tabs {
@@ -3528,6 +3588,9 @@
             <div class="sidebar-logo">
                 <div class="sidebar-logo-icon">N</div>
                 <div class="sidebar-logo-text">NOC Config Suite<span class="sub">Network Operations Center</span></div>
+                <button type="button" class="sidebar-pin-btn" id="sidebarPinBtn" aria-label="Pin sidebar" aria-pressed="false" title="Pin sidebar">
+                    <span class="sidebar-pin-icon">&#128204;</span>
+                </button>
             </div>
             <div class="sidebar-version"><span class="ver-tag" id="appVersionBadge">v2.5.0</span> <span id="appVersionDate">Mar 2026</span></div>
             <div class="sidebar-scroll">
@@ -3599,10 +3662,6 @@
                     </div>
                 </div>
 
-                <div class="sb-item" data-sb-tab="ido-tools" data-tooltip="IDO Tools">
-                    <span class="sb-item-icon">&#128736;</span>
-                    <span class="sb-item-label">IDO Tools</span>
-                </div>
                 <div class="sb-item" data-sb-tab="aviat-backhaul" data-tooltip="Aviat Backhaul">
                     <span class="sb-item-icon">&#128225;</span>
                     <span class="sb-item-label">Aviat Backhaul</span>
@@ -3762,7 +3821,6 @@
                         <a data-tab="mikrotik-to-nokia">NOKIA MIGRATION</a>
                     </div>
                 </div>
-                <button class="nav-item" data-tab="ido-tools">IDO TOOLS</button>
                 <button class="nav-item" data-tab="aviat-backhaul">AVIAT BACKHAUL UPDATER</button>
                 <div class="nav-item dropdown" data-tab="ftth-home"><button>FTTH CONFIGURATOR</button>
                     <div class="dropdown-menu">
@@ -4222,10 +4280,6 @@
                         <div class="form-group">
                             <label for="mtTemplateFile">CSV/JSON File Upload (optional)</label>
                             <input type="file" id="mtTemplateFile" accept=".csv,.json">
-                        </div>
-
-                        <div class="section-subtle" style="margin: 8px 0 12px 0;">
-                            IDO utilities moved to dedicated <strong>IDO TOOLS</strong> tab.
                         </div>
 
                         <div class="device-selection-grid">
@@ -5412,7 +5466,6 @@
                             <button type="button" class="field-config-subtab" data-tool="ict-ups">ICT UPS</button>
                             <button type="button" class="field-config-subtab" data-tool="aviat-bh">Aviat Backhaul</button>
                             <button type="button" class="field-config-subtab" data-tool="ub-wave">Ubiquiti Wave</button>
-                            <button type="button" class="field-config-subtab" data-tool="nokia-7250">Nokia 7250</button>
                         </div>
 
                         <div class="ido-tools-input-grid">
@@ -5447,44 +5500,6 @@
                             <button type="button" id="fieldCfgOpenNokiaMigrationBtn" class="btn-secondary">Open Nokia Migration</button>
                         </div>
                         <textarea id="fieldConfigOutput" class="ido-tools-output" readonly placeholder="Field Config Studio output will appear here..."></textarea>
-                    </div>
-                </div>
-            </div>
-
-            <!-- IDO TOOLS TAB -->
-            <div class="content-pane" id="ido-tools-pane">
-                <div class="container">
-                    <h1>IDO Tools Space</h1>
-                    <p style="color: var(--text-color-secondary); margin-bottom: 16px;">
-                        Integrated non-site-checker IDO capabilities (proxy-enabled): BH/AP/UPS/RPC/Switch/Generic/Ping/Waveconfig/7250.
-                    </p>
-
-                    <div class="ido-tools-card" id="idoToolsSpace">
-                        <div class="ido-tools-header">
-                            <div>
-                                <div style="font-weight:700;">IDO Operations</div>
-                                <div style="font-size:13px; color:var(--text-color-secondary);">
-                                    Use this tab for live helper actions without mixing it into MikroTik config generation.
-                                </div>
-                            </div>
-                            <button type="button" id="idoRefreshCapabilitiesBtn" class="btn-secondary" style="min-width:180px;">Refresh IDO Status</button>
-                        </div>
-                        <div id="idoCapabilitiesSummary" style="margin-top:10px; font-size:13px; color:var(--text-color-secondary);">
-                            IDO status not loaded.
-                        </div>
-                        <div class="ido-tools-input-grid">
-                            <input type="text" id="idoTargetIp" placeholder="Target IP (e.g. 10.247.62.131)">
-                            <input type="text" id="idoDeviceType" placeholder="Device Type (e.g. AV4200, CNEP3K)">
-                            <input type="text" id="idoLinkType" placeholder="Link Type (optional)">
-                        </div>
-                        <div class="ido-tools-actions">
-                            <button type="button" id="idoPingBtn" class="btn-secondary">Ping</button>
-                            <button type="button" id="idoGenericInfoBtn" class="btn-secondary">Generic Device Info</button>
-                            <button type="button" id="idoBhRunBtn" class="btn-secondary">BH Running Config</button>
-                            <button type="button" id="idoApRunBtn" class="btn-secondary">AP Running Config</button>
-                            <button type="button" id="idoClearOutBtn" class="btn-secondary">Clear Output</button>
-                        </div>
-                        <textarea id="idoToolsOutput" class="ido-tools-output" readonly placeholder="IDO tool output will appear here..."></textarea>
                     </div>
                 </div>
             </div>
@@ -6950,7 +6965,7 @@
                 <div class="container">
                     <h1 style="color: var(--text-color); margin-bottom: 10px; text-align: center;"> Nokia Configurator</h1>
                     <p style="color: var(--text-color-secondary); margin-bottom: 24px; text-align: center;">
-                        Generate Nokia transport configurations from one workspace. The current generator is optimized for 7250 in-state builds, and this page is being expanded to cover 7210, 7750, BNG 2.0, and ISD profiles cleanly.
+                        Generate Nokia transport configurations from one workspace. 7250 includes both classic hierarchy and command-line output formats, and this same page now expands for 7210, 7750, BNG 2.0, and ISD profiles.
                     </p>
 
                     <div class="section" style="background: var(--container-bg); padding: 20px; border-radius: 8px; margin-bottom: 16px;">
@@ -6987,8 +7002,14 @@
                             <div class="section" style="background: var(--container-bg); padding: 20px; border-radius: 8px; margin-bottom: 16px;">
                                 <h2 style="color: var(--text-color); margin-top: 0; font-size: 16px;">System Information</h2>
                                 <div class="form-group">
+                                    <label for="nokia7250_siteSuffix">Site Name</label>
+                                    <input type="text" id="nokia7250_siteSuffix" placeholder="TX-DRIPPINGSPRINGS-CN-1" oninput="syncNokia7250SystemName(true)"
+                                        style="width:100%; padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
+                                    <div style="margin-top: 4px; font-size: 11px; color: var(--text-color-secondary);">Typing the short site name auto-fills the full Nokia system name as <code>RTR-NK7250-AR1.&lt;SITE-NAME&gt;</code>.</div>
+                                </div>
+                                <div class="form-group">
                                     <label for="nokia7250_systemName">System Name</label>
-                                    <input type="text" id="nokia7250_systemName" placeholder="RTR-NK7250-TR1.TX-HALLETTSVILLE-NW-1" required
+                                    <input type="text" id="nokia7250_systemName" placeholder="RTR-NK7250-TR1.TX-HALLETTSVILLE-NW-1" required oninput="this.dataset.autoGenerated='false'"
                                         style="width:100%; padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
                                 </div>
                                 <div class="form-group">
@@ -7170,7 +7191,7 @@
                                 <h2 style="color: var(--text-color); margin-top: 0; font-size: 16px;">BGP Neighbors</h2>
                                 <div style="background: #2a4a2a; padding: 10px; border-radius: 6px; margin-bottom: 12px; border-left: 3px solid #4CAF50;">
                                     <p style="margin: 0; color: #90EE90; font-size: 13px;">
-                                        <strong>Auto-configured for IN-STATE:</strong> Default group "DALLAS-RR" with AS 26077.
+                                        <strong>Default profile:</strong> Uses group "DALLAS-RR" with AS 26077.
                                     </p>
                                 </div>
                                 <table class="nokia7250-table" id="nokia7250_bgp_tbl">
@@ -7197,7 +7218,17 @@
 
                     <div id="nokia7250_output" style="margin-top: 24px; display: none;">
                         <div class="section" style="background: var(--container-bg); padding: 20px; border-radius: 8px; border: 2px solid var(--accent-color);">
-                            <h3 style="color: var(--accent-color); margin-top: 0;">Generated Configuration</h3>
+                            <div class="nokia7250-output-toolbar">
+                                <h3 style="color: var(--accent-color); margin: 0;">Generated Configuration</h3>
+                                <label for="nokia7250_output_format" style="display:flex; align-items:center; gap:10px; color: var(--text-color-secondary); font-size: 13px;">
+                                    Output Format
+                                    <select id="nokia7250_output_format" onchange="setNokia7250OutputFormat(this.value)"
+                                        style="padding:8px 10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
+                                        <option value="hierarchy">Classic Hierarchy</option>
+                                        <option value="commands">Command Lines</option>
+                                    </select>
+                                </label>
+                            </div>
                             <textarea id="nokia7250_config_output" readonly
                                 style="width: 100%; min-height: 500px; padding: 15px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--output-bg, #1a1a2e); color: var(--text-color); font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 12px; line-height: 1.5; white-space: pre; overflow-x: auto;"></textarea>
                         </div>
@@ -13289,6 +13320,12 @@ network point-to-point</div>
                 return localStorage.getItem('auth_token');
             }
 
+            function createValidationBlockedError(message) {
+                const err = new Error(message);
+                err.validationBlocked = true;
+                return err;
+            }
+
             // LocalStorage helper functions for config history
             window.saveConfigToHistory = function (configData) {
                 const username = getUsername();
@@ -13301,7 +13338,8 @@ network point-to-point</div>
                     siteName: configData.siteName || 'N/A',
                     routeros: configData.routeros || 'N/A',
                     username: username,
-                    success: configData.success !== false  // Support explicit success/failure tracking
+                    success: configData.success !== false,  // Support explicit success/failure tracking
+                    countsTowardMetrics: configData.countsTowardMetrics !== false
                 };
                 history.unshift(entry); // Add to beginning
                 if (history.length > 100) history = history.slice(0, 100); // Keep last 100
@@ -13369,6 +13407,7 @@ network point-to-point</div>
                     siteName: activity.siteName || '',
                     routeros: activity.routeros || '',
                     success: activity.success !== false,
+                    countsTowardMetrics: activity.countsTowardMetrics !== false,
                     ticketUrl: activity.ticketUrl || ''
                 };
 
@@ -13428,7 +13467,11 @@ network point-to-point</div>
                             // Calculate ACTUAL success rate from ALL activities
                             const successCount = allActivities.filter(e => e.success === true || e.success === 1).length;
                             const failCount = allActivities.filter(e => e.success === false || e.success === 0).length;
-                            const nonAviatActivities = allActivities.filter(entry => entry.type !== 'aviat-upgrade' && !(entry.type || '').startsWith('maintenance'));
+                            const nonAviatActivities = allActivities.filter(entry =>
+                                entry.countsTowardMetrics !== false &&
+                                entry.type !== 'aviat-upgrade' &&
+                                !(entry.type || '').startsWith('maintenance')
+                            );
                             const totalCount = nonAviatActivities.length;
                             const successCountFiltered = nonAviatActivities.filter(e => e.success === true).length;
                             const successRate = totalCount > 0 ?
@@ -13477,7 +13520,11 @@ network point-to-point</div>
                 const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
                 // Calculate TODAY's configs (since midnight) - resets every 24 hours
-                const nonAviatHistory = history.filter(entry => entry.type !== 'aviat-upgrade' && !(entry.type || '').startsWith('maintenance'));
+                const nonAviatHistory = history.filter(entry =>
+                    entry.countsTowardMetrics !== false &&
+                    entry.type !== 'aviat-upgrade' &&
+                    !(entry.type || '').startsWith('maintenance')
+                );
                 const todayCount = nonAviatHistory.filter(entry => {
                     const entryDate = new Date(entry.timestamp);
                     return entryDate >= todayStart;
@@ -15660,7 +15707,6 @@ network point-to-point</div>
 
             async function refreshIdoCapabilities() {
                 const summary = document.getElementById('idoCapabilitiesSummary');
-                if (!summary) return;
                 try {
                     const apiBase = (typeof resolveApiBase === 'function' ? resolveApiBase() : ((typeof AI_API_BASE !== 'undefined' ? AI_API_BASE : window.AI_API_BASE) || '/api'));
                     const resp = await fetch(`${apiBase}/ido/capabilities`);
@@ -15670,70 +15716,13 @@ network point-to-point</div>
                     const configured = data?.configured ? 'Configured' : 'Not Configured';
                     const backend = data?.backend_url || 'N/A';
                     const excluded = Array.isArray(data?.excluded) ? data.excluded.join(', ') : '/api/sites';
-                    summary.textContent = `Status: ${configured} | Backend: ${backend} | Excluded: ${excluded}`;
+                    if (summary) summary.textContent = `Status: ${configured} | Backend: ${backend} | Excluded: ${excluded}`;
                     if (typeof renderFieldConfigToolState === 'function') renderFieldConfigToolState();
                 } catch (err) {
-                    summary.textContent = `IDO status check failed: ${err.message}`;
+                    if (summary) summary.textContent = `IDO status check failed: ${err.message}`;
                     window.__idoCapabilities = { configured: false, embedded_endpoints: ['/api/ping', '/api/generic/device_info'] };
                     if (typeof renderFieldConfigToolState === 'function') renderFieldConfigToolState();
                 }
-            }
-
-            function writeIdoOutput(text, append = false) {
-                const out = document.getElementById('idoToolsOutput');
-                if (!out) return;
-                if (append) {
-                    out.value = `${out.value}\n${text}`.trim();
-                } else {
-                    out.value = String(text || '');
-                }
-                out.scrollTop = out.scrollHeight;
-            }
-
-            function getIdoInputValues() {
-                return {
-                    ip: (document.getElementById('idoTargetIp')?.value || '').trim(),
-                    deviceType: (document.getElementById('idoDeviceType')?.value || '').trim(),
-                    linkType: (document.getElementById('idoLinkType')?.value || '').trim()
-                };
-            }
-
-            async function callIdoProxy(targetPath, params = {}) {
-                const apiBase = (typeof resolveApiBase === 'function' ? resolveApiBase() : ((typeof AI_API_BASE !== 'undefined' ? AI_API_BASE : window.AI_API_BASE) || '/api'));
-                const query = new URLSearchParams(params);
-                const url = `${apiBase}/ido/proxy/${targetPath}${query.toString() ? `?${query}` : ''}`;
-                const resp = await fetch(url);
-                const text = await resp.text();
-                if (!resp.ok) {
-                    throw new Error(`IDO proxy failed (${resp.status}): ${text}`);
-                }
-                try {
-                    return JSON.stringify(JSON.parse(text), null, 2);
-                } catch (_) {
-                    return text;
-                }
-            }
-
-            async function runIdoAction(action) {
-                const { ip, deviceType, linkType } = getIdoInputValues();
-                if (!ip && action !== 'capabilities') {
-                    throw new Error('Target IP is required for this action.');
-                }
-                if (!deviceType && ['generic', 'bh', 'ap'].includes(action)) {
-                    throw new Error('Device Type is required for this action.');
-                }
-
-                let result = '';
-                if (action === 'ping') {
-                    result = await callIdoProxy('api/ping', { ip_address: ip, ping_count: 4 });
-                } else if (action === 'generic') {
-                    result = await callIdoProxy('api/generic/device_info', { ip_address: ip, device_type: deviceType, run_tests: false });
-                } else if (action === 'bh') {
-                    result = await callIdoProxy('api/bh/running_config', { ip_address: ip, device_type: deviceType });
-                } else if (action === 'ap') {
-                    result = await callIdoProxy('api/ap/running_config', { ip_address: ip, device_type: deviceType, link_type: linkType || 'dummy' });
-                }
-                writeIdoOutput(result);
             }
 
             const FIELD_CONFIG_TOOL_MAP = {
@@ -15812,14 +15801,6 @@ network point-to-point</div>
                         generate: { method: 'POST', path: 'api/waveconfig/full_config', payloadMode: 'formDevice' },
                     }
                 },
-                'nokia-7250': {
-                    label: 'Nokia 7250',
-                    desc: '7250 generator request via /api/7250config/generate. Paste request JSON and click Generate.',
-                    payloadPlaceholder: '{"site_name":"SITE-7250","router_name":"RTR-7250","backhauls":[],"uplinks":[]}',
-                    actions: {
-                        generate: { method: 'POST', path: 'api/7250config/generate', payloadMode: 'json' },
-                    }
-                }
             };
 
             function writeFieldConfigOutput(text, append = false) {
@@ -15952,10 +15933,6 @@ network point-to-point</div>
                 if (payloadWrap) payloadWrap.style.display = showPayload ? 'block' : 'none';
                 if (payloadEl && showPayload && !payloadEl.value.trim()) {
                     payloadEl.placeholder = tool.payloadPlaceholder || '';
-                }
-                const nokiaActions = document.getElementById('fieldConfigNokiaActions');
-                if (nokiaActions) {
-                    nokiaActions.style.display = (toolKey === 'nokia-7250') ? 'flex' : 'none';
                 }
                 const caps = window.__idoCapabilities || {};
                 if (!caps.configured) {
@@ -16095,44 +16072,6 @@ network point-to-point</div>
                     addSwitchBtn.addEventListener('click', () => addModernSwitchRow());
                     addSwitchBtn.dataset.bound = '1';
                 }
-                const idoRefreshBtn = document.getElementById('idoRefreshCapabilitiesBtn');
-                if (idoRefreshBtn && !idoRefreshBtn.dataset.bound) {
-                    idoRefreshBtn.addEventListener('click', refreshIdoCapabilities);
-                    idoRefreshBtn.dataset.bound = '1';
-                }
-                const idoPingBtn = document.getElementById('idoPingBtn');
-                if (idoPingBtn && !idoPingBtn.dataset.bound) {
-                    idoPingBtn.addEventListener('click', async () => {
-                        try { writeIdoOutput('Running ping...'); await runIdoAction('ping'); } catch (e) { writeIdoOutput(e.message); }
-                    });
-                    idoPingBtn.dataset.bound = '1';
-                }
-                const idoGenericBtn = document.getElementById('idoGenericInfoBtn');
-                if (idoGenericBtn && !idoGenericBtn.dataset.bound) {
-                    idoGenericBtn.addEventListener('click', async () => {
-                        try { writeIdoOutput('Loading generic device info...'); await runIdoAction('generic'); } catch (e) { writeIdoOutput(e.message); }
-                    });
-                    idoGenericBtn.dataset.bound = '1';
-                }
-                const idoBhBtn = document.getElementById('idoBhRunBtn');
-                if (idoBhBtn && !idoBhBtn.dataset.bound) {
-                    idoBhBtn.addEventListener('click', async () => {
-                        try { writeIdoOutput('Loading BH running config...'); await runIdoAction('bh'); } catch (e) { writeIdoOutput(e.message); }
-                    });
-                    idoBhBtn.dataset.bound = '1';
-                }
-                const idoApBtn = document.getElementById('idoApRunBtn');
-                if (idoApBtn && !idoApBtn.dataset.bound) {
-                    idoApBtn.addEventListener('click', async () => {
-                        try { writeIdoOutput('Loading AP running config...'); await runIdoAction('ap'); } catch (e) { writeIdoOutput(e.message); }
-                    });
-                    idoApBtn.dataset.bound = '1';
-                }
-                const idoClearBtn = document.getElementById('idoClearOutBtn');
-                if (idoClearBtn && !idoClearBtn.dataset.bound) {
-                    idoClearBtn.addEventListener('click', () => writeIdoOutput(''));
-                    idoClearBtn.dataset.bound = '1';
-                }
                 const fieldSubtabHost = document.getElementById('fieldConfigSubtabs');
                 if (fieldSubtabHost && !fieldSubtabHost.dataset.bound) {
                     fieldSubtabHost.addEventListener('click', (e) => {
@@ -16179,20 +16118,6 @@ network point-to-point</div>
                         setFieldConfigStatus('');
                     });
                     fieldCfgClearOutBtn.dataset.bound = '1';
-                }
-                const fieldCfgOpenNokia7250Btn = document.getElementById('fieldCfgOpenNokia7250Btn');
-                if (fieldCfgOpenNokia7250Btn && !fieldCfgOpenNokia7250Btn.dataset.bound) {
-                    fieldCfgOpenNokia7250Btn.addEventListener('click', () => {
-                        if (typeof window.navigateToTab === 'function') window.navigateToTab('nokia7250-maker');
-                    });
-                    fieldCfgOpenNokia7250Btn.dataset.bound = '1';
-                }
-                const fieldCfgOpenNokiaMigrationBtn = document.getElementById('fieldCfgOpenNokiaMigrationBtn');
-                if (fieldCfgOpenNokiaMigrationBtn && !fieldCfgOpenNokiaMigrationBtn.dataset.bound) {
-                    fieldCfgOpenNokiaMigrationBtn.addEventListener('click', () => {
-                        if (typeof window.navigateToTab === 'function') window.navigateToTab('mikrotik-to-nokia');
-                    });
-                    fieldCfgOpenNokiaMigrationBtn.dataset.bound = '1';
                 }
                 const downloadBtn = document.getElementById('downloadBtn');
                 if (downloadBtn && !downloadBtn.dataset.bound) {
@@ -17901,10 +17826,10 @@ network point-to-point</div>
                     window.__mtBackendArtifacts = { portMapText: '', source: '' };
 
                     if (!siteName) {
-                        throw new Error('Site Name is required.');
+                        throw createValidationBlockedError('Site Name is required.');
                     }
                     if (!/^7\./.test(targetRouterOS)) {
-                        throw new Error('RouterOS 7.19.4 or newer is required.');
+                        throw createValidationBlockedError('RouterOS 7.19.4 or newer is required.');
                     }
                     if (mtType === 'bng2') {
                         const v1000 = (document.getElementById('mtBng2Vpls1000')?.value || '').trim();
@@ -17912,7 +17837,7 @@ network point-to-point</div>
                         const v3000 = (document.getElementById('mtBng2Vpls3000')?.value || '').trim();
                         const v4000 = (document.getElementById('mtBng2Vpls4000')?.value || '').trim();
                         if (!v1000 || !v2000 || !v3000 || !v4000) {
-                            throw new Error('BNG2 requires VPLS 1000/2000/3000/4000 IDs.');
+                            throw createValidationBlockedError('BNG2 requires VPLS 1000/2000/3000/4000 IDs.');
                         }
                     }
 
@@ -17920,7 +17845,7 @@ network point-to-point</div>
                     updateProgressPercent(30);
                     const backendResult = await tryGenerateTowerFromBackend();
                     if (!backendResult?.configText) {
-                        throw new Error('Missing required fields for backend template generation.');
+                        throw createValidationBlockedError('Missing required fields for backend template generation.');
                     }
                     addProgressLog('info', 'Backend render completed. Running cautious live validation...');
                     await cautiousPostRenderValidation(backendResult.configType || 'tower', backendResult.configText);
@@ -17982,7 +17907,7 @@ network point-to-point</div>
                     addProgressLog('error', `Generation failed: ${error.message}`);
                     completeProgressTracker(false);
 
-                    if (typeof saveConfigToHistory === 'function') {
+                    if (typeof saveConfigToHistory === 'function' && !error?.validationBlocked) {
                         saveConfigToHistory({
                             type: 'new-config',
                             device: targetDevice || 'Unknown',
@@ -17992,7 +17917,11 @@ network point-to-point</div>
                         });
                     }
 
-                    alert(`MikroTik backend generation failed: ${error.message}`);
+                    if (error?.validationBlocked) {
+                        alert(`Please fill in the required fields before generating:\n\n${error.message}`);
+                    } else {
+                        alert(`MikroTik backend generation failed: ${error.message}`);
+                    }
                 }
             
             }
@@ -23155,20 +23084,70 @@ Ready for translation!`);
                 `;
                     }
 
+                    const configVariants = (data.config_variants && typeof data.config_variants === 'object')
+                        ? data.config_variants
+                        : null;
+                    const hasVariants = !!(configVariants && Object.keys(configVariants).length);
+                    const defaultVariant = hasVariants
+                        ? (data.default_config_variant && configVariants[data.default_config_variant] ? data.default_config_variant : Object.keys(configVariants)[0])
+                        : null;
+                    const initialConfig = hasVariants ? (configVariants[defaultVariant] || '') : (data.config_content || '');
+                    const selectorMarkup = hasVariants ? `
+                    <div style="margin: 12px 0 16px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                        <label for="completedConfigVariantSelect" style="color: var(--text-color-secondary); font-size: 13px;">Saved Output Format</label>
+                        <select id="completedConfigVariantSelect" style="padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 5px; background: var(--input-bg); color: var(--text-color);">
+                            ${Object.keys(configVariants).map((key) => `<option value="${key}" ${key === defaultVariant ? 'selected' : ''}>${key === 'commands' ? 'Command Lines' : 'Classic Hierarchy'}</option>`).join('')}
+                        </select>
+                    </div>` : '';
                     modal.innerHTML = `
                 <div style="background: var(--bg-color); border-radius: 8px; padding: 30px; max-width: 90%; max-height: 90%; overflow-y: auto; position: relative;">
                     <button onclick="this.parentElement.parentElement.remove()" style="position: absolute; top: 10px; right: 10px; background: #dc3545; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold;"> Close</button>
                     <h2 style="color: var(--text-color); margin-bottom: 20px;">${data.device_name || 'Configuration'}</h2>
                     ${portMapDisplay}
                     <h3 style="color: var(--text-color); margin-top: 20px;">Configuration</h3>
-                    <pre style="background: var(--output-bg); padding: 20px; border-radius: 5px; overflow-x: auto; white-space: pre-wrap; font-family: monospace; font-size: 12px; max-height: 60vh; overflow-y: auto;">${data.config_content || ''}</pre>
+                    ${selectorMarkup}
+                    <pre id="completedConfigContentView" style="background: var(--output-bg); padding: 20px; border-radius: 5px; overflow-x: auto; white-space: pre-wrap; font-family: monospace; font-size: 12px; max-height: 60vh; overflow-y: auto;"></pre>
                     <div style="margin-top: 20px;">
-                        <button onclick="navigator.clipboard.writeText(\`${(data.config_content || '').replace(/`/g, '\\`')}\`) && alert(' Copied!')" style="background: #2196F3; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-right: 10px;"> Copy Config</button>
-                        <button onclick="downloadCompletedConfig(${configId})" style="background: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;"> Download</button>
+                        <button id="completedConfigCopyBtn" style="background: #2196F3; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-right: 10px;"> Copy Config</button>
+                        <button id="completedConfigDownloadBtn" onclick="downloadCompletedConfig(${configId})" style="background: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;"> Download</button>
                     </div>
                 </div>
             `;
                     document.body.appendChild(modal);
+
+                    if (hasVariants) {
+                        const select = modal.querySelector('#completedConfigVariantSelect');
+                        const pre = modal.querySelector('#completedConfigContentView');
+                        const copyBtn = modal.querySelector('#completedConfigCopyBtn');
+                        const dlBtn = modal.querySelector('#completedConfigDownloadBtn');
+                        const updateVariant = () => {
+                            const key = select?.value || defaultVariant;
+                            const text = configVariants[key] || '';
+                            if (pre) pre.textContent = text;
+                            if (dlBtn) dlBtn.dataset.variant = key;
+                        };
+                        if (copyBtn) {
+                            copyBtn.addEventListener('click', async () => {
+                                const key = select?.value || defaultVariant;
+                                const copied = await copyTextWithFallback(configVariants[key] || '');
+                                alert(copied ? ' Copied!' : ' Copy failed');
+                            });
+                        }
+                        if (select) {
+                            select.addEventListener('change', updateVariant);
+                        }
+                        updateVariant();
+                    } else {
+                        const pre = modal.querySelector('#completedConfigContentView');
+                        const copyBtn = modal.querySelector('#completedConfigCopyBtn');
+                        if (pre) pre.textContent = initialConfig || '';
+                        if (copyBtn) {
+                            copyBtn.addEventListener('click', async () => {
+                                const copied = await copyTextWithFallback(initialConfig || '');
+                                alert(copied ? ' Copied!' : ' Copy failed');
+                            });
+                        }
+                    }
                 })
                 .catch(error => {
                     console.error('Error loading config:', error);
@@ -23185,11 +23164,17 @@ Ready for translation!`);
                         return;
                     }
 
-                    const blob = new Blob([data.config_content || ''], { type: 'text/plain' });
+                    const variantSelect = document.getElementById('completedConfigVariantSelect');
+                    const variantKey = variantSelect?.value || data.default_config_variant || 'hierarchy';
+                    const variantContent = data.config_variants && data.config_variants[variantKey]
+                        ? data.config_variants[variantKey]
+                        : (data.config_content || '');
+                    const blob = new Blob([variantContent], { type: 'text/plain' });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = `${data.device_name || 'config'}_${new Date(data.created_at).toISOString().split('T')[0]}.rsc`;
+                    const suffix = variantKey === 'commands' ? 'command-lines' : 'classic-hierarchy';
+                    a.download = `${data.device_name || 'config'}_${suffix}_${new Date(data.created_at).toISOString().split('T')[0]}.txt`;
                     document.body.appendChild(a);
                     a.click();
                     document.body.removeChild(a);
@@ -23221,6 +23206,58 @@ Ready for translation!`);
                     document.body.removeChild(notification);
                 }, 2000);
             }, 100);
+        }
+
+        async function copyTextWithFallback(text) {
+            const value = String(text || '');
+            if (!value) return false;
+            if (navigator.clipboard && window.isSecureContext) {
+                try {
+                    await navigator.clipboard.writeText(value);
+                    return true;
+                } catch (_) {
+                    // fall through to execCommand fallback
+                }
+            }
+            const textarea = document.createElement('textarea');
+            textarea.value = value;
+            textarea.setAttribute('readonly', '');
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            textarea.style.pointerEvents = 'none';
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            let copied = false;
+            try {
+                copied = document.execCommand('copy');
+            } catch (_) {
+                copied = false;
+            }
+            document.body.removeChild(textarea);
+            return copied;
+        }
+
+        function buildNokia7250SystemName(siteSuffix) {
+            const raw = String(siteSuffix || '').trim();
+            if (!raw) return '';
+            const normalized = raw.toUpperCase();
+            return normalized.startsWith('RTR-NK7250-AR1.') ? normalized : `RTR-NK7250-AR1.${normalized}`;
+        }
+
+        function syncNokia7250SystemName(force = false) {
+            const suffixEl = document.getElementById('nokia7250_siteSuffix');
+            const systemNameEl = document.getElementById('nokia7250_systemName');
+            if (!suffixEl || !systemNameEl) return;
+            const generated = buildNokia7250SystemName(suffixEl.value);
+            const lastAuto = systemNameEl.dataset.lastAutoValue || '';
+            const current = (systemNameEl.value || '').trim();
+            const shouldUpdate = force || !current || current === lastAuto || systemNameEl.dataset.autoGenerated !== 'false';
+            if (shouldUpdate) {
+                systemNameEl.value = generated;
+                systemNameEl.dataset.lastAutoValue = generated;
+                systemNameEl.dataset.autoGenerated = 'true';
+            }
         }
 
         // ========================================
@@ -24362,6 +24399,298 @@ Ready for translation!`);
                 })).filter(b => b.ip);
             }
 
+            function buildNokia7250CommandLineOutput(data) {
+                const out = [];
+                const push = (...lines) => lines.forEach((line) => out.push(line));
+                const section = (title) => {
+                    push(`#${'--'.repeat(25)}`, `echo "${title}"`, `#${'--'.repeat(25)}`);
+                };
+                const {
+                    hostname,
+                    lat,
+                    lon,
+                    tzInfo,
+                    ntpServers,
+                    systemIp,
+                    loopback,
+                    connectors,
+                    uplinks,
+                    allInterfaces,
+                    ldpDenyPrefixes,
+                    bgpNeighbors,
+                    bgpKey,
+                    nlrootPw,
+                    adminPw,
+                    snmpCommunity,
+                    sdpFarEnd,
+                    vpls,
+                    vplsVlans
+                } = data;
+
+                section('System Configuration');
+                push(`/configure system name "${hostname}"`);
+                push(`/configure system location "${lat},${lon}"`);
+                push('/configure system rollback rollback-location "cf3:/checkpoint_db"');
+                push('/configure system management-interface cli classic-cli');
+                push('/configure system management-interface configuration-mode classic');
+                push('/configure system time ntp no shutdown');
+                ntpServers.forEach((server) => push(`/configure system time ntp server ${server}`));
+                push('/configure system time sntp shutdown');
+                if (tzInfo) {
+                    push(`/configure system time dst-zone ${tzInfo.dst} start ${tzInfo.start}`);
+                    push(`/configure system time dst-zone ${tzInfo.dst} end ${tzInfo.end}`);
+                    push(`/configure system time zone ${tzInfo.zone}`);
+                } else {
+                    push('/configure system time zone UTC');
+                }
+                push('');
+
+                section('System Security Configuration');
+                push('exit all');
+                push('/configure system security management-access-filter ip-filter shutdown');
+                push('/configure system security management-access-filter ip-filter default-action permit');
+                nokia7250MainMgmtAcl.forEach((entry, idx) => {
+                    const n = idx + 1;
+                    push(`/configure system security management-access-filter ip-filter entry ${n} src-ip ${entry.ip}`);
+                    push(`/configure system security management-access-filter ip-filter entry ${n} dst-port 22 65535`);
+                    push(`/configure system security management-access-filter ip-filter entry ${n} action permit`);
+                });
+                push('/configure system security management-access-filter ip-filter no shutdown');
+                push('');
+                ['action','cancel-commit','close-session','commit','copy-config','create-subscription',
+                 'delete-config','discard-changes','edit-config','get','get-config','get-data',
+                 'get-schema','validate'].forEach((op) => {
+                    push(`/configure system security profile "default" netconf base-op-authorization ${op}`);
+                });
+                [
+                    { n: 10, m: 'exec', a: 'permit' },
+                    { n: 20, m: 'exit', a: 'permit' },
+                    { n: 30, m: 'help', a: 'permit' },
+                    { n: 40, m: 'logout', a: 'permit' },
+                    { n: 50, m: 'password', a: 'permit' },
+                    { n: 60, m: 'show config', a: 'deny' },
+                    { n: 65, m: 'show li', a: 'deny' },
+                    { n: 66, m: 'clear li', a: 'deny' },
+                    { n: 67, m: 'tools dump li', a: 'deny' },
+                    { n: 70, m: 'show', a: 'permit' },
+                    { n: 75, m: 'state', a: 'permit' },
+                    { n: 80, m: 'enable-admin', a: 'permit' },
+                    { n: 90, m: 'enable', a: 'permit' },
+                    { n: 100, m: 'configure li', a: 'deny' }
+                ].forEach((entry) => {
+                    push(`/configure system security profile "default" entry ${entry.n} match "${entry.m}"`);
+                    push(`/configure system security profile "default" entry ${entry.n} action ${entry.a}`);
+                });
+                push('');
+                ['action','cancel-commit','close-session','commit','copy-config','create-subscription',
+                 'delete-config','discard-changes','edit-config','get','get-config','get-data',
+                 'get-schema','kill-session','lock','validate'].forEach((op) => {
+                    push(`/configure system security profile "administrative" netconf base-op-authorization ${op}`);
+                });
+                [
+                    {n:10,m:'configure system security',a:'permit'},{n:20,m:'show system security',a:'permit'},
+                    {n:30,m:'tools perform security',a:'permit'},{n:40,m:'tools dump security',a:'permit'},
+                    {n:42,m:'tools dump system security',a:'permit'},{n:50,m:'admin system security',a:'permit'},
+                    {n:100,m:'configure li',a:'deny'},{n:110,m:'show li',a:'deny'},
+                    {n:111,m:'clear li',a:'deny'},{n:112,m:'tools dump li',a:'deny'}
+                ].forEach((entry) => {
+                    push(`/configure system security profile "administrative" entry ${entry.n} match "${entry.m}"`);
+                    push(`/configure system security profile "administrative" entry ${entry.n} action ${entry.a}`);
+                });
+                push('');
+                push(`/configure system security user "nlroot" password "${nlrootPw}"`);
+                push('/configure system security user "nlroot" access console ftp snmp netconf grpc');
+                push('/configure system security user "nlroot" no restricted-to-home');
+                push('/configure system security user "nlroot" console member "default"');
+                push('/configure system security user "nlroot" console member "administrative"');
+                push(`/configure system security user "admin" password "${adminPw}"`);
+                push('/configure system security user "admin" access console ftp snmp netconf grpc');
+                push('/configure system security user "admin" no restricted-to-home');
+                push('/configure system security user "admin" console member "default"');
+                push('/configure system security user "admin" console member "administrative"');
+                push(`/configure system security snmp community "${snmpCommunity}" r version both`);
+                push('/configure system security telnet shutdown');
+                push('/configure system login-control idle-timeout 90');
+                push('');
+
+                section('Card / Port Configuration');
+                push('/configure card 1 card-type imm24-sfp++8-sfp28+2-qsfp28');
+                push('/configure card 1 mda 1 no shutdown');
+                push('/configure card 1 no shutdown');
+                connectors.forEach((connector) => {
+                    push(`/configure port ${connector.port} description "${connector.desc}"`);
+                    push(`/configure port ${connector.port} connector breakout c1-100g`);
+                    push(`/configure port ${connector.port} no shutdown`);
+                    push(`/configure port ${connector.port}/1 description "${connector.desc}"`);
+                    if (connector.mtu) push(`/configure port ${connector.port}/1 ethernet mtu ${connector.mtu}`);
+                    push(`/configure port ${connector.port}/1 ethernet speed 100000`);
+                    push(`/configure port ${connector.port}/1 ethernet no autonegotiate`);
+                    push(`/configure port ${connector.port}/1 ethernet rs-fec-mode cl91-514-528`);
+                    push(`/configure port ${connector.port}/1 no shutdown`);
+                });
+                uplinks.forEach((uplink) => {
+                    push(`/configure port ${uplink.port} description "${uplink.desc}"`);
+                    if (uplink.mtu) push(`/configure port ${uplink.port} ethernet mtu ${uplink.mtu}`);
+                    push(`/configure port ${uplink.port} ethernet speed ${uplink.speed}`);
+                    push(`/configure port ${uplink.port} ethernet no autonegotiate`);
+                    push(`/configure port ${uplink.port} no shutdown`);
+                });
+                push('');
+
+                section('Router (Network Side) Configuration');
+                push('/configure router autonomous-system 26077');
+                push(`/configure router router-id ${systemIp}`);
+                push(`/configure router interface "system" address ${loopback}`);
+                push('/configure router interface "system" no shutdown');
+                allInterfaces.forEach((iface) => {
+                    push(`/configure router interface "${iface.desc}" address ${iface.ip}`);
+                    push(`/configure router interface "${iface.desc}" port ${iface.port}`);
+                    push(`/configure router interface "${iface.desc}" no shutdown`);
+                });
+                push('');
+
+                section('OSPFv2 Configuration');
+                push(`/configure router ospf 0 ${systemIp} area 0.0.0.0 interface "system" no shutdown`);
+                push(`/configure router ospf 0 ${systemIp} no shutdown`);
+                allInterfaces.forEach((iface) => {
+                    push(`/configure router ospf 0 ${systemIp} area 0.0.0.0 interface "${iface.desc}" no shutdown`);
+                });
+                push('');
+
+                section('MPLS / RSVP / LDP Configuration');
+                push('/configure router mpls interface "system" no shutdown');
+                allInterfaces.forEach((iface) => push(`/configure router mpls interface "${iface.desc}" no shutdown`));
+                push('/configure router mpls no shutdown');
+                push('/configure router rsvp interface "system" no shutdown');
+                allInterfaces.forEach((iface) => push(`/configure router rsvp interface "${iface.desc}" no shutdown`));
+                push('/configure router rsvp no shutdown');
+                push('/configure router ldp import "LDP-FILTER-PS"');
+                push('/configure router ldp import-pmsi-routes');
+                allInterfaces.forEach((iface) => {
+                    push(`/configure router ldp interface-parameters interface "${iface.desc}" dual-stack ipv4 no shutdown`);
+                    push(`/configure router ldp interface-parameters interface "${iface.desc}" dual-stack no shutdown`);
+                });
+                push('/configure router ldp no shutdown');
+                push('');
+
+                section('Policy Configuration');
+                push('/configure policy-options begin');
+                ldpDenyPrefixes.forEach((prefix) => push(`/configure policy-options prefix-list "LDP-DENY-PL" prefix ${prefix} exact`));
+                push('/configure policy-options prefix-list "LDP-ALLOW-PL" prefix 10.0.0.0/8 prefix-length-range 32-32');
+                push('/configure policy-options policy-statement "LDP-FILTER-PS" entry 10 from prefix-list "LDP-DENY-PL"');
+                push('/configure policy-options policy-statement "LDP-FILTER-PS" entry 10 action drop');
+                push('/configure policy-options policy-statement "LDP-FILTER-PS" entry 20 from prefix-list "LDP-ALLOW-PL"');
+                push('/configure policy-options policy-statement "LDP-FILTER-PS" entry 20 action accept');
+                push('/configure policy-options policy-statement "LDP-FILTER-PS" entry 30 description "drop-rest"');
+                push('/configure policy-options policy-statement "LDP-FILTER-PS" entry 30 action drop');
+                push('/configure policy-options commit');
+                push('');
+
+                section('Service Configuration');
+                push('/configure service sdp 101 mpls create');
+                push(`/configure service sdp 101 mpls far-end ${sdpFarEnd}`);
+                push('/configure service sdp 101 mpls ldp');
+                push('/configure service sdp 101 mpls keep-alive shutdown');
+                push('/configure service sdp 101 mpls no shutdown');
+                push('/configure service customer 1 name "1" create');
+                push('/configure service customer 1 description "Default customer"');
+                vpls.forEach((id) => {
+                    push(`/configure service customer ${id} name "${id}" create`);
+                });
+                vpls.forEach((id, idx) => {
+                    push(`/configure service vpls ${id} name "${id}" customer ${id} create`);
+                    push(`/configure service vpls ${id} service-mtu 1594`);
+                    push(`/configure service vpls ${id} fdb-table-size 1000`);
+                    push(`/configure service vpls ${id} stp shutdown`);
+                    push(`/configure service vpls ${id} sap lag-1:${vplsVlans[idx]} create`);
+                    push(`/configure service vpls ${id} sap lag-1:${vplsVlans[idx]} no shutdown`);
+                    push(`/configure service vpls ${id} mesh-sdp 101:${id} create`);
+                    push(`/configure service vpls ${id} mesh-sdp 101:${id} no shutdown`);
+                    push(`/configure service vpls ${id} no shutdown`);
+                });
+                push('');
+
+                section('BGP Configuration');
+                push(`/configure router bgp router-id ${systemIp}`);
+                const groups = {};
+                bgpNeighbors.forEach((neighbor) => {
+                    const key = neighbor.group || 'DALLAS-RR';
+                    if (!groups[key]) groups[key] = [];
+                    groups[key].push(neighbor.ip);
+                });
+                Object.entries(groups).forEach(([group, ips]) => {
+                    push(`/configure router bgp group "${group}" description "${group}"`);
+                    push(`/configure router bgp group "${group}" authentication-key "${bgpKey}"`);
+                    push(`/configure router bgp group "${group}" peer-as 26077`);
+                    push(`/configure router bgp group "${group}" local-address ${systemIp}`);
+                    ips.forEach((ip) => push(`/configure router bgp group "${group}" neighbor ${ip}`));
+                    push(`/configure router bgp group "${group}" no shutdown`);
+                });
+                push('/configure router bgp no shutdown');
+                push('');
+
+                section('Finalization');
+                push('/configure system management-interface configuration-mode classic');
+                push('exit all');
+
+                return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+            }
+
+            window._nokia7250Outputs = { hierarchy: '', commands: '' };
+
+            window.setNokia7250OutputFormat = function (format) {
+                const resolved = format === 'commands' ? 'commands' : 'hierarchy';
+                const output = document.getElementById('nokia7250_config_output');
+                const selector = document.getElementById('nokia7250_output_format');
+                if (selector) selector.value = resolved;
+                if (output) output.value = window._nokia7250Outputs?.[resolved] || '';
+            };
+
+            function validateNokia7250Inputs(loopback, connectors, uplinks) {
+                const isValidNokiaIPv4 = (value) => /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(String(value || '').trim());
+                const isValidNokiaCIDR = (value) => {
+                    const parts = String(value || '').trim().split('/');
+                    if (parts.length !== 2) return false;
+                    const prefix = Number(parts[1]);
+                    return isValidNokiaIPv4(parts[0]) && Number.isInteger(prefix) && prefix >= 0 && prefix <= 32;
+                };
+                const isNokiaNetworkOrBroadcast = (value) => {
+                    if (!isValidNokiaCIDR(value)) return false;
+                    const [ip, cidr] = String(value).trim().split('/');
+                    const cidrNum = Number(cidr);
+                    const ipParts = ip.split('.').map(Number);
+                    const ipInt = ((ipParts[0] << 24) >>> 0) + ((ipParts[1] << 16) >>> 0) + ((ipParts[2] << 8) >>> 0) + (ipParts[3] >>> 0);
+                    const mask = cidrNum === 0 ? 0 : ((0xFFFFFFFF << (32 - cidrNum)) >>> 0);
+                    const networkAddress = (ipInt & mask) >>> 0;
+                    const broadcastAddress = (networkAddress | (~mask >>> 0)) >>> 0;
+                    return cidrNum < 31 && (ipInt === networkAddress || ipInt === broadcastAddress);
+                };
+                const errors = [];
+                if (!isValidNokiaCIDR(loopback)) {
+                    errors.push('System IP / Loopback must be a valid IPv4 CIDR (example: 10.25.0.46/32).');
+                } else if (isNokiaNetworkOrBroadcast(loopback)) {
+                    errors.push('System IP / Loopback cannot be a network or broadcast address.');
+                }
+
+                connectors.forEach((connector, index) => {
+                    if (connector.ip && !isValidNokiaCIDR(connector.ip)) {
+                        errors.push(`100G Connector ${index + 1} IP/CIDR is invalid: ${connector.ip}`);
+                    } else if (connector.ip && isNokiaNetworkOrBroadcast(connector.ip)) {
+                        errors.push(`100G Connector ${index + 1} IP/CIDR cannot be a network or broadcast address: ${connector.ip}`);
+                    }
+                });
+
+                uplinks.forEach((uplink, index) => {
+                    if (uplink.ip && !isValidNokiaCIDR(uplink.ip)) {
+                        errors.push(`Uplink ${index + 1} IP/CIDR is invalid: ${uplink.ip}`);
+                    } else if (uplink.ip && isNokiaNetworkOrBroadcast(uplink.ip)) {
+                        errors.push(`Uplink ${index + 1} IP/CIDR cannot be a network or broadcast address: ${uplink.ip}`);
+                    }
+                });
+
+                return errors;
+            }
+
             // Timezone DST map
             const nokia7250MainTzMap = {
                 CST: { zone: 'CST', dst: 'CDT', start: 'second sunday march 02:00', end: 'first sunday november 02:00' },
@@ -24389,6 +24718,20 @@ Ready for translation!`);
                     nokia7250MainAddBgp();
                     const rows2 = document.querySelectorAll('#nokia7250_bgp_tbl tbody tr');
                     if (rows2[1]) rows2[1].cells[1].querySelector('input').value = '10.2.0.108';
+                }
+                const siteSuffixEl = document.getElementById('nokia7250_siteSuffix');
+                const systemNameEl = document.getElementById('nokia7250_systemName');
+                if (siteSuffixEl && !siteSuffixEl.dataset.bound) {
+                    siteSuffixEl.addEventListener('input', () => syncNokia7250SystemName());
+                    siteSuffixEl.dataset.bound = '1';
+                }
+                if (systemNameEl && !systemNameEl.dataset.bound) {
+                    systemNameEl.addEventListener('input', () => {
+                        const generated = buildNokia7250SystemName(document.getElementById('nokia7250_siteSuffix')?.value || '');
+                        systemNameEl.dataset.lastAutoValue = generated;
+                        systemNameEl.dataset.autoGenerated = (systemNameEl.value.trim() === generated) ? 'true' : 'false';
+                    });
+                    systemNameEl.dataset.bound = '1';
                 }
             });
 
@@ -24583,6 +24926,11 @@ Ready for translation!`);
                 const connectors = nokia7250MainGetConnectors();
                 const uplinks = nokia7250MainGetUplinks();
                 const bgpNeighbors = nokia7250MainGetBgpNeighbors();
+                const validationErrors = validateNokia7250Inputs(loopback, connectors, uplinks);
+                if (validationErrors.length) {
+                    alert(`Please fix the Nokia 7250 inputs before generating:\n\n- ${validationErrors.join('\n- ')}`);
+                    return;
+                }
                 const allInterfaces = [];
 
                 if (selection.model === '7210' || selection.model === '7750') {
@@ -25141,25 +25489,98 @@ Ready for translation!`);
                 L.push('exit all');
 
                 // Show output
-                const output = L.join('\n');
-                console.log('[NOKIA7250] Configuration generated client-side, length:', output.length);
-                finalizeNokiaConfiguratorOutput(output, {
-                    deviceName: hostname,
-                    deviceType: 'Nokia 7250 IXR',
-                    configType: 'nokia-7250',
+                const hierarchyOutput = L.join('\n');
+                const commandOutput = buildNokia7250CommandLineOutput({
+                    hostname,
+                    lat,
+                    lon,
+                    tzInfo,
+                    ntpServers,
+                    systemIp,
                     loopback,
-                    metadata: getNokiaOutputMetadataBase(hostname, loopback, lat, lon, tz, {
-                        sdp_far_end: sdpFarEnd,
-                        connector_count: connectors.length,
-                        uplink_count: uplinks.length,
-                        bgp_neighbor_count: bgpNeighbors.length
-                    })
+                    connectors,
+                    uplinks,
+                    allInterfaces,
+                    ldpDenyPrefixes,
+                    bgpNeighbors,
+                    bgpKey,
+                    nlrootPw,
+                    adminPw,
+                    snmpCommunity,
+                    sdpFarEnd,
+                    vpls,
+                    vplsVlans
                 });
+                window._nokia7250Outputs = {
+                    hierarchy: hierarchyOutput,
+                    commands: commandOutput
+                };
+                window.setNokia7250OutputFormat(document.getElementById('nokia7250_output_format')?.value || 'hierarchy');
+                document.getElementById('nokia7250_output').style.display = 'block';
+                document.getElementById('nokia7250_copyBtn').style.display = 'inline-block';
+                document.getElementById('nokia7250_dlBtn').style.display = 'inline-block';
+
+                // Scroll to output
+                document.getElementById('nokia7250_output').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                console.log('[NOKIA7250] Configuration generated client-side, hierarchy length:', hierarchyOutput.length, 'command length:', commandOutput.length);
+
+                // Auto-save to completed configs
+                if (typeof saveCompletedConfig === 'function') {
+                    saveCompletedConfig({
+                        config_type: 'nokia-7250',
+                        device_name: hostname,
+                        device_type: 'Nokia 7250 IXR',
+                        customer_code: '',
+                        loopback_ip: loopback,
+                        config_content: hierarchyOutput,
+                        site_name: hostname,
+                        metadata: {
+                            latitude: lat,
+                            longitude: lon,
+                            timezone: tz,
+                            sdp_far_end: sdpFarEnd,
+                            connector_count: connectors.length,
+                            uplink_count: uplinks.length,
+                            bgp_neighbor_count: bgpNeighbors.length,
+                            available_output_formats: ['hierarchy', 'commands'],
+                            output_formats: {
+                                hierarchy: hierarchyOutput,
+                                commands: commandOutput
+                            },
+                            default_output_format: 'hierarchy'
+                        }
+                    });
+                }
+
+                // Live activity tracking
+                if (typeof sendActivityToBackend === 'function' || typeof window.sendActivityToBackend === 'function') {
+                    const activityFn = typeof sendActivityToBackend === 'function' ? sendActivityToBackend : window.sendActivityToBackend;
+                    activityFn({
+                        type: 'new-config',
+                        device: 'Nokia 7250 IXR',
+                        siteName: hostname,
+                        routeros: '',
+                        success: true
+                    });
+                }
+
+                // Save to local config history
+                if (typeof saveConfigToHistory === 'function' || typeof window.saveConfigToHistory === 'function') {
+                    const historyFn = typeof saveConfigToHistory === 'function' ? saveConfigToHistory : window.saveConfigToHistory;
+                    historyFn({
+                        type: 'nokia-7250-config',
+                        device: 'Nokia 7250 IXR',
+                        siteName: hostname,
+                        routeros: '',
+                        success: true
+                    });
+                }
             };
 
             window.copyNokia7250Config = function () {
+                const format = document.getElementById('nokia7250_output_format')?.value || 'hierarchy';
+                const text = window._nokia7250Outputs?.[format] || '';
                 const textarea = document.getElementById('nokia7250_config_output');
-                const text = textarea.value;
                 if (!text) { alert('No configuration to copy!'); return; }
                 if (navigator.clipboard && window.isSecureContext) {
                     navigator.clipboard.writeText(text).then(() => {
@@ -25170,7 +25591,8 @@ Ready for translation!`);
             };
 
             window.downloadNokia7250Config = function () {
-                const config = document.getElementById('nokia7250_config_output').value;
+                const format = document.getElementById('nokia7250_output_format')?.value || 'hierarchy';
+                const config = window._nokia7250Outputs?.[format] || '';
                 if (!config) { alert('No configuration to download!'); return; }
                 const systemName = document.getElementById('nokia7250_systemName').value.trim() || 'nokia7250';
                 const ts = new Date().toISOString().split('T')[0];
@@ -25178,7 +25600,8 @@ Ready for translation!`);
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `${systemName}-${ts}.rsc`;
+                const suffix = format === 'commands' ? 'command-lines' : 'classic-hierarchy';
+                a.download = `${systemName}-${suffix}-${ts}.txt`;
                 a.click();
                 URL.revokeObjectURL(url);
             };
@@ -27786,7 +28209,8 @@ Ready for translation!`);
                     licenseDetail: r.licenseDetail,
                     stpDetail: r.stpDetail,
                     subnetDetail: r.subnetDetail,
-                    username: r.username || ''
+                    username: r.username || '',
+                    targetVersion: r.targetVersion || r.target_version || ''
                 };
                 // Precheck-only blockers (subnet/license/STP) should not be counted as hard failures.
                 // Keep the issue badges red, but set main status to pending so queue/history stay accurate.
@@ -28433,14 +28857,21 @@ Ready for translation!`);
                 }
             }
 
+            function aviatHasActiveProgress(radio) {
+                const status = aviatNormalizeStatus(radio.status);
+                const firmware = aviatNormalizeStatus(radio.firmwareStatus);
+                return ['processing', 'loading', 'pending_verify', 'reboot_pending', 'rebooting'].includes(status)
+                    || ['loading', 'pending_verify'].includes(firmware);
+            }
+
             function aviatStartAutoStatusChecks() {
                 if (aviatState.autoStatusInterval) return;
                 aviatState.autoStatusInterval = setInterval(() => {
-                    const hasRunning = aviatState.radios.some(r => aviatNormalizeStatus(r.status) === 'processing');
+                    const hasRunning = aviatState.radios.some(aviatHasActiveProgress);
                     if (hasRunning) {
                         aviatCheckStatus();
                     }
-                }, 900000);
+                }, 60000);
             }
 
             async function aviatCheckStatus() {
@@ -28451,12 +28882,12 @@ Ready for translation!`);
                         aviatAddLog(`Status check deferred (${mins} min until post-activation window).`, 'info');
                         return;
                     }
-                    const processing = aviatState.radios.filter(r => aviatNormalizeStatus(r.status) === 'processing');
+                    const processing = aviatState.radios.filter(aviatHasActiveProgress);
                     if (processing.length === 0) {
-                        aviatAddLog('No running radios to check', 'info');
+                        aviatAddLog('No active radios to check', 'info');
                         return;
                     }
-                    aviatAddLog(`Checking status for ${processing.length} running radio(s)...`, 'info');
+                    aviatAddLog(`Checking status for ${processing.length} active radio(s)...`, 'info');
                     const response = await aviatFetch('/check-status', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -28479,7 +28910,9 @@ Ready for translation!`);
                             radio.status = 'error';
                             return;
                         }
-                        const firmwareOk = res.firmware && res.firmware.startsWith('6.');
+                        const selectedTarget = (document.getElementById('firmwareTarget') || {}).value || 'final';
+                        const expectedFirmware = radio.targetVersion || (selectedTarget === 'baseline' ? '2.11.11' : '6.1.0');
+                        const firmwareOk = res.firmware && String(res.firmware).startsWith(expectedFirmware);
                         radio.firmwareStatus = firmwareOk ? 'success' : 'pending';
                         radio.snmpStatus = res.snmp_ok ? 'success' : 'pending';
                         radio.bufferStatus = res.buffer_ok ? 'success' : 'pending';
@@ -28520,20 +28953,19 @@ Ready for translation!`);
                         }
                         return;
                     }
-                    const scheduled = new Set(scheduledData.scheduled || []);
-                    const loading = new Set(loadingData.loading || []);
-                    aviatState.radios = aviatState.radios.map(r => {
-                        if (loading.has(r.ip)) {
-                            return { ...r, status: 'loading', firmwareStatus: 'loading' };
-                        }
-                        if (scheduled.has(r.ip)) {
-                            return { ...r, status: 'scheduled' };
-                        }
-                        if (r.status === 'loading' || r.status === 'scheduled') {
+                    if (!queueLoaded) {
+                        const scheduled = new Set(scheduledData.scheduled || []);
+                        const loading = new Set(loadingData.loading || []);
+                        aviatState.radios = aviatState.radios.map(r => {
+                            if (loading.has(r.ip)) {
+                                return { ...r, status: 'loading', firmwareStatus: 'loading' };
+                            }
+                            if (scheduled.has(r.ip)) {
+                                return { ...r, status: 'scheduled' };
+                            }
                             return r;
-                        }
-                        return r;
-                    });
+                        });
+                    }
                     aviatUpdateUI();
                     if (!quiet) {
                         aviatAddLog(queueLoaded ? 'Refreshed shared queue' : 'Refreshed scheduled queue', 'info');
@@ -28853,7 +29285,6 @@ Ready for translation!`);
             { cat: 'Navigate', icon: '', label: 'Device Config Studio', desc: 'AP/SM/Switch/UPS/RPC/Aviat/Wave/7250', action: () => window.navigateToTab('field-config-studio') },
             { cat: 'Navigate', icon: '', label: 'Nokia Configurator', desc: 'Unified Nokia configuration workspace', action: () => window.navigateToTab('nokia7250-maker') },
             { cat: 'Navigate', icon: '', label: 'Nokia Migration', desc: 'MikroTik → Nokia conversion', action: () => window.navigateToTab('mikrotik-to-nokia') },
-            { cat: 'Navigate', icon: '', label: 'IDO Tools', desc: 'Integrated Device Operations', action: () => window.navigateToTab('ido-tools') },
             { cat: 'Navigate', icon: '', label: 'Aviat Backhaul Updater', desc: 'Firmware upgrade for WTM4200', action: () => window.navigateToTab('aviat-backhaul') },
             { cat: 'Navigate', icon: '', label: 'FTTH Configurator', desc: 'FTTH OLT and BNG workspaces', action: () => window.navigateToTab('ftth-home') },
             { cat: 'Navigate', icon: '', label: 'Command Vault', desc: 'Nokia/Cisco/MikroTik quick commands', action: () => window.navigateToTab('command-vault') },
@@ -30841,7 +31272,9 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
     <script>
     (function() {
         const sidebar = document.getElementById('appSidebar');
+        const pinBtn = document.getElementById('sidebarPinBtn');
         if (!sidebar) return;
+        const SIDEBAR_PIN_KEY = 'nocSidebarPinned';
 
         function makeSidebarNodeFocusable(node) {
             if (!node || node.hasAttribute('tabindex')) return;
@@ -30850,6 +31283,31 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
         }
 
         sidebar.querySelectorAll('.sb-item, .sb-item-header').forEach(makeSidebarNodeFocusable);
+
+        function setSidebarPinned(pinned) {
+            sidebar.classList.toggle('pinned', pinned);
+            sidebar.classList.toggle('expanded', pinned);
+            if (pinBtn) {
+                pinBtn.setAttribute('aria-pressed', pinned ? 'true' : 'false');
+                pinBtn.setAttribute('aria-label', pinned ? 'Unpin sidebar' : 'Pin sidebar');
+                pinBtn.setAttribute('title', pinned ? 'Unpin sidebar' : 'Pin sidebar');
+            }
+            try {
+                localStorage.setItem(SIDEBAR_PIN_KEY, pinned ? 'true' : 'false');
+            } catch (e) {
+                // ignore storage errors
+            }
+        }
+
+        function getStoredSidebarPin() {
+            try {
+                return localStorage.getItem(SIDEBAR_PIN_KEY) === 'true';
+            } catch (e) {
+                return false;
+            }
+        }
+
+        setSidebarPinned(getStoredSidebarPin());
 
         function toggleSidebarGroup(header) {
             const group = header?.closest('.sb-group');
@@ -30936,6 +31394,14 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
         }
 
         sidebar.addEventListener('click', (event) => {
+            const pinToggle = event.target.closest('#sidebarPinBtn');
+            if (pinToggle && sidebar.contains(pinToggle)) {
+                event.preventDefault();
+                event.stopPropagation();
+                setSidebarPinned(!sidebar.classList.contains('pinned'));
+                return;
+            }
+
             const header = event.target.closest('.sb-group > .sb-item-header');
             if (header && sidebar.contains(header)) {
                 toggleSidebarGroup(header);
@@ -30950,6 +31416,13 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
         });
 
         sidebar.addEventListener('keydown', (event) => {
+            const pinToggle = event.target.closest('#sidebarPinBtn');
+            if (pinToggle && sidebar.contains(pinToggle) && (event.key === 'Enter' || event.key === ' ')) {
+                event.preventDefault();
+                setSidebarPinned(!sidebar.classList.contains('pinned'));
+                return;
+            }
+
             if (event.key !== 'Enter' && event.key !== ' ') return;
 
             const header = event.target.closest('.sb-group > .sb-item-header');
