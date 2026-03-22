@@ -1538,6 +1538,458 @@ def get_interface_type(interface_name):
     else:
         return 'unknown'
 
+
+NEXTLINK_ROLE_PRIORITY = {
+    'management': 0,
+    'switch': 1,
+    'olt': 1,
+    'backhaul': 2,
+    'tarana': 3,
+    'lte': 3,
+    '6ghz': 3,
+    'infrastructure': 4,
+    'unknown': 5,
+}
+
+
+def _port_sort_key(port_name):
+    family_rank = 9
+    if port_name.startswith('ether'):
+        family_rank = 0
+    elif port_name.startswith('sfp-sfpplus'):
+        family_rank = 1
+    elif port_name.startswith('sfp28-'):
+        family_rank = 2
+    elif re.match(r'^sfp\d+$', port_name):
+        family_rank = 3
+    elif port_name.startswith('qsfp'):
+        family_rank = 4
+    match = re.search(r'(\d+)(?!.*\d)', port_name)
+    number = int(match.group(1)) if match else 999
+    return (family_rank, number, port_name)
+
+
+def _all_device_ports(device_key):
+    device = ROUTERBOARD_INTERFACES.get(device_key, {})
+    ports = []
+    for group_ports in device.get('ports', {}).values():
+        ports.extend(group_ports)
+    return ports
+
+
+def _extract_used_physical_interfaces(config_text, source_device):
+    known_ports = set(_all_device_ports(source_device))
+    if not known_ports:
+        return []
+    physical = []
+    seen = set()
+    pattern = r'\b(ether\d+|sfp\d+(?:-\d+)?|sfp-sfpplus\d+|sfp28-\d+|qsfpplus\d+-\d+|qsfp28-\d+-\d+|qsfp\d+(?:-\d+)?|combo\d+)\b'
+    for match in re.finditer(pattern, config_text or ''):
+        port = match.group(1)
+        if port in known_ports and port not in seen:
+            seen.add(port)
+            physical.append(port)
+    return physical
+
+
+def analyze_nextlink_port_mapping(config_text, source_device, target_device):
+    """
+    Analyze source interfaces against Nextlink target port policy and build a deterministic map.
+
+    Target policy:
+    - management: ether1 only
+    - switch fabric: slots 1-2
+    - reserved: slot 3 remains empty unless exhausted overflow is unavoidable
+    - backhaul: slots 4-6
+    - radio/access (Tarana/LTE/6GHz): slots 7-11
+    - overflow: remaining non-management ports, then QSFP
+    """
+    if source_device not in ROUTERBOARD_INTERFACES or target_device not in ROUTERBOARD_INTERFACES:
+        return {
+            'interface_map': {},
+            'port_analysis': [],
+            'warnings': ['Unknown source or target device'],
+            'policy_summary': {},
+            'manual_review_required': True,
+        }
+
+    config_text = config_text or ''
+    source_specs = ROUTERBOARD_INTERFACES[source_device]
+    target_specs = ROUTERBOARD_INTERFACES[target_device]
+    source_mgmt = source_specs.get('management_port', 'ether1')
+    target_mgmt = target_specs.get('management_port', 'ether1')
+    source_ports = set(_all_device_ports(source_device))
+    target_ports = _all_device_ports(target_device)
+
+    comment_map = {}
+    for match in re.finditer(
+        r'set\s+\[\s*find\s+default-name=(\S+)\s*\][^\n]*?comment=([^\s\n"]+|"[^"]+")',
+        config_text,
+        re.MULTILINE,
+    ):
+        port = match.group(1).strip()
+        if port in source_ports:
+            comment_map[port] = match.group(2).strip().strip('"')
+
+    vlan_parent = {}
+    bond_members = {}
+    bridge_members = {}
+    bridge_interfaces = {}
+    logical_comments = {}
+
+    for match in re.finditer(r'(?m)^add\s+[^\n]*\bname=([^\s]+)[^\n]*\binterface=([^\s]+)[^\n]*$', config_text):
+        name = match.group(1).strip().strip('"')
+        parent = match.group(2).strip().strip('"')
+        if name and parent:
+            vlan_parent[name] = parent
+            cm = re.search(r'\bcomment=([^\s\n"]+|"[^"]+")', match.group(0))
+            if cm:
+                logical_comments[name] = cm.group(1).strip().strip('"')
+
+    for match in re.finditer(r'(?m)^add\s+[^\n]*\bname=([^\s]+)[^\n]*\bslaves=([^\s]+)[^\n]*$', config_text):
+        name = match.group(1).strip().strip('"')
+        slaves = [part.strip().strip('"') for part in match.group(2).split(',') if part.strip()]
+        if name and slaves:
+            bond_members[name] = slaves
+            cm = re.search(r'\bcomment=([^\s\n"]+|"[^"]+")', match.group(0))
+            if cm:
+                logical_comments[name] = cm.group(1).strip().strip('"')
+
+    for match in re.finditer(r'(?m)^add\s+[^\n]*\bbridge=([^\s]+)[^\n]*\binterface=([^\s]+)', config_text):
+        bridge = match.group(1).strip().strip('"')
+        member = match.group(2).strip().strip('"')
+        bridge_members.setdefault(bridge, []).append(member)
+        bridge_interfaces[member] = bridge
+
+    def resolve_physical_ports(iface_name, seen=None):
+        iface_name = (iface_name or '').strip().strip('"')
+        if not iface_name:
+            return set()
+        if iface_name in source_ports:
+            return {iface_name}
+        seen = seen or set()
+        if iface_name in seen:
+            return set()
+        seen = set(seen)
+        seen.add(iface_name)
+
+        resolved = set()
+        if iface_name in vlan_parent:
+            resolved |= resolve_physical_ports(vlan_parent[iface_name], seen)
+        if iface_name in bond_members:
+            for member in bond_members[iface_name]:
+                resolved |= resolve_physical_ports(member, seen)
+        if iface_name in bridge_members:
+            for member in bridge_members[iface_name]:
+                resolved |= resolve_physical_ports(member, seen)
+        if iface_name in bridge_interfaces:
+            resolved |= resolve_physical_ports(bridge_interfaces[iface_name], seen)
+        return resolved
+
+    ip_map = {}
+    prefix_map = {}
+    logical_ip_map = {}
+    for match in re.finditer(
+        r'add\s+[^\n]*?address=(\d+\.\d+\.\d+\.\d+)/(\d+)[^\n]*?interface=(\S+)',
+        config_text,
+        re.MULTILINE,
+    ):
+        ip_addr, prefix, port = match.group(1), int(match.group(2)), match.group(3)
+        if port in source_ports:
+            ip_map.setdefault(port, []).append(ip_addr)
+            prefix_map.setdefault(port, []).append(prefix)
+        logical_ip_map.setdefault(port, []).append(ip_addr)
+    for match in re.finditer(
+        r'add\s+[^\n]*?interface=(\S+)[^\n]*?address=(\d+\.\d+\.\d+\.\d+)/(\d+)',
+        config_text,
+        re.MULTILINE,
+    ):
+        port, ip_addr, prefix = match.group(1), match.group(2), int(match.group(3))
+        if port in source_ports:
+            ip_map.setdefault(port, []).append(ip_addr)
+            prefix_map.setdefault(port, []).append(prefix)
+        logical_ip_map.setdefault(port, []).append(ip_addr)
+
+    role_signals = {}
+
+    def add_signal(port_name, role_name, evidence, weight=1):
+        if port_name not in source_ports:
+            return
+        role_signals.setdefault(port_name, {})
+        bucket = role_signals[port_name].setdefault(role_name, {'score': 0, 'evidence': []})
+        bucket['score'] += weight
+        if evidence not in bucket['evidence']:
+            bucket['evidence'].append(evidence)
+
+    for port, comment in comment_map.items():
+        upper = comment.upper()
+        if any(token in upper for token in ['NETONIX', 'CNMATRIX', 'CMM', 'SWITCH', 'MATRIX', 'EDGECORE']):
+            add_signal(port, 'switch', f'comment:{comment}', 5)
+        if any(token in upper for token in ['BACKHAUL', ' BH', 'BH ', 'FIBER', 'UPLINK', 'TRANSPORT']) or re.search(r'\b(TX|KS|IL|NE|IA|MO|OK)-', upper):
+            add_signal(port, 'backhaul', f'comment:{comment}', 5)
+        if any(token in upper for token in ['TARANA', 'ALPHA', 'BETA', 'GAMMA', 'DELTA']):
+            add_signal(port, 'tarana', f'comment:{comment}', 5)
+        if any(token in upper for token in ['LTE', 'ATT', 'VERIZON', 'TMOBILE', 'T-MOBILE', 'CELL']):
+            add_signal(port, 'lte', f'comment:{comment}', 5)
+        if any(token in upper for token in ['6GHZ', '6 GHZ', '6-GHZ', '6GHZ', 'CAMBIUM', 'PMP450', 'AF60', 'WAVE']):
+            add_signal(port, '6ghz', f'comment:{comment}', 5)
+        if any(token in upper for token in ['UPS', 'ICT', 'POWER', 'WPS']):
+            add_signal(port, 'infrastructure', f'comment:{comment}', 4)
+        if 'OLT' in upper or 'NOKIA' in upper:
+            add_signal(port, 'olt', f'comment:{comment}', 4)
+        if 'MANAGEMENT' in upper or 'MGMT' in upper:
+            add_signal(port, 'management', f'comment:{comment}', 4)
+
+    for logical_iface, logical_comment in logical_comments.items():
+        for port in resolve_physical_ports(logical_iface):
+            upper = logical_comment.upper()
+            if any(token in upper for token in ['NETONIX', 'CNMATRIX', 'CMM', 'SWITCH', 'MATRIX', 'EDGECORE']):
+                add_signal(port, 'switch', f'logical_comment:{logical_iface}:{logical_comment}', 4)
+            if any(token in upper for token in ['BACKHAUL', 'FIBER', 'UPLINK', 'TRANSPORT']) or re.search(r'\b(TX|KS|IL|NE|IA|MO|OK)-', upper):
+                add_signal(port, 'backhaul', f'logical_comment:{logical_iface}:{logical_comment}', 4)
+            if any(token in upper for token in ['TARANA', 'ALPHA', 'BETA', 'GAMMA', 'DELTA']):
+                add_signal(port, 'tarana', f'logical_comment:{logical_iface}:{logical_comment}', 4)
+            if any(token in upper for token in ['LTE', 'ATT', 'VERIZON', 'TMOBILE', 'T-MOBILE', 'CELL']):
+                add_signal(port, 'lte', f'logical_comment:{logical_iface}:{logical_comment}', 4)
+            if any(token in upper for token in ['6GHZ', '6 GHZ', '6-GHZ', 'CAMBIUM', 'PMP450', 'AF60', 'WAVE']):
+                add_signal(port, '6ghz', f'logical_comment:{logical_iface}:{logical_comment}', 4)
+
+    for port, prefixes in prefix_map.items():
+        for prefix in prefixes:
+            if prefix in (29, 30, 31):
+                add_signal(port, 'backhaul', f'ip_prefix:/{prefix}', 3)
+
+    for logical_iface, prefixes in list(prefix_map.items()):
+        if logical_iface in source_ports:
+            continue
+        for port in resolve_physical_ports(logical_iface):
+            for prefix in prefixes:
+                if prefix in (29, 30, 31):
+                    add_signal(port, 'backhaul', f'logical_ip_prefix:{logical_iface}:/{prefix}', 3)
+
+    for match in re.finditer(
+        r'interface-template\s+add[^\n]*?interfaces?=([^\s]+)',
+        config_text,
+        re.MULTILINE,
+    ):
+        for iface_name in [item.strip() for item in match.group(1).split(',') if item.strip()]:
+            for port in resolve_physical_ports(iface_name):
+                add_signal(port, 'backhaul', 'ospf_interface_template', 2)
+
+    for match in re.finditer(
+        r'/mpls ldp\s+(?:interface\s+)?add[^\n]*?interface=(\S+)',
+        config_text,
+        re.MULTILINE,
+    ):
+        iface_name = match.group(1).strip()
+        for port in resolve_physical_ports(iface_name):
+            add_signal(port, 'backhaul', f'mpls_ldp:{iface_name}', 2)
+
+    for logical_iface, ips in logical_ip_map.items():
+        for ip_addr in ips:
+            if re.search(rf'(?m)^/routing bgp connection\s+add[^\n]*\b(local\.address|update-source)={re.escape(ip_addr)}\b', config_text):
+                for port in resolve_physical_ports(logical_iface):
+                    add_signal(port, 'backhaul', f'bgp_local_address:{logical_iface}:{ip_addr}', 2)
+            if re.search(rf'(?m)^add\s+[^\n]*\binterface={re.escape(logical_iface)}\b[^\n]*\bnetwork=(\d+\.\d+\.\d+\.\d+/\d+)', config_text):
+                for port in resolve_physical_ports(logical_iface):
+                    add_signal(port, 'backhaul', f'ospf_network_ref:{logical_iface}', 1)
+
+    for bridge_name, members in bridge_members.items():
+        if re.search(rf'(?m)^add\s+[^\n]*\bbridge={re.escape(bridge_name)}\b[^\n]*\bcomment=([^\n]+)$', config_text):
+            for member in members:
+                for port in resolve_physical_ports(member):
+                    add_signal(port, 'switch', f'bridge_member:{bridge_name}', 1)
+
+    expanded_ip_map = {}
+    expanded_prefix_map = {}
+    for iface_name, ip_list in logical_ip_map.items():
+        for port in resolve_physical_ports(iface_name):
+            expanded_ip_map.setdefault(port, [])
+            for ip_addr in ip_list:
+                if ip_addr not in expanded_ip_map[port]:
+                    expanded_ip_map[port].append(ip_addr)
+    for iface_name, prefixes in prefix_map.items():
+        for port in resolve_physical_ports(iface_name):
+            expanded_prefix_map.setdefault(port, [])
+            for prefix in prefixes:
+                if prefix not in expanded_prefix_map[port]:
+                    expanded_prefix_map[port].append(prefix)
+    ip_map = expanded_ip_map or ip_map
+    prefix_map = expanded_prefix_map or prefix_map
+
+    used_ports = _extract_used_physical_interfaces(config_text, source_device)
+    if source_mgmt not in used_ports and source_mgmt in source_ports and re.search(rf'(?<![A-Za-z0-9_-]){re.escape(source_mgmt)}(?![A-Za-z0-9_-])', config_text):
+        used_ports.append(source_mgmt)
+
+    ordered_non_mgmt = [p for p in target_ports if p != target_mgmt and not p.startswith('qsfp')]
+    port_buckets = {
+        'sfp28': sorted([p for p in ordered_non_mgmt if p.startswith('sfp28-')], key=_port_sort_key),
+        'sfpplus': sorted([p for p in ordered_non_mgmt if p.startswith('sfp-sfpplus')], key=_port_sort_key),
+        'sfp': sorted([p for p in ordered_non_mgmt if re.match(r'^sfp\d+$', p)], key=_port_sort_key),
+        'ether': sorted([p for p in ordered_non_mgmt if p.startswith('ether')], key=_port_sort_key),
+    }
+    primary_family_name, primary_family_ports = max(port_buckets.items(), key=lambda item: len(item[1]))
+    secondary_ports = []
+    for family_name, family_ports in port_buckets.items():
+        if family_name != primary_family_name:
+            secondary_ports.extend(family_ports)
+    ordered_policy_ports = primary_family_ports + secondary_ports
+    qsfp_ports = sorted([p for p in target_ports if p.startswith('qsfp')], key=_port_sort_key)
+
+    switch_pool = ordered_policy_ports[0:2]
+    reserved_pool = ordered_policy_ports[2:3]
+    backhaul_pool = ordered_policy_ports[3:6]
+    radio_pool = ordered_policy_ports[6:11]
+    overflow_pool = ordered_policy_ports[11:] + qsfp_ports
+
+    role_queues = {
+        'switch': list(switch_pool),
+        'olt': list(switch_pool),
+        'backhaul': list(backhaul_pool),
+        'tarana': list(radio_pool),
+        'lte': list(radio_pool),
+        '6ghz': list(radio_pool),
+        'management': [target_mgmt],
+        'infrastructure': list(overflow_pool),
+        'unknown': list(overflow_pool),
+    }
+    fallback_order = {
+        'switch': ['switch', 'backhaul', 'tarana', 'lte', '6ghz', 'unknown'],
+        'olt': ['switch', 'backhaul', 'unknown'],
+        'backhaul': ['backhaul', 'unknown'],
+        'tarana': ['tarana', 'lte', '6ghz', 'unknown', 'backhaul'],
+        'lte': ['lte', 'tarana', '6ghz', 'unknown', 'backhaul'],
+        '6ghz': ['6ghz', 'tarana', 'lte', 'unknown', 'backhaul'],
+        'infrastructure': ['infrastructure', 'unknown', 'backhaul'],
+        'unknown': ['unknown', 'backhaul'],
+        'management': ['management'],
+    }
+    used_targets = set()
+    warnings = []
+    port_analysis = []
+    interface_map = {target_mgmt: target_mgmt} if source_mgmt == target_mgmt else {}
+    manual_review_required = False
+
+    def next_port_for_role(role_name):
+        nonlocal manual_review_required
+        for bucket_name in fallback_order.get(role_name, ['unknown']):
+            queue = role_queues.get(bucket_name, [])
+            while queue:
+                candidate = queue.pop(0)
+                if candidate == target_mgmt or candidate in used_targets:
+                    continue
+                used_targets.add(candidate)
+                if bucket_name != role_name:
+                    warnings.append(f'Policy overflow: role {role_name} used fallback slot {candidate}')
+                    manual_review_required = True
+                return candidate
+        if reserved_pool:
+            candidate = reserved_pool[0]
+            if candidate not in used_targets:
+                used_targets.add(candidate)
+                warnings.append(f'Policy exception: reserved slot {candidate} had to be used')
+                manual_review_required = True
+                return candidate
+        warnings.append(f'No target slot available for role {role_name}')
+        manual_review_required = True
+        return None
+
+    for port in sorted(used_ports, key=_port_sort_key):
+        signals = role_signals.get(port, {})
+        chosen_role = 'management' if port == source_mgmt and not signals else 'unknown'
+        chosen_score = 1 if chosen_role == 'management' else 0
+        chosen_evidence = ['default_management_port'] if chosen_role == 'management' else []
+        if signals:
+            ranked = sorted(
+                signals.items(),
+                key=lambda item: (-item[1]['score'], NEXTLINK_ROLE_PRIORITY.get(item[0], 99), item[0]),
+            )
+            chosen_role, meta = ranked[0]
+            chosen_score = meta['score']
+            chosen_evidence = list(meta['evidence'])
+        confidence = 'high' if chosen_score >= 5 else 'medium' if chosen_score >= 3 else 'low'
+        policy_conflicts = []
+        if port == source_mgmt and chosen_role != 'management':
+            policy_conflicts.append('source ether1 is carrying non-management service')
+            warnings.append(f'Policy conflict on {port}: detected {chosen_role}; target ether1 will remain management only')
+            manual_review_required = True
+        if chosen_role == 'infrastructure':
+            policy_conflicts.append('UPS/ICT/Power does not have a dedicated target slot in current standard')
+            warnings.append(f'Infrastructure port {port} needs review; standard policy keeps slot 3 empty')
+            manual_review_required = True
+
+        if port == source_mgmt and chosen_role == 'management' and target_mgmt == port:
+            target_port = target_mgmt
+        else:
+            target_port = next_port_for_role(chosen_role)
+
+        if target_port and port != target_port:
+            interface_map[port] = target_port
+
+        policy_slot = {
+            'management': 'management-only',
+            'switch': 'ports 1-2',
+            'olt': 'ports 1-2',
+            'backhaul': 'ports 4-6',
+            'tarana': 'ports 7-11',
+            'lte': 'ports 7-11',
+            '6ghz': 'ports 7-11',
+            'infrastructure': 'overflow/manual review',
+            'unknown': 'overflow/manual review',
+        }.get(chosen_role, 'overflow/manual review')
+
+        port_analysis.append({
+            'source_port': port,
+            'comment': comment_map.get(port, ''),
+            'detected_role': chosen_role,
+            'role_evidence': chosen_evidence,
+            'ips': ip_map.get(port, []),
+            'target_port': target_port,
+            'policy_slot': policy_slot,
+            'confidence': confidence,
+            'policy_conflict': bool(policy_conflicts),
+            'manual_review_required': bool(policy_conflicts) or target_port is None,
+            'conflict_reasons': policy_conflicts,
+        })
+
+    if source_mgmt not in used_ports and source_mgmt in source_ports:
+        port_analysis.insert(0, {
+            'source_port': source_mgmt,
+            'comment': comment_map.get(source_mgmt, ''),
+            'detected_role': 'management',
+            'role_evidence': ['reserved_management_port'],
+            'ips': ip_map.get(source_mgmt, []),
+            'target_port': target_mgmt,
+            'policy_slot': 'management-only',
+            'confidence': 'high',
+            'policy_conflict': False,
+            'manual_review_required': False,
+            'conflict_reasons': [],
+        })
+
+    seen_warnings = []
+    deduped_warnings = []
+    for warning in warnings:
+        if warning not in seen_warnings:
+            seen_warnings.append(warning)
+            deduped_warnings.append(warning)
+
+    return {
+        'interface_map': interface_map,
+        'port_analysis': port_analysis,
+        'warnings': deduped_warnings,
+        'policy_summary': {
+            'management_port': target_mgmt,
+            'switch_ports': switch_pool,
+            'reserved_ports': reserved_pool,
+            'backhaul_ports': backhaul_pool,
+            'radio_ports': radio_pool,
+            'overflow_ports': overflow_pool,
+            'primary_family': primary_family_name,
+        },
+        'manual_review_required': manual_review_required,
+    }
+
 def build_interface_migration_map(source_device, target_device):
     """
     Intelligently build interface migration map between two devices
@@ -1574,7 +2026,6 @@ def build_interface_migration_map(source_device, target_device):
     def interface_priority(item):
         port, port_type = item
         # Extract number from interface name
-        import re
         match = re.search(r'(\d+)$', port)
         num = int(match.group(1)) if match else 999
         
@@ -1661,8 +2112,6 @@ def migrate_interface_config(config_text, interface_map):
     
     for old_interface, new_interface in sorted_interfaces:
         # Use word boundaries to avoid partial matches
-        import re
-        
         # Pattern matches interface name with word boundaries
         # This ensures we don't replace "ether1" in "ether10"
         pattern = r'\b' + re.escape(old_interface) + r'\b'
@@ -13202,15 +13651,18 @@ def migrate_config():
         needs_device_migration = (source_device != target_device)
         
         migrated_config = config
-        interface_map = None
+        mapping_analysis = analyze_nextlink_port_mapping(config, source_device, target_device)
+        interface_map = mapping_analysis.get('interface_map') or {}
+        port_analysis = mapping_analysis.get('port_analysis') or []
+        policy_summary = mapping_analysis.get('policy_summary') or {}
+        manual_review_required = bool(mapping_analysis.get('manual_review_required'))
+        migration_warnings = list(mapping_analysis.get('warnings') or [])
         
         # Step 1: Device migration (interface renaming)
         if needs_device_migration:
             safe_print(f"[MIGRATION] Device: {source_device} → {target_device}")
             
-            # Build intelligent interface mapping
-            interface_map = build_interface_migration_map(source_device, target_device)
-            
+            # Build deterministic Nextlink policy mapping
             if not interface_map:
                 return jsonify({
                     'error': f'No migration path available from {source_device} to {target_device}'
@@ -13232,10 +13684,47 @@ def migrate_config():
             loopback_ip = extract_loopback_ip(migrated_config)
             migrated_config = apply_engineering_compliance(migrated_config, loopback_ip)
 
+        validation = validate_translation(config, migrated_config)
+        migration_analysis = {
+            'migration_type': ' + '.join([
+                item for item in (
+                    'v6→v7' if needs_syntax_migration else '',
+                    f'{source_device}→{target_device}' if needs_device_migration else '',
+                ) if item
+            ]) or 'config-audit',
+            'needs_version_migration': needs_syntax_migration,
+            'needs_device_migration': needs_device_migration,
+            'interface_map': interface_map or {},
+            'port_analysis': port_analysis,
+            'policy_summary': policy_summary,
+            'manual_review_required': manual_review_required,
+            'warnings': migration_warnings,
+            'config_lines': len(config.splitlines()),
+            'complexity': {
+                'ip_addresses': len(re.findall(r'\b(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?\b', config)),
+                'bridges': len(re.findall(r'/interface bridge\s', config)),
+                'vpls_tunnels': len(re.findall(r'/interface vpls', config)),
+                'firewall_sections': len(re.findall(r'/ip firewall', config)),
+                'ospf': '/routing ospf' in config,
+                'bgp': '/routing bgp' in config,
+                'mpls': '/mpls' in config or '/interface vpls' in config,
+            }
+        }
+        if needs_device_migration and interface_map:
+            source_ports = ROUTERBOARD_INTERFACES[source_device]['total_ports']
+            target_ports = ROUTERBOARD_INTERFACES[target_device]['total_ports']
+            if source_ports > target_ports:
+                migration_analysis['warnings'].append(
+                    f'Port count mismatch: source has {source_ports} ports, target has {target_ports}. Some ports may need reassignment.'
+                )
+        elif not needs_device_migration:
+            migration_analysis['warnings'].append('Source and target are the same model - version upgrade only')
+
         # Prepare response
         response_data = {
             'success': True,
             'migrated_config': migrated_config,
+            'translated_config': migrated_config,
             'source_device': source_device,
             'target_device': target_device,
             'source_version': source_version,
@@ -13244,17 +13733,28 @@ def migrate_config():
             'detected_source_version': detected_version,
             'syntax_migrated': needs_syntax_migration,
             'device_migrated': needs_device_migration,
-            'interfaces_mapped': len(interface_map) if interface_map else 0,
+            'interfaces_mapped': len(interface_map) if (needs_device_migration and interface_map) else 0,
             'compliance_applied': bool(apply_compliance and HAS_ENGINEERING_COMPLIANCE),
+            'validation': validation,
+            'migration_analysis': migration_analysis,
+            'source_info': {
+                'model': source_device,
+                'type': ROUTERBOARD_INTERFACES[source_device]['series'].lower(),
+            },
+            'target_info': {
+                'model': target_device,
+                'type': ROUTERBOARD_INTERFACES[target_device]['series'].lower(),
+                'routeros': target_version,
+            },
             'migration_summary': {
                 'ether1_preserved': 'ether1' in interface_map and interface_map['ether1'] == 'ether1' if interface_map else False,
-                'total_interfaces': len(interface_map) if interface_map else 0,
+                'total_interfaces': len(interface_map) if (needs_device_migration and interface_map) else 0,
                 'source_ports': ROUTERBOARD_INTERFACES[source_device]['total_ports'],
                 'target_ports': ROUTERBOARD_INTERFACES[target_device]['total_ports']
             }
         }
         
-        if not interface_map:
+        if interface_map:
             response_data['interface_map'] = interface_map
         
         safe_print(f"[MIGRATION] Complete - {len(migrated_config)} chars")
@@ -16429,9 +16929,18 @@ def bulk_migration_analyze():
 
         # Step 4: Build interface migration map
         interface_map = {}
+        port_analysis = []
+        policy_summary = {}
+        manual_review_required = False
         migration_warnings = []
+        if source_model_key:
+            mapping_analysis = analyze_nextlink_port_mapping(config_text, source_model_key, target_model)
+            interface_map = mapping_analysis.get('interface_map') or {}
+            port_analysis = mapping_analysis.get('port_analysis') or []
+            policy_summary = mapping_analysis.get('policy_summary') or {}
+            manual_review_required = bool(mapping_analysis.get('manual_review_required'))
+            migration_warnings.extend(mapping_analysis.get('warnings') or [])
         if source_model_key and source_model_key != target_model:
-            interface_map = build_interface_migration_map(source_model_key, target_model) or {}
             if not interface_map:
                 migration_warnings.append(f'Could not build interface map from {source_model_key} to {target_model}')
             # Check for port exhaustion
@@ -16477,6 +16986,9 @@ def bulk_migration_analyze():
             'needs_version_migration': needs_version_migration,
             'needs_device_migration': needs_device_migration,
             'interface_map': interface_map,
+            'port_analysis': port_analysis,
+            'policy_summary': policy_summary,
+            'manual_review_required': manual_review_required,
             'warnings': migration_warnings,
             'config_lines': len(config_text.splitlines()),
             'config_text': config_text,
