@@ -24365,14 +24365,14 @@ Ready for translation!`);
                 };
             }
 
-            function getFtthFiberPreferredPort(deviceKey) {
+            window.getFtthFiberPreferredPort = function (deviceKey) {
                 const profile = typeof getEnterpriseDeviceProfile === 'function' ? getEnterpriseDeviceProfile(deviceKey) : null;
                 if (profile?.uplinkPort) return profile.uplinkPort;
                 const ports = getDevicePortOptions(deviceKey);
                 return ports.find((port) => port.startsWith('sfp') || port.startsWith('combo')) || ports[0] || 'sfp-sfpplus1';
-            }
+            };
 
-            function updateFtthFiberPortOptions() {
+            window.updateFtthFiberPortOptions = function () {
                 const device = (document.getElementById('ftthFiberRouterboard')?.value || 'ccr2004').trim();
                 const portSelect = document.getElementById('ftthFiberPort');
                 const hint = document.getElementById('ftthFiberPortHint');
@@ -24385,10 +24385,10 @@ Ready for translation!`);
                     option.textContent = portName;
                     portSelect.appendChild(option);
                 });
-                const preferred = getFtthFiberPreferredPort(device);
+                const preferred = window.getFtthFiberPreferredPort(device);
                 if (ports.includes(preferred)) portSelect.value = preferred;
                 if (hint) hint.textContent = `Ports populate from ${device.toUpperCase()} and default to ${preferred}.`;
-            }
+            };
 
             function getNokiaOutputMetadataBase(hostname, loopback, lat, lon, tz, extras) {
                 return Object.assign({
@@ -27170,7 +27170,7 @@ Ready for translation!`);
             const routerboard = (document.getElementById('ftthFiberRouterboard')?.value || 'ccr2004').trim();
             const routeros = (document.getElementById('ftthFiberRouteros')?.value || '7.19.4').trim();
             const provider = (document.getElementById('ftthFiberProvider')?.value || '').trim();
-            const port = (document.getElementById('ftthFiberPort')?.value || getFtthFiberPreferredPort(routerboard)).trim();
+            const port = (document.getElementById('ftthFiberPort')?.value || window.getFtthFiberPreferredPort(routerboard)).trim();
             const address = (document.getElementById('ftthFiberAddress')?.value || '').trim();
             const network = (document.getElementById('ftthFiberNetwork')?.value || '').trim();
             const vlanMode = (document.getElementById('ftthFiberVlanMode')?.value || 'none').trim();
@@ -27442,15 +27442,15 @@ Ready for translation!`);
             initCommandVaultTabs();
             const ftthFiberBoard = document.getElementById('ftthFiberRouterboard');
             if (ftthFiberBoard && !ftthFiberBoard.dataset.bound) {
-                ftthFiberBoard.addEventListener('change', updateFtthFiberPortOptions);
+                ftthFiberBoard.addEventListener('change', window.updateFtthFiberPortOptions);
                 ftthFiberBoard.dataset.bound = '1';
             }
-            updateFtthFiberPortOptions();
+            window.updateFtthFiberPortOptions();
         });
         window.addEventListener('load', () => {
             if (typeof initFtthHomeTabs === 'function') initFtthHomeTabs();
             if (typeof initCommandVaultTabs === 'function') initCommandVaultTabs();
-            if (typeof updateFtthFiberPortOptions === 'function') updateFtthFiberPortOptions();
+            if (typeof window.updateFtthFiberPortOptions === 'function') window.updateFtthFiberPortOptions();
         });
 
         // ========================================
