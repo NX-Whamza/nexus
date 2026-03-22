@@ -202,6 +202,7 @@ from nextlink_standards import (
     NEXTLINK_DEVICE_ROLES,
     NEXTLINK_AUTO_DETECTABLE_ERRORS
 )
+from legacy_toolbox_reference import LEGACY_GENERATOR_INVENTORY, LEGACY_ROLE_PATTERNS
 
 # Import NextLink enterprise reference (standard blocks for non-MPLS)
 try:
@@ -1446,6 +1447,42 @@ NEXTLINK_ROLE_PRIORITY = {
 }
 
 
+def _collect_role_matches(text_value):
+    text_value = (text_value or '').strip()
+    if not text_value:
+        return {}
+    normalized = text_value.lower()
+    matches = {}
+    for role_name, patterns in LEGACY_ROLE_PATTERNS.items():
+        hits = []
+        for pattern in patterns:
+            if pattern in normalized and pattern not in hits:
+                hits.append(pattern)
+        if hits:
+            matches[role_name] = hits
+    return matches
+
+
+def _add_role_matches_from_text(port_name, text_value, evidence_prefix, role_signals, source_ports):
+    if port_name not in source_ports:
+        return
+    for role_name, hits in _collect_role_matches(text_value).items():
+        weight = 5 if evidence_prefix == 'comment' else 4
+        if (
+            evidence_prefix == 'bridge_name'
+            or evidence_prefix == 'logical_interface'
+            or evidence_prefix.startswith('address_comment:')
+        ):
+            weight = 3
+        for hit in hits:
+            role_signals.setdefault(port_name, {})
+            bucket = role_signals[port_name].setdefault(role_name, {'score': 0, 'evidence': []})
+            bucket['score'] += weight
+            evidence = f'{evidence_prefix}:{text_value}'
+            if evidence not in bucket['evidence']:
+                bucket['evidence'].append(evidence)
+
+
 def _port_sort_key(port_name):
     family_rank = 9
     if port_name.startswith('ether'):
@@ -1510,6 +1547,30 @@ def resolve_routerboard_model_key(device_name):
     return raw
 
 
+ENTERPRISE_DEVICE_PROFILES = {
+    'rb5009': {'public_port': 'ether7', 'nat_port': 'ether8', 'uplink_interface': 'sfp-sfpplus1'},
+    'ccr1036': {'public_port': 'ether7', 'nat_port': 'ether8', 'uplink_interface': 'sfp1'},
+    'ccr1072': {'public_port': 'ether7', 'nat_port': 'ether8', 'uplink_interface': 'sfp1'},
+    'ccr2004': {'public_port': 'sfp-sfpplus7', 'nat_port': 'sfp-sfpplus8', 'uplink_interface': 'sfp-sfpplus1'},
+    'ccr2116': {'public_port': 'ether7', 'nat_port': 'ether8', 'uplink_interface': 'sfp-sfpplus1'},
+    'ccr2216': {'public_port': 'sfp28-7', 'nat_port': 'sfp28-8', 'uplink_interface': 'sfp28-1'},
+    'rb2011': {'public_port': 'ether7', 'nat_port': 'ether8', 'uplink_interface': 'sfp1'},
+    'rb1009': {'public_port': 'ether7', 'nat_port': 'ether8', 'uplink_interface': 'ether1'},
+}
+
+
+def get_enterprise_device_profile(device_name: str):
+    normalized = (device_name or '').strip().lower()
+    if normalized in ENTERPRISE_DEVICE_PROFILES:
+        return ENTERPRISE_DEVICE_PROFILES[normalized].copy()
+    model_key = resolve_routerboard_model_key(device_name)
+    if model_key:
+        series = (ROUTERBOARD_MODELS.get(model_key, {}).get('series') or '').lower()
+        if series in ENTERPRISE_DEVICE_PROFILES:
+            return ENTERPRISE_DEVICE_PROFILES[series].copy()
+    return ENTERPRISE_DEVICE_PROFILES['rb5009'].copy()
+
+
 def _extract_used_physical_interfaces(config_text, source_device):
     known_ports = set(_all_device_ports(source_device))
     if not known_ports:
@@ -1569,6 +1630,7 @@ def analyze_nextlink_port_mapping(config_text, source_device, target_device):
     bridge_members = {}
     bridge_interfaces = {}
     logical_comments = {}
+    address_comments = {}
 
     for match in re.finditer(r'(?m)^add\s+[^\n]*\bname=([^\s]+)[^\n]*\binterface=([^\s]+)[^\n]*$', config_text):
         name = match.group(1).strip().strip('"')
@@ -1628,6 +1690,9 @@ def analyze_nextlink_port_mapping(config_text, source_device, target_device):
         re.MULTILINE,
     ):
         ip_addr, prefix, port = match.group(1), int(match.group(2)), match.group(3)
+        comment_match = re.search(r'\bcomment=([^\s\n"]+|"[^"]+")', match.group(0))
+        if comment_match:
+            address_comments.setdefault(port, []).append(comment_match.group(1).strip().strip('"'))
         if port in source_ports:
             ip_map.setdefault(port, []).append(ip_addr)
             prefix_map.setdefault(port, []).append(prefix)
@@ -1638,6 +1703,9 @@ def analyze_nextlink_port_mapping(config_text, source_device, target_device):
         re.MULTILINE,
     ):
         port, ip_addr, prefix = match.group(1), match.group(2), int(match.group(3))
+        comment_match = re.search(r'\bcomment=([^\s\n"]+|"[^"]+")', match.group(0))
+        if comment_match:
+            address_comments.setdefault(port, []).append(comment_match.group(1).strip().strip('"'))
         if port in source_ports:
             ip_map.setdefault(port, []).append(ip_addr)
             prefix_map.setdefault(port, []).append(prefix)
@@ -1656,36 +1724,30 @@ def analyze_nextlink_port_mapping(config_text, source_device, target_device):
 
     for port, comment in comment_map.items():
         upper = comment.upper()
-        if any(token in upper for token in ['NETONIX', 'CNMATRIX', 'CMM', 'SWITCH', 'MATRIX', 'EDGECORE']):
-            add_signal(port, 'switch', f'comment:{comment}', 5)
+        _add_role_matches_from_text(port, comment, 'comment', role_signals, source_ports)
         if any(token in upper for token in ['BACKHAUL', ' BH', 'BH ', 'FIBER', 'UPLINK', 'TRANSPORT']) or re.search(r'\b(TX|KS|IL|NE|IA|MO|OK)-', upper):
             add_signal(port, 'backhaul', f'comment:{comment}', 5)
-        if any(token in upper for token in ['TARANA', 'ALPHA', 'BETA', 'GAMMA', 'DELTA']):
-            add_signal(port, 'tarana', f'comment:{comment}', 5)
-        if any(token in upper for token in ['LTE', 'ATT', 'VERIZON', 'TMOBILE', 'T-MOBILE', 'CELL']):
-            add_signal(port, 'lte', f'comment:{comment}', 5)
-        if any(token in upper for token in ['6GHZ', '6 GHZ', '6-GHZ', '6GHZ', 'CAMBIUM', 'PMP450', 'AF60', 'WAVE']):
-            add_signal(port, '6ghz', f'comment:{comment}', 5)
-        if any(token in upper for token in ['UPS', 'ICT', 'POWER', 'WPS']):
-            add_signal(port, 'infrastructure', f'comment:{comment}', 4)
-        if 'OLT' in upper or 'NOKIA' in upper:
-            add_signal(port, 'olt', f'comment:{comment}', 4)
-        if 'MANAGEMENT' in upper or 'MGMT' in upper:
-            add_signal(port, 'management', f'comment:{comment}', 4)
 
     for logical_iface, logical_comment in logical_comments.items():
         for port in resolve_physical_ports(logical_iface):
+            _add_role_matches_from_text(port, logical_comment, f'logical_comment:{logical_iface}', role_signals, source_ports)
             upper = logical_comment.upper()
-            if any(token in upper for token in ['NETONIX', 'CNMATRIX', 'CMM', 'SWITCH', 'MATRIX', 'EDGECORE']):
-                add_signal(port, 'switch', f'logical_comment:{logical_iface}:{logical_comment}', 4)
             if any(token in upper for token in ['BACKHAUL', 'FIBER', 'UPLINK', 'TRANSPORT']) or re.search(r'\b(TX|KS|IL|NE|IA|MO|OK)-', upper):
                 add_signal(port, 'backhaul', f'logical_comment:{logical_iface}:{logical_comment}', 4)
-            if any(token in upper for token in ['TARANA', 'ALPHA', 'BETA', 'GAMMA', 'DELTA']):
-                add_signal(port, 'tarana', f'logical_comment:{logical_iface}:{logical_comment}', 4)
-            if any(token in upper for token in ['LTE', 'ATT', 'VERIZON', 'TMOBILE', 'T-MOBILE', 'CELL']):
-                add_signal(port, 'lte', f'logical_comment:{logical_iface}:{logical_comment}', 4)
-            if any(token in upper for token in ['6GHZ', '6 GHZ', '6-GHZ', 'CAMBIUM', 'PMP450', 'AF60', 'WAVE']):
-                add_signal(port, '6ghz', f'logical_comment:{logical_iface}:{logical_comment}', 4)
+
+    for logical_iface, comments in address_comments.items():
+        for port in resolve_physical_ports(logical_iface):
+            for address_comment in comments:
+                _add_role_matches_from_text(port, address_comment, f'address_comment:{logical_iface}', role_signals, source_ports)
+
+    for logical_iface in set(vlan_parent) | set(bond_members) | set(bridge_members) | set(bridge_interfaces):
+        for port in resolve_physical_ports(logical_iface):
+            _add_role_matches_from_text(port, logical_iface, 'logical_interface', role_signals, source_ports)
+
+    for bridge_name, members in bridge_members.items():
+        for member in members:
+            for port in resolve_physical_ports(member):
+                _add_role_matches_from_text(port, bridge_name, 'bridge_name', role_signals, source_ports)
 
     for port, prefixes in prefix_map.items():
         for prefix in prefixes:
@@ -4116,20 +4178,7 @@ def suggest_config():
             # Generate suggestions based on device type
             suggestions = {}
             
-            # Define port suggestions per device type
-            device_port_suggestions = {
-                'ccr2004': {'public_port': 'sfp-sfpplus7', 'nat_port': 'sfp-sfpplus8', 'uplink_interface': 'sfp-sfpplus1'},
-                'rb5009': {'public_port': 'ether7', 'nat_port': 'ether8', 'uplink_interface': 'sfp-sfpplus1'},
-                'ccr1036': {'public_port': 'ether7', 'nat_port': 'ether8', 'uplink_interface': 'sfp1'},
-                'ccr1072': {'public_port': 'ether7', 'nat_port': 'ether8', 'uplink_interface': 'sfp1'},
-                'ccr2116': {'public_port': 'ether7', 'nat_port': 'ether8', 'uplink_interface': 'sfp-sfpplus1'},
-                'ccr2216': {'public_port': 'sfp28-7', 'nat_port': 'sfp28-8', 'uplink_interface': 'sfp28-1'},
-                'rb2011': {'public_port': 'ether7', 'nat_port': 'ether8', 'uplink_interface': 'sfp1'},
-                'rb1009': {'public_port': 'ether7', 'nat_port': 'ether8', 'uplink_interface': 'ether1'},
-            }
-            
-            dev_key = device.lower() if device else ''
-            port_suggestion = device_port_suggestions.get(dev_key, device_port_suggestions.get('rb5009'))
+            port_suggestion = get_enterprise_device_profile(device)
             
             try:
                 suggestions = {
@@ -8974,9 +9023,10 @@ def gen_enterprise_non_mpls():
         public_cidr = data['public_cidr']
         bh_cidr = data['bh_cidr']
         loopback_ip = data['loopback_ip']  # /32 expected
-        uplink_if = data.get('uplink_interface', 'sfp-sfpplus1')
-        public_port = data.get('public_port', 'ether7')
-        nat_port = data.get('nat_port', 'ether8')
+        device_profile = get_enterprise_device_profile(device)
+        uplink_if = (data.get('uplink_interface') or device_profile['uplink_interface']).strip()
+        public_port = (data.get('public_port') or device_profile['public_port']).strip()
+        nat_port = (data.get('nat_port') or device_profile['nat_port']).strip()
         # Use environment variables or form data - RFC-09-10-25 Compliance defaults
         # Default to NextLink compliance DNS servers (142.147.112.3, 142.147.112.19)
         dns1 = data.get('dns1') or os.getenv('NEXTLINK_DNS_PRIMARY', '142.147.112.3')
@@ -8988,6 +9038,23 @@ def gen_enterprise_non_mpls():
         coords = data.get('coords')
         identity = data.get('identity', f"RTR-{device}.AUTO-GEN")
         uplink_comment = data.get('uplink_comment', '').strip()  # Uplink comment/location for backhaul
+
+        interface_roles = {
+            'customer handoff': public_port,
+            'nat': nat_port,
+            'backhaul uplink': uplink_if,
+        }
+        duplicates = {}
+        for role_name, interface_name in interface_roles.items():
+            duplicates.setdefault(interface_name, []).append(role_name)
+        collisions = {iface: roles for iface, roles in duplicates.items() if iface and len(roles) > 1}
+        if collisions:
+            collision_text = "; ".join(f"{iface}: {', '.join(roles)}" for iface, roles in collisions.items())
+            return jsonify({
+                'success': False,
+                'error': f'Enterprise interface roles must be unique. Conflicts: {collision_text}',
+                'profile': device_profile,
+            }), 400
 
         pub = _cidr_details_gen(public_cidr)
         bh = _cidr_details_gen(bh_cidr)
@@ -9237,7 +9304,18 @@ def gen_enterprise_non_mpls():
         if dhcp_optset_suffix:
             cfg = cfg.rstrip() + "\n" + dhcp_optset_suffix.strip() + "\n"
         
-        return jsonify({'success': True, 'config': cfg, 'device': device, 'version': target_version})
+        return jsonify({
+            'success': True,
+            'config': cfg,
+            'device': device,
+            'version': target_version,
+            'profile': {
+                **device_profile,
+                'public_port': public_port,
+                'nat_port': nat_port,
+                'uplink_interface': uplink_if,
+            }
+        })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 400
 
@@ -10473,6 +10551,192 @@ def nokia7250_defaults():
         'admin_pw':       os.getenv('NOKIA7250_ADMIN_PW', '').strip(),
         'bgp_auth_key':   os.getenv('NOKIA7250_BGP_AUTH_KEY', '').strip(),
     })
+
+
+@app.route('/api/nokia-configurator-defaults', methods=['GET'])
+def nokia_configurator_defaults():
+    return nokia7250_defaults()
+
+
+def _get_nokia_configurator_creds():
+    return {
+        'snmp_community': os.getenv('NOKIA7250_SNMP_COMMUNITY', '').strip(),
+        'nlroot_pw': os.getenv('NOKIA7250_NLROOT_PW', '').strip(),
+        'admin_pw': os.getenv('NOKIA7250_ADMIN_PW', '').strip(),
+        'bgp_auth_key': os.getenv('NOKIA7250_BGP_AUTH_KEY', '').strip(),
+    }
+
+
+def _nokia_config_header(title: str):
+    return ["##################################", f"# {title}", "##################################"]
+
+
+def _render_nokia_7210_backend(data: dict, creds: dict):
+    profile = (data.get('profile') or 'standard').strip().lower()
+    hostname = (data.get('system_name') or '').strip()
+    loopback = (data.get('system_ip') or '').strip()
+    lat = (data.get('latitude') or '0.0').strip() or '0.0'
+    lon = (data.get('longitude') or '0.0').strip() or '0.0'
+    tz = (data.get('timezone') or 'CST').strip() or 'CST'
+    system_ip = loopback.split('/')[0]
+    uplinks = data.get('uplinks') or []
+    lines = []
+
+    section = 'NOKIA 7210 ISD CONFIG' if profile == 'isd' else 'NOKIA 7210 BNG 2.0 CONFIG' if profile == 'bng2' else 'NOKIA 7210 STANDARD CONFIG'
+    lines.extend(_nokia_config_header(section))
+    lines.extend([
+        '/configure system management-interface cli classic-cli',
+        '/configure system management-interface configuration-mode classic',
+        f'/configure system name "{hostname}"',
+        f'/configure router interface "system" address {loopback}',
+        f'/configure router router-id {system_ip}',
+        f'/configure system location "{lat},{lon}"',
+        f'/configure system security snmp community "{creds["snmp_community"]}" r version both',
+        f'/configure system security user nlroot password "{creds["nlroot_pw"]}"',
+        f'/configure system security user admin password "{creds["admin_pw"]}"',
+        f'/configure system time zone {tz}',
+        ''
+    ])
+
+    if profile == 'isd':
+        lines.extend(_nokia_config_header('ISD SERVICE SETTINGS'))
+        lines.append('/configure service ies 100 customer 1 create')
+        if data.get('isd_public'):
+            lines.append(f'/configure service ies 100 interface "public" address {data.get("isd_public")}')
+        if data.get('isd_private'):
+            lines.append(f'/configure service ies 100 interface "private" address {data.get("isd_private")}')
+        if data.get('static_hop'):
+            lines.append(f'/configure router static-route-entry {data.get("static_hop")} next-hop {data.get("static_hop")}')
+        lines.append('/configure service ies 100 no shutdown')
+        lines.append('')
+    else:
+        ospf_area = (data.get('ospf_area') or '0.0.0.0').strip() or '0.0.0.0'
+        asn = str(data.get('asn') or '26077').strip() or '26077'
+        vpls_num = str(data.get('vpls_num') or '2245').strip()
+        vpls_target1 = (data.get('vpls_target1') or '').strip()
+        vpls_target2 = (data.get('vpls_target2') or '').strip()
+        peers = [p.strip() for p in (data.get('bgp_peers') or []) if str(p).strip()]
+        lines.extend(_nokia_config_header('BNG 2.0 ROUTING' if profile == 'bng2' else 'ROUTING'))
+        lines.extend([
+            f'/configure router autonomous-system {asn}',
+            f'/configure router ospf 1 area {ospf_area} interface "system" no shutdown',
+            f'/configure router bgp group "DALLAS-RR" peer-as {asn}',
+            f'/configure router bgp group "DALLAS-RR" local-address {system_ip}',
+            f'/configure router bgp group "DALLAS-RR" authentication-key "{creds["bgp_auth_key"]}"',
+        ])
+        for peer in peers:
+            lines.append(f'/configure router bgp group "DALLAS-RR" neighbor {peer}')
+        if vpls_num:
+            lines.extend([
+                '/configure service sdp 101 mpls create',
+                f'/configure service sdp 101 far-end {vpls_target1}' if vpls_target1 else '/configure service sdp 101 far-end',
+                '/configure service sdp 101 ldp',
+                '/configure service sdp 101 no shutdown',
+                f'/configure service vpls {vpls_num} customer {vpls_num} create',
+                f'/configure service vpls {vpls_num} mesh-sdp 101:{vpls_num} create',
+            ])
+            if vpls_target2:
+                lines.extend([
+                    '/configure service sdp 102 mpls create',
+                    f'/configure service sdp 102 far-end {vpls_target2}',
+                    '/configure service sdp 102 ldp',
+                    '/configure service sdp 102 no shutdown',
+                    f'/configure service vpls {vpls_num} mesh-sdp 102:{vpls_num} create',
+                ])
+            lines.append(f'/configure service vpls {vpls_num} no shutdown')
+        lines.append('')
+
+    lines.extend(_nokia_config_header('BACKHAULS'))
+    for index, uplink in enumerate(uplinks, start=1):
+        port = (uplink.get('port') or f'1/1/{index}').strip()
+        desc = (uplink.get('desc') or f'BH-{index}').strip()
+        ip_cidr = (uplink.get('ip') or '').strip()
+        speed = str(uplink.get('speed') or '').strip()
+        lines.append(f'/configure port {port} description "{desc}"')
+        if speed:
+            lines.append(f'/configure port {port} ethernet speed {speed}')
+        if ip_cidr:
+            lines.append(f'/configure router interface "BH-{index}" address {ip_cidr}')
+        lines.append(f'/configure port {port} no shutdown')
+        lines.append('')
+
+    lines.append('/admin save')
+    return '\n'.join(lines)
+
+
+def _render_nokia_7750_backend(data: dict):
+    profile = (data.get('profile') or 'standard').strip().lower()
+    hostname = (data.get('system_name') or '').strip()
+    loopback = (data.get('system_ip') or '').strip()
+    system_ip = loopback.split('/')[0]
+    sdp_number = str(data.get('sdp_number') or '101').strip() or '101'
+    sdp_description = (data.get('sdp_description') or hostname).strip()
+    sdp_far_end = (data.get('sdp_far_end') or '').strip()
+    lines = []
+    lines.extend(_nokia_config_header('NOKIA 7750 BNG 2.0 CONFIG' if profile == 'bng2' else 'NOKIA 7750 TUNNEL CONFIG'))
+    lines.extend([
+        f'/configure system name "{hostname}"',
+        f'/configure router interface "system" address {loopback}',
+        f'/configure router router-id {system_ip}',
+        f'/configure service sdp {sdp_number} mpls create',
+    ])
+    if sdp_description:
+        lines.append(f'/configure service sdp {sdp_number} mpls description "{sdp_description}"')
+    if sdp_far_end:
+        lines.append(f'/configure service sdp {sdp_number} mpls far-end {sdp_far_end}')
+    lines.extend([
+        f'/configure service sdp {sdp_number} mpls ldp',
+        f'/configure service sdp {sdp_number} no shutdown',
+    ])
+    for label, value in [('CGN', data.get('vpls_cgn')), ('STATIC', data.get('vpls_static')), ('INFRA', data.get('vpls_infra')), ('CPE', data.get('vpls_cpe'))]:
+        if value:
+            lines.append(f'/configure service vpls {value} description "{label}-{hostname}"')
+            lines.append(f'/configure service vpls {value} mesh-sdp {sdp_number}:{value} create')
+            lines.append(f'/configure service vpls {value} no shutdown')
+    lines.append('/admin save')
+    return '\n'.join(lines)
+
+
+@app.route('/api/generate-nokia-configurator', methods=['POST'])
+def generate_nokia_configurator():
+    try:
+        data = request.get_json(force=True) or {}
+        model = (data.get('model') or '7250').strip()
+        profile = (data.get('profile') or 'standard').strip().lower()
+        system_name = (data.get('system_name') or '').strip()
+        system_ip = (data.get('system_ip') or '').strip()
+        if not system_name or not system_ip:
+            return jsonify({'success': False, 'error': 'System name and system IP are required'}), 400
+
+        creds = _get_nokia_configurator_creds()
+        missing_creds = [key for key, value in creds.items() if not value]
+        if missing_creds:
+            return jsonify({'success': False, 'error': f'Nokia credentials are not fully configured: {", ".join(missing_creds)}'}), 400
+
+        if model == '7210':
+            config_text = _render_nokia_7210_backend(data, creds)
+            device_type = f'Nokia 7210 {"BNG 2.0" if profile == "bng2" else "ISD" if profile == "isd" else "Standard"}'
+            config_type = f'nokia-7210-{profile}'
+        elif model == '7750':
+            config_text = _render_nokia_7750_backend(data)
+            device_type = f'Nokia 7750 {"BNG 2.0" if profile == "bng2" else "Tunnel"}'
+            config_type = f'nokia-7750-{profile}'
+        else:
+            return jsonify({'success': False, 'error': 'Backend Nokia configurator currently supports 7210 and 7750 generation. Use 7250 Standard on the existing path.'}), 400
+
+        return jsonify({
+            'success': True,
+            'config': config_text,
+            'device_type': device_type,
+            'config_type': config_type,
+            'model': model,
+            'profile': profile,
+        })
+    except Exception as e:
+        print(f"[NOKIA CONFIGURATOR] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': f'Error generating Nokia configuration: {str(e)}'}), 500
 
 
 @app.route('/api/generate-nokia7250', methods=['POST'])
@@ -12736,16 +13000,19 @@ _API_REGISTRY = [
     {"method": "POST", "path": "/api/mt/<type>/portmap",     "category": "MikroTik Gen",      "summary": "Generate MikroTik port map (Netlaunch)"},
     # ── FTTH BNG ──
     {"method": "POST", "path": "/api/generate-ftth-bng",     "category": "FTTH BNG",          "summary": "Generate FTTH BNG config (strict template)", "payload": {"deployment_type": "str", "loopback_ip": "str", "cpe_network": "str", "cgnat_private": "str"}},
-    {"method": "POST", "path": "/api/gen-ftth-bng",          "category": "FTTH BNG",          "summary": "Legacy FTTH BNG gen",                       "payload": {"loopback_ip": "str", "cpe_cidr": "str", "cgnat_cidr": "str"}},
+    {"method": "POST", "path": "/api/gen-ftth-bng",          "category": "FTTH BNG",          "summary": "Alternate FTTH BNG input contract",         "payload": {"loopback_ip": "str", "cpe_cidr": "str", "cgnat_cidr": "str"}},
     {"method": "POST", "path": "/api/preview-ftth-bng",      "category": "FTTH BNG",          "summary": "Preview FTTH CIDR details (no config gen)", "payload": {"loopback_ip": "str", "cpe_cidr": "str", "cgnat_cidr": "str"}},
     {"method": "POST", "path": "/api/ftth-home/mf2-package", "category": "FTTH BNG",          "summary": "Generate MF2 ZIP package",                  "payload": {"gateway_ip": "str", "primary_ip": "str"}},
     # ── Nokia 7250 ──
     {"method": "GET",  "path": "/api/nokia7250-defaults",    "category": "Nokia 7250",        "summary": "Nokia credentials/secrets from env"},
     {"method": "POST", "path": "/api/generate-nokia7250",    "category": "Nokia 7250",        "summary": "Generate Nokia 7250 SR OS config",          "payload": {"system_name": "str", "system_ip": "str", "location": "str", "backhauls": "array"}},
+    {"method": "GET",  "path": "/api/nokia-configurator-defaults", "category": "Nokia Configurator", "summary": "Unified Nokia credentials/secrets from env"},
+    {"method": "POST", "path": "/api/generate-nokia-configurator", "category": "Nokia Configurator", "summary": "Generate Nokia 7210/7750 unified config", "payload": {"model": "str", "profile": "str", "system_name": "str", "system_ip": "str"}},
     # ── Device Migration ──
     {"method": "POST", "path": "/api/migrate-config",        "category": "Device Migration",  "summary": "Intelligent device migration (ROS6→7, interface map)", "payload": {"config": "str", "target_device": "str", "target_version": "str", "apply_compliance?": "bool"}},
     {"method": "POST", "path": "/api/migrate-mikrotik-to-nokia","category":"Device Migration", "summary": "MikroTik → Nokia SR OS conversion",        "payload": {"source_config": "str", "preserve_ips?": "bool"}},
     {"method": "GET",  "path": "/api/get-routerboards",      "category": "Device Migration",  "summary": "List all supported RouterBoard models"},
+    {"method": "GET",  "path": "/api/toolbox-inventory",     "category": "Device Migration",  "summary": "Toolbox feature inventory used for backend refinement"},
     # ── SSH / Remote ──
     {"method": "POST", "path": "/api/fetch-config-ssh",      "category": "SSH / Remote",      "summary": "SSH into device and fetch config",          "payload": {"host": "str", "ros_version?": "6|7", "command?": "str"}},
     # ── Compliance & Policy ──
@@ -13721,6 +13988,17 @@ def get_routerboards():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/toolbox-inventory', methods=['GET'])
+@app.route('/api/legacy-toolbox-inventory', methods=['GET'])
+def toolbox_inventory():
+    """Expose normalized toolbox inventory for backend refinement work."""
+    return jsonify({
+        'success': True,
+        'inventory': LEGACY_GENERATOR_INVENTORY,
+        'role_patterns': LEGACY_ROLE_PATTERNS,
+    })
 
 # ========================================
 # AUTHENTICATION & USER MANAGEMENT

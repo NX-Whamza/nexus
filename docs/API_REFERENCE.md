@@ -51,7 +51,7 @@ Admin endpoints marked **🔒 Admin** additionally require the `admin` role.
 5. [Config Translation & Validation](#5-config-translation--validation)
 6. [Config Generation — MikroTik](#6-config-generation--mikrotik)
 7. [Config Generation — FTTH BNG](#7-config-generation--ftth-bng)
-8. [Config Generation — Nokia 7250](#8-config-generation--nokia-7250)
+8. [Config Generation — Nokia](#8-config-generation--nokia)
 9. [Device Migration](#9-device-migration)
 10. [SSH / Remote Device](#10-ssh--remote-device)
 11. [Compliance & Policy](#11-compliance--policy)
@@ -592,9 +592,9 @@ Generate Non-MPLS Enterprise RouterOS config.
   "public_cidr": "132.147.181.176/30",
   "bh_cidr": "10.33.1.152/30",
   "loopback_ip": "10.33.0.95",
-  "uplink_interface": "sfp28-2",
-  "public_port": "sfp28-1",
-  "nat_port": "sfp28-3",
+  "uplink_interface": "sfp28-1",
+  "public_port": "sfp28-7",
+  "nat_port": "sfp28-8",
   "dns1": "142.147.112.3",
   "dns2": "142.147.112.19",
   "snmp_community": "FBZ1yYdphf",
@@ -607,7 +607,25 @@ Generate Non-MPLS Enterprise RouterOS config.
 
 **Response `200`**
 ```json
-{ "success": true, "config": "# RouterOS 7.19.4\n..." }
+{
+  "success": true,
+  "config": "# RouterOS 7.19.4\n...",
+  "device": "CCR2216",
+  "version": "7.19.4",
+  "profile": {
+    "public_port": "sfp28-7",
+    "nat_port": "sfp28-8",
+    "uplink_interface": "sfp28-1"
+  }
+}
+```
+
+**Response `400`**
+```json
+{
+  "success": false,
+  "error": "Enterprise interface roles must be unique. Conflicts: ether7: customer handoff, nat"
+}
 ```
 
 ---
@@ -692,7 +710,7 @@ Generate complete FTTH BNG config from strict template.
 
 ### `POST /api/gen-ftth-bng` _(deprecated)_
 
-Legacy FTTH endpoint. Supports both legacy and full payloads.
+Alternate FTTH endpoint. Supports both payload shapes during the transition to the unified FTTH configurator.
 
 **Legacy Request**
 ```json
@@ -751,11 +769,27 @@ Generate MF2 ZIP package with updated gateway/primary IP in startup XML.
 
 ---
 
-## 8. Config Generation — Nokia 7250
+## 8. Config Generation — Nokia
 
 ### `GET /api/nokia7250-defaults`
 
 Return Nokia 7250 credentials/secrets from environment variables.
+
+**Response `200`**
+```json
+{
+  "snmp_community": "...",
+  "nlroot_pw": "...",
+  "admin_pw": "...",
+  "bgp_auth_key": "..."
+}
+```
+
+---
+
+### `GET /api/nokia-configurator-defaults`
+
+Alias for the unified Nokia Configurator to load credentials/secrets from the backend.
 
 **Response `200`**
 ```json
@@ -796,6 +830,51 @@ Generate Nokia 7250 (SR OS) configuration.
 **Response `200`**
 ```json
 { "success": true, "config": "# Nokia 7250 SR OS\nconfigure\n..." }
+```
+
+---
+
+### `POST /api/generate-nokia-configurator`
+
+Generate unified Nokia Configurator output for `7210` and `7750` profiles from the same workspace.
+
+**Request**
+```json
+{
+  "model": "7210",
+  "profile": "isd",
+  "system_name": "RTR-NK7210-TEST",
+  "system_ip": "10.25.0.46/32",
+  "latitude": "29.1",
+  "longitude": "-96.1",
+  "timezone": "CST",
+  "static_hop": "10.25.1.1",
+  "isd_public": "172.16.10.1/24",
+  "isd_private": "192.168.10.1/24",
+  "uplinks": [
+    { "port": "1/1/1", "desc": "BH-1", "ip": "10.45.248.105/30", "speed": "10000" }
+  ]
+}
+```
+
+**Response `200`**
+```json
+{
+  "success": true,
+  "config": "##################################\n# NOKIA 7210 ISD CONFIG\n...",
+  "device_type": "Nokia 7210 ISD",
+  "config_type": "nokia-7210-isd",
+  "model": "7210",
+  "profile": "isd"
+}
+```
+
+**Response `400`**
+```json
+{
+  "success": false,
+  "error": "System name and system IP are required"
+}
 ```
 
 ---
@@ -878,6 +957,31 @@ Get all supported RouterBoard models with specs.
     }
   ],
   "total_models": 11
+}
+```
+
+---
+
+### `GET /api/toolbox-inventory`
+
+Return the normalized refinement inventory used when folding proven toolbox behavior into the unified app.
+
+**Response `200`**
+```json
+{
+  "success": true,
+  "inventory": {
+    "mikrotik": ["mt_tower.py", "mt_enterprise.py", "mt_mpls_enterprise.py"],
+    "nokia": ["nokia7210.py", "nokia7250.py", "BNG_7750_VPLS_Gen.py"],
+    "templates": ["MT_BNG2_Univ_Base.py", "MT_BNG2_Univ_Tarana.py"]
+  },
+  "role_patterns": {
+    "switch": ["netonix", "cnmatrix", "switch uplink"],
+    "backhaul": ["backhaul", "uplink", "transport"],
+    "tarana": ["tarana", "alpha", "beta", "gamma", "delta"],
+    "lte": ["lte", "bbu", "vlan 75", "vlan 444"],
+    "6ghz": ["6ghz", "al60", "wave", "cnep3k"]
+  }
 }
 ```
 
@@ -1082,6 +1186,48 @@ Save a completed config to the database with auto-extracted port mapping.
 { "success": true, "config_id": 42, "message": "Config saved" }
 ```
 
+**Common frontend payload variants**
+```json
+{
+  "config_type": "cisco-interface",
+  "device_name": "TenGigE 0/0/0/1",
+  "device_type": "Cisco",
+  "customer_code": "",
+  "loopback_ip": "10.42.10.1",
+  "config_content": "configure terminal\ninterface TenGigE 0/0/0/1\n...",
+  "site_name": "BH-TO-SITE-A",
+  "metadata": {
+    "port_description": "BH-TO-SITE-A",
+    "port_type": "TenGigE",
+    "port_number": "0/0/0/1",
+    "interface_ip": "10.42.10.1",
+    "subnet_mask": "255.255.255.252",
+    "ospf_cost": "10",
+    "passive": "No"
+  }
+}
+```
+
+```json
+{
+  "config_type": "ftth-fiber-customer",
+  "device_name": "FIBERCOMM",
+  "device_type": "MikroTik Fiber Customer",
+  "customer_code": "FIBERCOMM",
+  "loopback_ip": "",
+  "config_content": "# FIBER SITE SETTINGS\n/interface ethernet\n...",
+  "site_name": "FIBERCOMM",
+  "metadata": {
+    "provider": "FIBERCOMM",
+    "port": "sfp-sfpplus8",
+    "address": "10.42.10.2/30",
+    "network": "10.42.10.0/30",
+    "vlan_mode": "tagged",
+    "vlan_id": "300"
+  }
+}
+```
+
 ---
 
 ### `GET /api/get-completed-configs`
@@ -1179,6 +1325,29 @@ Log user activity to database.
 **Response `200`**
 ```json
 { "success": true }
+```
+
+**Common frontend payload variants**
+```json
+{
+  "username": "user@team.nxlink.com",
+  "type": "new-config",
+  "device": "Cisco",
+  "siteName": "BH-TO-SITE-A",
+  "routeros": "",
+  "success": true
+}
+```
+
+```json
+{
+  "username": "user@team.nxlink.com",
+  "type": "new-config",
+  "device": "MikroTik Fiber Customer",
+  "siteName": "FIBERCOMM",
+  "routeros": "7",
+  "success": true
+}
 ```
 
 ---
