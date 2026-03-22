@@ -3722,9 +3722,9 @@
                     </div>
                 </div>
 
-                <div class="sb-item" data-sb-tab="cisco-config" data-tooltip="Cisco Config">
+                <div class="sb-item" data-sb-tab="cisco-config" data-tooltip="Cisco Port Setup">
                     <span class="sb-item-icon">&#127760;</span>
-                    <span class="sb-item-label">Cisco Config</span>
+                    <span class="sb-item-label">Cisco Port Setup</span>
                 </div>
 
                 <div class="sidebar-section-label">Power Tools</div>
@@ -3845,7 +3845,7 @@
                         <a data-tab="command-vault" data-command-vault-tab="mikrotik">MikroTik</a>
                     </div>
                 </div>
-                <button class="nav-item" data-tab="cisco-config">CISCO CONFIG</button>
+                <button class="nav-item" data-tab="cisco-config">CISCO PORT SETUP</button>
                 <div class="nav-item dropdown" data-default-tab="config-diff"><button>POWER TOOLS</button>
                     <div class="dropdown-menu">
                         <a data-tab="config-diff">Config Diff Viewer</a>
@@ -8716,21 +8716,17 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
         </div>
     </div>
 
-    <!-- CISCO CONFIG TAB -->
+    <!-- CISCO PORT SETUP TAB -->
     <div class="content-pane" id="cisco-config-pane">
         <div class="container">
-            <h1 style="color: var(--text-color); margin-bottom: 10px; text-align: center;">Cisco Configuration Generator</h1>
+            <h1 style="color: var(--text-color); margin-bottom: 10px; text-align: center;">Cisco Port Configuration Generator</h1>
             <p style="color: var(--text-color-secondary); margin-bottom: 24px; text-align: center;">
-                Generate Cisco routed interface and OSPF handoff configuration from the proven toolbox template.
+                Generate Cisco port and OSPF handoff configuration from the proven toolbox template.
             </p>
 
             <div class="section" style="background: var(--container-bg); padding: 20px; border-radius: 8px; margin-bottom: 16px;">
                 <h2 style="color: var(--text-color); margin-top: 0; font-size: 16px;">Interface Parameters</h2>
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                    <div>
-                        <label for="ciscoHostname">Hostname</label>
-                        <input type="text" id="ciscoHostname" placeholder="CRS-HOHQ-01">
-                    </div>
                     <div>
                         <label for="ciscoPortDesc">Port Description</label>
                         <input type="text" id="ciscoPortDesc" placeholder="BH-TO-SITE-A">
@@ -8789,7 +8785,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             </div>
 
             <div style="margin-bottom: 14px; display:flex; gap:10px; flex-wrap:wrap;">
-                <button type="button" onclick="generateCiscoConfig()" style="background: var(--accent-color); color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">Generate Cisco Config</button>
+                <button type="button" onclick="generateCiscoConfig()" style="background: var(--accent-color); color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">Generate Cisco Port Setup</button>
                 <button type="button" onclick="copyCiscoConfig()" style="background: #2196F3; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">Copy</button>
                 <button type="button" onclick="downloadCiscoConfig()" style="background: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">Download</button>
             </div>
@@ -8797,10 +8793,10 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             <div id="ciscoConfigStatus" style="display:none; margin-bottom: 12px; padding: 10px 12px; border-radius: 6px; font-size: 13px;"></div>
 
             <div class="section" style="background: var(--container-bg); padding: 20px; border-radius: 8px;">
-                <h2 style="color: var(--text-color); margin-top: 0; font-size: 16px;">Generated Cisco Configuration</h2>
+                <h2 style="color: var(--text-color); margin-top: 0; font-size: 16px;">Generated Cisco Port Setup</h2>
                 <textarea id="ciscoConfigOutput" readonly
                     style="width: 100%; min-height: 320px; padding: 15px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--output-bg); color: var(--text-color); font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 12px; line-height: 1.5; white-space: pre; overflow-x: auto;"
-                    placeholder="Generated Cisco configuration will appear here..."></textarea>
+                    placeholder="Generated Cisco port setup will appear here..."></textarea>
             </div>
         </div>
     </div>
@@ -27333,7 +27329,6 @@ Ready for translation!`);
         };
 
         window.generateCiscoConfig = function () {
-            const hostname = (document.getElementById('ciscoHostname')?.value || '').trim();
             const desc = (document.getElementById('ciscoPortDesc')?.value || '').trim();
             const type = (document.getElementById('ciscoPortType')?.value || 'TenGigE').trim();
             const port = (document.getElementById('ciscoPortNumber')?.value || '').trim();
@@ -27375,8 +27370,6 @@ Ready for translation!`);
             const lines = [
                 'configure terminal',
                 '',
-                hostname ? `hostname ${hostname}` : '',
-                '',
                 `interface ${type} ${port}`,
                 `description ${desc}`,
                 `mtu ${mtu}`,
@@ -27398,7 +27391,7 @@ Ready for translation!`);
             ];
             const config = lines.filter((line, index) => line !== '' || (index > 0 && lines[index - 1] !== '')).join('\n').trim() + '\n';
             if (outputEl) outputEl.value = config;
-            setStatus('Cisco configuration generated.', true);
+            setStatus('Cisco port setup generated.', true);
 
             if (typeof saveCompletedConfig === 'function') {
                 saveCompletedConfig({
@@ -29438,7 +29431,7 @@ Ready for translation!`);
             { cat: 'Navigate', icon: '', label: 'Aviat Backhaul Updater', desc: 'Firmware upgrade for WTM4200', action: () => window.navigateToTab('aviat-backhaul') },
             { cat: 'Navigate', icon: '', label: 'FTTH Configurator', desc: 'FTTH OLT and BNG workspaces', action: () => window.navigateToTab('ftth-home') },
             { cat: 'Navigate', icon: '', label: 'Command Vault', desc: 'Nokia/Cisco/MikroTik quick commands', action: () => window.navigateToTab('command-vault') },
-            { cat: 'Navigate', icon: '', label: 'Cisco Config', desc: 'Cisco interface and OSPF handoff generator', action: () => window.navigateToTab('cisco-config') },
+            { cat: 'Navigate', icon: '', label: 'Cisco Port Setup', desc: 'Cisco port and OSPF handoff generator', action: () => window.navigateToTab('cisco-config') },
             { cat: 'Navigate', icon: '', label: 'Completed Configs', desc: 'Saved configurations archive', action: () => window.navigateToTab('completed-configs') },
             { cat: 'Navigate', icon: '', label: 'Log History', desc: 'Activity log history', action: () => window.navigateToTab('log-history') },
             { cat: 'Navigate', icon: '', label: 'Admin Panel', desc: 'Feedback & user management', action: () => window.navigateToTab('admin-panel') },

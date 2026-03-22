@@ -66,7 +66,8 @@ def test_ftth_fiber_customer_and_cisco_generator_exist():
     assert 'generateFtthFiberCustomerConfig' in content, 'Missing FTTH Fiber Customer generator hook in NOC-configMaker.html'
     assert '/generate-ftth-fiber-customer' in content, 'Missing FTTH Fiber Customer backend endpoint wiring in NOC-configMaker.html'
     assert 'id="cisco-config-pane"' in content, 'Missing Cisco Config pane in NOC-configMaker.html'
-    assert 'id="ciscoHostname"' in content, 'Missing Cisco hostname field in NOC-configMaker.html'
+    assert 'Cisco Port Configuration Generator' in content, 'Missing Cisco Port Configuration Generator title in NOC-configMaker.html'
+    assert 'id="ciscoHostname"' not in content, 'Cisco hostname field should not be present in NOC-configMaker.html'
     assert 'id="ciscoOspfProcess"' in content, 'Missing Cisco OSPF process field in NOC-configMaker.html'
     assert 'id="ciscoOspfArea"' in content, 'Missing Cisco OSPF area field in NOC-configMaker.html'
     assert 'id="ciscoMtu"' in content, 'Missing Cisco MTU field in NOC-configMaker.html'
@@ -81,6 +82,7 @@ def test_ftth_fiber_customer_and_cisco_generator_exist():
     assert "device: 'MikroTik Fiber Customer'" in content, 'Missing FTTH Fiber Customer activity wiring in NOC-configMaker.html'
     assert "config_type: 'cisco-interface'" in content, 'Missing Cisco completed-config save wiring in NOC-configMaker.html'
     assert "device: 'Cisco'" in content, 'Missing Cisco activity wiring in NOC-configMaker.html'
+    assert 'Cisco Port Setup' in content, 'Missing Cisco Port Setup naming in NOC-configMaker.html'
 
 
 def test_enterprise_uses_single_routerboard_source_of_truth():
