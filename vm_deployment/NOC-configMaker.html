@@ -8511,13 +8511,15 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                             <h4>OSPF PtP Template</h4>
                             <p>Common interface-level OSPF settings for a transport link.</p>
                             <div class="command-snippet">router ospf 1 area 0
-interface TenGigE 0/0/0/1
-cost 10
-authentication message-digest
-network point-to-point</div>
+ interface TenGigE 0/0/0/1
+  cost 10
+  authentication message-digest
+  message-digest-key 1 md5 encrypted 0456532B5A0B5B580D2028
+  network point-to-point
+  no passive</div>
                             <div class="command-card-actions">
                                 <button type="button" class="command-copy-btn"
-                                    onclick="copyVaultCommand(this, 'router ospf 1 area 0\ninterface TenGigE 0/0/0/1\ncost 10\nauthentication message-digest\nnetwork point-to-point')">Copy</button>
+                                    onclick="copyVaultCommand(this, 'router ospf 1 area 0\n interface TenGigE 0/0/0/1\n  cost 10\n  authentication message-digest\n  message-digest-key 1 md5 encrypted 0456532B5A0B5B580D2028\n  network point-to-point\n  no passive')">Copy</button>
                             </div>
                         </article>
                     </div>
@@ -8730,6 +8732,7 @@ network point-to-point</div>
                         <select id="ciscoPortType">
                             <option value="TenGigE" selected>TenGigE</option>
                             <option value="GigabitEthernet">GigabitEthernet</option>
+                            <option value="TwentyFiveGigE">TwentyFiveGigE</option>
                             <option value="HundredGigE">HundredGigE</option>
                         </select>
                     </div>
@@ -8765,10 +8768,6 @@ network point-to-point</div>
                         <input type="number" id="ciscoMtu" value="9216" min="1500" max="9216">
                     </div>
                     <div>
-                        <label for="ciscoOspfKey">OSPF MD5 Key</label>
-                        <input type="text" id="ciscoOspfKey" value="0456532B5A0B5B580D2028" placeholder="Encrypted OSPF key">
-                    </div>
-                    <div>
                         <label for="ciscoPassive">Passive</label>
                         <select id="ciscoPassive">
                             <option value="No" selected>No</option>
@@ -8776,6 +8775,9 @@ network point-to-point</div>
                         </select>
                     </div>
                 </div>
+                <p style="margin: 12px 0 0; color: var(--text-color-secondary); font-size: 12px;">
+                    OSPF MD5 authentication uses the standard internal template key and is not user-editable.
+                </p>
             </div>
 
             <div style="margin-bottom: 14px; display:flex; gap:10px; flex-wrap:wrap;">
@@ -27307,10 +27309,10 @@ Ready for translation!`);
             const ospfProcess = (document.getElementById('ciscoOspfProcess')?.value || '1').trim();
             const ospfArea = (document.getElementById('ciscoOspfArea')?.value || '0').trim();
             const mtu = (document.getElementById('ciscoMtu')?.value || '9216').trim();
-            const ospfKey = (document.getElementById('ciscoOspfKey')?.value || '0456532B5A0B5B580D2028').trim();
             const passive = (document.getElementById('ciscoPassive')?.value || 'No').trim();
             const statusEl = document.getElementById('ciscoConfigStatus');
             const outputEl = document.getElementById('ciscoConfigOutput');
+            const ospfKey = '0456532B5A0B5B580D2028';
 
             const setStatus = (message, ok) => {
                 if (!statusEl) return;
@@ -27335,7 +27337,7 @@ Ready for translation!`);
                 return;
             }
 
-            const passiveLine = passive === 'Yes' ? 'passive enable' : 'no passive';
+            const passiveLine = passive === 'Yes' ? 'passive' : 'no passive';
             const lines = [
                 'configure terminal',
                 '',
@@ -27346,15 +27348,16 @@ Ready for translation!`);
                 `mtu ${mtu}`,
                 `ipv4 address ${ip} ${mask}`,
                 'no shutdown',
-                ' ',
-                `router ospf ${ospfProcess} area ${ospfArea}`,
+                '!',
                 '',
-                `interface ${type} ${port}`,
-                `cost ${ospfCost}`,
-                'authentication message-digest',
-                `message-digest-key 1 md5 encrypted ${ospfKey}`,
-                'network point-to-point',
-                passiveLine,
+                `router ospf ${ospfProcess} area ${ospfArea}`,
+                ` interface ${type} ${port}`,
+                `  cost ${ospfCost}`,
+                '  authentication message-digest',
+                `  message-digest-key 1 md5 encrypted ${ospfKey}`,
+                '  network point-to-point',
+                `  ${passiveLine}`,
+                ' !',
                 '',
                 'commit',
                 'end'
@@ -29401,7 +29404,7 @@ Ready for translation!`);
             { cat: 'Navigate', icon: '', label: 'Aviat Backhaul Updater', desc: 'Firmware upgrade for WTM4200', action: () => window.navigateToTab('aviat-backhaul') },
             { cat: 'Navigate', icon: '', label: 'FTTH Configurator', desc: 'FTTH OLT and BNG workspaces', action: () => window.navigateToTab('ftth-home') },
             { cat: 'Navigate', icon: '', label: 'Command Vault', desc: 'Nokia/Cisco/MikroTik quick commands', action: () => window.navigateToTab('command-vault') },
-            { cat: 'Navigate', icon: '', label: 'Cisco Config', desc: 'Cisco configuration (coming soon)', action: () => window.navigateToTab('cisco-config') },
+            { cat: 'Navigate', icon: '', label: 'Cisco Config', desc: 'Cisco interface and OSPF handoff generator', action: () => window.navigateToTab('cisco-config') },
             { cat: 'Navigate', icon: '', label: 'Completed Configs', desc: 'Saved configurations archive', action: () => window.navigateToTab('completed-configs') },
             { cat: 'Navigate', icon: '', label: 'Log History', desc: 'Activity log history', action: () => window.navigateToTab('log-history') },
             { cat: 'Navigate', icon: '', label: 'Admin Panel', desc: 'Feedback & user management', action: () => window.navigateToTab('admin-panel') },
