@@ -3653,7 +3653,7 @@
                         </div>
                         <div class="sb-item" data-sb-tab="nokia7250-maker">
                             <span class="sb-item-icon">&#127981;</span>
-                            <span class="sb-item-label">Nokia 7250 Config</span>
+                            <span class="sb-item-label">Nokia Configurator</span>
                         </div>
                         <div class="sb-item" data-sb-tab="mikrotik-to-nokia">
                             <span class="sb-item-icon">&#128260;</span>
@@ -3671,7 +3671,7 @@
                 <div class="sb-group" data-sb-group="ftth">
                     <div class="sb-item sb-item-header" data-tooltip="FTTH">
                         <span class="sb-item-icon">&#127968;</span>
-                        <span class="sb-item-label">FTTH Home</span>
+                        <span class="sb-item-label">FTTH Configurator</span>
                         <span class="sb-item-arrow">&#9654;</span>
                     </div>
                     <div class="sb-group-children">
@@ -3682,6 +3682,10 @@
                         <div class="sb-item" data-sb-tab="ftth-home" data-sb-subtab="bng">
                             <span class="sb-item-icon">&#128300;</span>
                             <span class="sb-item-label">BNG Config</span>
+                        </div>
+                        <div class="sb-item" data-sb-tab="ftth-home" data-sb-subtab="fiber">
+                            <span class="sb-item-icon">&#128252;</span>
+                            <span class="sb-item-label">Fiber Customer</span>
                         </div>
                     </div>
                 </div>
@@ -3813,15 +3817,16 @@
                 <div class="nav-item dropdown" data-default-tab="field-config-studio"><button>FIELD CONFIG STUDIO</button>
                     <div class="dropdown-menu">
                         <a data-tab="field-config-studio">DEVICE CONFIG STUDIO</a>
-                        <a data-tab="nokia7250-maker">Nokia 7250 Config</a>
+                        <a data-tab="nokia7250-maker">Nokia Configurator</a>
                         <a data-tab="mikrotik-to-nokia">NOKIA MIGRATION</a>
                     </div>
                 </div>
                 <button class="nav-item" data-tab="aviat-backhaul">AVIAT BACKHAUL UPDATER</button>
-                <div class="nav-item dropdown" data-tab="ftth-home"><button>FTTH HOME</button>
+                <div class="nav-item dropdown" data-tab="ftth-home"><button>FTTH CONFIGURATOR</button>
                     <div class="dropdown-menu">
                         <a data-tab="ftth-home" data-ftth-home-tab="olt">OLT CONFIGURATION</a>
-                        <a data-tab="ftth-home" data-ftth-home-tab="bng">FTTH BNG CONFIG</a>
+                        <a data-tab="ftth-home" data-ftth-home-tab="bng">BNG CONFIGURATION</a>
+                        <a data-tab="ftth-home" data-ftth-home-tab="fiber">FIBER CUSTOMER</a>
                     </div>
                 </div>
                 <div class="nav-item dropdown" data-tab="command-vault"><button>COMMAND VAULT</button>
@@ -5490,6 +5495,10 @@
                         </div>
 
                         <div id="fieldConfigStatus" class="field-config-helper"></div>
+                        <div class="ido-tools-actions" id="fieldConfigNokiaActions" style="margin-top:6px; display:none;">
+                            <button type="button" id="fieldCfgOpenNokia7250Btn" class="btn-secondary">Open Nokia Configurator</button>
+                            <button type="button" id="fieldCfgOpenNokiaMigrationBtn" class="btn-secondary">Open Nokia Migration</button>
+                        </div>
                         <textarea id="fieldConfigOutput" class="ido-tools-output" readonly placeholder="Field Config Studio output will appear here..."></textarea>
                     </div>
                 </div>
@@ -5531,22 +5540,6 @@
                             style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
                             <div>
                                 <label for="ent_routerboard_device">RouterBoard Device:</label>
-                                <div class="form-group">
-                                    <label for="targetDevice">Target Device:</label>
-                                    <select id="targetDevice" class="form-control">
-                                        <option value="CCR2004-1G-12S+2XS">CCR2004-1G-12S+2XS (12 SFP+, 2 XS, 1
-                                            Ethernet)</option>
-                                        <option value="CCR1036-12G-4S">CCR1036-12G-4S (12 Ethernet, 4 SFP)</option>
-                                        <option value="RB5009UG+S+">RB5009UG+S+ (8 Ethernet, 1 SFP+)</option>
-                                        <option value="CCR2116-12G-4S+">CCR2116-12G-4S+ (12 Ethernet, 4 SFP+)</option>
-                                        <option value="CCR2216-1G-12XS-2XQ">CCR2216-1G-12XS-2XQ (12 SFP28, 2 QSFP28, 1
-                                            Ethernet)</option>
-                                        <option value="CCR2004-16G-2S+">CCR2004-16G-2S+ (16 Ethernet, 2 SFP+)</option>
-                                        <option value="CRS326-24G-2S+">CRS326-24G-2S+ (24 Ethernet, 2 SFP+)</option>
-                                        <option value="CRS354-48G-4S+2Q+">CRS354-48G-4S+2Q+ (48 Ethernet, 4 SFP+, 2
-                                            QSFP+)</option>
-                                    </select>
-                                </div>
                                 <select id="ent_routerboard_device"
                                     onchange="handleEntDeviceChange();">
                                     <option value="">Select RouterBoard Device</option>
@@ -5930,6 +5923,7 @@
                                 <option value="">None (Auto-select based on device)</option>
                             </select>
                             <div class="hint">Ports will populate based on selected RouterBoard device</div>
+                            <div class="hint" id="ent_mpls_profile_hint">Profile defaults will appear after you choose a RouterBoard device.</div>
                         </div>
                     </div>
 
@@ -6966,13 +6960,41 @@
                 </div>
             </div>
 
-            <!-- NOKIA 7250 MAKER TAB -->
+            <!-- NOKIA CONFIGURATOR TAB -->
             <div class="content-pane" id="nokia7250-maker-pane">
                 <div class="container">
-                    <h1 style="color: var(--text-color); margin-bottom: 10px; text-align: center;">Nokia 7250 Configuration Maker</h1>
+                    <h1 style="color: var(--text-color); margin-bottom: 10px; text-align: center;"> Nokia Configurator</h1>
                     <p style="color: var(--text-color-secondary); margin-bottom: 24px; text-align: center;">
-                        Generate full Nokia 7250 IXR startup configuration. Download either classic hierarchy output or flattened command-line output depending on the target firmware.
+                        Generate Nokia transport configurations from one workspace. 7250 includes both classic hierarchy and command-line output formats, and this same page now expands for 7210, 7750, BNG 2.0, and ISD profiles.
                     </p>
+
+                    <div class="section" style="background: var(--container-bg); padding: 20px; border-radius: 8px; margin-bottom: 16px;">
+                        <h2 style="color: var(--text-color); margin-top: 0; font-size: 16px;">Platform Selection</h2>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="nokiaPlatformModel">Nokia Platform</label>
+                                <select id="nokiaPlatformModel" style="width:100%; padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
+                                    <option value="7250" selected>7250</option>
+                                    <option value="7210">7210</option>
+                                    <option value="7750">7750</option>
+                                </select>
+                                <small style="color: var(--text-color-secondary); display:block; margin-top:6px;">
+                                    Enterprise generation uses this single device selector as the source of truth for uplink, customer handoff, and NAT port placement.
+                                </small>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="nokiaPlatformProfile">Profile</label>
+                                <select id="nokiaPlatformProfile" style="width:100%; padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
+                                    <option value="standard" selected>Standard</option>
+                                    <option value="bng2">BNG 2.0</option>
+                                    <option value="isd">ISD</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="nokiaConfiguratorStatus" style="margin-top: 12px; padding: 10px 12px; border-radius: 6px; background: rgba(33,150,243,0.08); border: 1px solid rgba(33,150,243,0.28); color: var(--text-color-secondary); font-size: 13px;">
+                            7250 Standard is fully available on this page today. Other Nokia profiles are being folded into this same configurator instead of split into separate disconnected tools.
+                        </div>
+                    </div>
 
                     <div class="nokia7250-config-container">
                         <!-- LEFT COLUMN -->
@@ -7054,6 +7076,60 @@
                                 </div>
                             </div>
 
+                            <div class="section" id="nokia7210ProfileSection" style="display:none; background: var(--container-bg); padding: 20px; border-radius: 8px; margin-bottom: 16px;">
+                                <h2 style="color: var(--text-color); margin-top: 0; font-size: 16px;">7210 Routing Profile</h2>
+                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px;">
+                                    <input type="text" id="nokia7210_ospfArea" value="0.0.0.0" placeholder="OSPF Area"
+                                        style="padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
+                                    <input type="text" id="nokia7210_asn" value="26077" placeholder="ASN"
+                                        style="padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
+                                    <input type="text" id="nokia7210_bgpPeer1" value="10.2.0.107" placeholder="BGP Peer 1"
+                                        style="padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
+                                    <input type="text" id="nokia7210_bgpPeer2" value="10.2.0.108" placeholder="BGP Peer 2"
+                                        style="padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
+                                    <input type="text" id="nokia7210_vplsNum" value="2245" placeholder="VPLS Number"
+                                        style="padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
+                                    <input type="text" id="nokia7210_vplsTarget1" value="10.249.0.200" placeholder="VPLS Target 1"
+                                        style="padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
+                                </div>
+                                <input type="text" id="nokia7210_vplsTarget2" value="" placeholder="VPLS Target 2 (optional)"
+                                    style="width:100%; padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
+                            </div>
+
+                            <div class="section" id="nokia7210IsdSection" style="display:none; background: var(--container-bg); padding: 20px; border-radius: 8px; margin-bottom: 16px;">
+                                <h2 style="color: var(--text-color); margin-top: 0; font-size: 16px;">7210 ISD Service Profile</h2>
+                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px;">
+                                    <input type="text" id="nokia7210_isdSiteName" placeholder="Site Name"
+                                        style="padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
+                                    <input type="text" id="nokia7210_isdStaticHop" placeholder="Static Hop"
+                                        style="padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
+                                    <input type="text" id="nokia7210_isdVplsPublic" placeholder="VPLS Public CIDR"
+                                        style="padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
+                                    <input type="text" id="nokia7210_isdVplsPrivate" placeholder="VPLS Private CIDR"
+                                        style="padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
+                                </div>
+                            </div>
+
+                            <div class="section" id="nokia7750TunnelSection" style="display:none; background: var(--container-bg); padding: 20px; border-radius: 8px; margin-bottom: 16px;">
+                                <h2 style="color: var(--text-color); margin-top: 0; font-size: 16px;">7750 Tunnel / VPLS Profile</h2>
+                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px;">
+                                    <input type="text" id="nokia7750_sdpNumber" value="101" placeholder="SDP Number"
+                                        style="padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
+                                    <input type="text" id="nokia7750_sdpDescription" placeholder="SDP Description"
+                                        style="padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
+                                    <input type="text" id="nokia7750_sdpFarEnd" placeholder="SDP Far-End"
+                                        style="padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
+                                    <input type="text" id="nokia7750_vplsCgn" value="1245" placeholder="VPLS CGN"
+                                        style="padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
+                                    <input type="text" id="nokia7750_vplsStatic" value="2245" placeholder="VPLS Static"
+                                        style="padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
+                                    <input type="text" id="nokia7750_vplsInfra" value="3245" placeholder="VPLS Infra"
+                                        style="padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
+                                </div>
+                                <input type="text" id="nokia7750_vplsCpe" value="4245" placeholder="VPLS CPE"
+                                    style="width:100%; padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
+                            </div>
+
                             <div class="section" style="background: var(--container-bg); padding: 20px; border-radius: 8px; margin-bottom: 16px;">
                                 <h2 style="color: var(--text-color); margin-top: 0; font-size: 16px;">NTP Servers</h2>
                                 <textarea id="nokia7250_ntpServers" rows="4"
@@ -7130,7 +7206,7 @@
                     <!-- Generate / Copy / Download -->
                     <div style="text-align: center; margin-top: 24px; display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
                         <button type="button" class="aviat-btn success" onclick="generateNokia7250Config()" style="min-width: 220px; font-size: 16px; padding: 14px 32px;">
-                            Generate Nokia 7250 Configuration
+                            Generate Nokia Configuration
                         </button>
                         <button type="button" class="aviat-btn" id="nokia7250_copyBtn" onclick="copyNokia7250Config()" style="min-width: 140px; display: none;">
                             Copy
@@ -7394,7 +7470,7 @@
                     <p style="text-align: center; color: var(--text-color-secondary); margin-bottom: 30px;">
                         Generate MikroTik CCR2216 configurations for FTTH OLT deployments
                     </p>
-                    <!-- Legacy FTTH ID hooks retained for compatibility tests/tools -->
+                    <!-- FTTH ID hooks retained for compatibility tests/tools -->
                     <div style="display:none;" aria-hidden="true">
                         <button id="ftthPreviewBtn" type="button"></button>
                         <button id="ftth_add_olt_port_btn" type="button"></button>
@@ -7890,11 +7966,11 @@
         </div>
     </div>
 
-            <!-- FTTH HOME TAB -->
+            <!-- FTTH CONFIGURATOR TAB -->
             <div class="content-pane" id="ftth-home-pane">
                 <div class="container">
                     <div id="ftth-home-hero">
-                        <h1 style="text-align: center; margin-bottom: 10px;"> FTTH HOME</h1>
+                        <h1 style="text-align: center; margin-bottom: 10px;"> FTTH Configurator</h1>
                         <p style="text-align: center; color: var(--text-color-secondary); margin-bottom: 30px;">
                             Generate MF2 package with dynamic gateway and primary IP (all other files unchanged)
                         </p>
@@ -7911,7 +7987,9 @@
                                 <button class="ftth-home-dropdown-item active" type="button"
                                     data-ftth-home-tab="olt">OLT CONFIGURATION</button>
                                 <button class="ftth-home-dropdown-item" type="button"
-                                    data-ftth-home-tab="bng">FTTH BNG CONFIGURATION</button>
+                                    data-ftth-home-tab="bng">BNG CONFIGURATION</button>
+                                <button class="ftth-home-dropdown-item" type="button"
+                                    data-ftth-home-tab="fiber">FIBER CUSTOMER</button>
                             </div>
                         </div>
                     </div>
@@ -7944,6 +8022,53 @@
                     </div>
 
                     <div id="ftth-home-bng-section" class="ftth-home-section"></div>
+
+                    <div id="ftth-home-fiber-section" class="ftth-home-section">
+                        <div class="section">
+                            <h2>FIBER CUSTOMER</h2>
+                            <p style="color: var(--text-color-secondary); margin-bottom: 16px;">
+                                Generate the fiber handoff block used on MikroTik fiber-customer sites. This follows the existing toolbox pattern for provider-facing transport with optional VLAN encapsulation and OSPF.
+                            </p>
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                                <div>
+                                    <label for="ftthFiberProvider">Fiber Provider</label>
+                                    <input type="text" id="ftthFiberProvider" placeholder="FIBERCOMM">
+                                </div>
+                                <div>
+                                    <label for="ftthFiberPort">Router Port</label>
+                                    <input type="text" id="ftthFiberPort" value="sfp-sfpplus8" placeholder="sfp-sfpplus8">
+                                </div>
+                                <div>
+                                    <label for="ftthFiberAddress">Provider IP / CIDR</label>
+                                    <input type="text" id="ftthFiberAddress" placeholder="10.42.10.2/30">
+                                </div>
+                                <div>
+                                    <label for="ftthFiberNetwork">Provider Network</label>
+                                    <input type="text" id="ftthFiberNetwork" placeholder="10.42.10.0/30">
+                                </div>
+                                <div>
+                                    <label for="ftthFiberVlanMode">VLAN Mode</label>
+                                    <select id="ftthFiberVlanMode">
+                                        <option value="none" selected>No VLAN</option>
+                                        <option value="tagged">Tagged VLAN</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="ftthFiberVlanNum">VLAN ID</label>
+                                    <input type="number" id="ftthFiberVlanNum" placeholder="300" min="1" max="4094">
+                                </div>
+                            </div>
+                            <div style="margin-top: 16px; display:flex; gap:10px; flex-wrap:wrap;">
+                                <button type="button" onclick="generateFtthFiberCustomerConfig()" style="background: var(--accent-color); color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">Generate Fiber Customer Config</button>
+                                <button type="button" onclick="copyFtthFiberCustomerConfig()" style="background: #2196F3; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">Copy</button>
+                                <button type="button" onclick="downloadFtthFiberCustomerConfig()" style="background: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">Download</button>
+                            </div>
+                            <div id="ftthFiberStatus" style="display:none; margin-top: 12px; padding: 10px 12px; border-radius: 6px; font-size: 13px;"></div>
+                            <textarea id="ftthFiberConfigOutput" readonly
+                                style="width:100%; min-height: 280px; margin-top:16px; padding:15px; border:1px solid var(--border-color); border-radius: 4px; background: var(--output-bg); color: var(--text-color); font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 12px; line-height: 1.5; white-space: pre; overflow-x: auto;"
+                                placeholder="Generated fiber customer config will appear here..."></textarea>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -8334,6 +8459,33 @@ show mac address-table | include &lt;mac&gt;</div>
                                     onclick="copyVaultCommand(this, 'show ip arp | include &lt;ip-or-mac&gt;\nshow mac address-table | include &lt;mac&gt;')">Copy</button>
                             </div>
                         </article>
+
+                        <article class="command-guide-card cisco-command-card" data-search="configure terminal interface ospf backhaul template point-to-point">
+                            <h4>Backhaul Interface Template</h4>
+                            <p>Starting template for a routed backhaul handoff.</p>
+                            <div class="command-snippet">configure terminal
+interface TenGigE 0/0/0/1
+description BH-TO-SITE
+ipv4 address 10.10.10.1 255.255.255.252</div>
+                            <div class="command-card-actions">
+                                <button type="button" class="command-copy-btn"
+                                    onclick="copyVaultCommand(this, 'configure terminal\ninterface TenGigE 0/0/0/1\ndescription BH-TO-SITE\nipv4 address 10.10.10.1 255.255.255.252')">Copy</button>
+                            </div>
+                        </article>
+
+                        <article class="command-guide-card cisco-command-card" data-search="ospf interface cost authentication message-digest template">
+                            <h4>OSPF PtP Template</h4>
+                            <p>Common interface-level OSPF settings for a transport link.</p>
+                            <div class="command-snippet">router ospf 1 area 0
+interface TenGigE 0/0/0/1
+cost 10
+authentication message-digest
+network point-to-point</div>
+                            <div class="command-card-actions">
+                                <button type="button" class="command-copy-btn"
+                                    onclick="copyVaultCommand(this, 'router ospf 1 area 0\ninterface TenGigE 0/0/0/1\ncost 10\nauthentication message-digest\nnetwork point-to-point')">Copy</button>
+                            </div>
+                        </article>
                     </div>
                 </div>
             </div>
@@ -8520,40 +8672,71 @@ show mac address-table | include &lt;mac&gt;</div>
         </div>
     </div>
 
-    <!-- CISCO CONFIG TAB (Coming Soon) -->
+    <!-- CISCO CONFIG TAB -->
     <div class="content-pane" id="cisco-config-pane">
         <div class="container">
-            <div style="text-align: center; padding: 100px 20px; max-width: 800px; margin: 0 auto;">
-                <h1 style="color: var(--text-color); margin-bottom: 20px; font-size: 48px;">Cisco Configuration
-                    Generator</h1>
-                <p style="color: var(--text-color-secondary); font-size: 20px; margin-bottom: 40px; line-height: 1.6;">
-                    Cisco router and switch configuration tools are coming soon!
-                </p>
-                <div
-                    style="background: var(--card-bg); border: 2px solid var(--border-color); border-radius: 12px; padding: 40px; margin-top: 40px;">
-                    <h2 style="color: var(--accent-color); margin-bottom: 20px; font-size: 28px;"> Under
-                        Development</h2>
-                    <p style="color: var(--text-color-secondary); font-size: 16px; line-height: 1.8;">
-                        We're working hard to bring you comprehensive Cisco configuration generation tools.
-                        This will include support for Cisco routers, switches, and network equipment
-                        configuration.
-                    </p>
-                    <div style="margin-top: 30px; padding-top: 30px; border-top: 1px solid var(--border-color);">
-                        <p style="color: var(--text-color-secondary); font-size: 14px;">
-                            <strong>Expected Features:</strong><br>
-                             Router configuration generation for new devices<br>
-                             Scripts for adding devices<br>
-                             Setting up ports interface<br>
-                             Dynamically referencing Policy
-                        </p>
+            <h1 style="color: var(--text-color); margin-bottom: 10px; text-align: center;">Cisco Configuration Generator</h1>
+            <p style="color: var(--text-color-secondary); margin-bottom: 24px; text-align: center;">
+                Generate Cisco routed interface and OSPF handoff configuration from the proven toolbox template.
+            </p>
+
+            <div class="section" style="background: var(--container-bg); padding: 20px; border-radius: 8px; margin-bottom: 16px;">
+                <h2 style="color: var(--text-color); margin-top: 0; font-size: 16px;">Interface Parameters</h2>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div>
+                        <label for="ciscoPortDesc">Port Description</label>
+                        <input type="text" id="ciscoPortDesc" placeholder="BH-TO-SITE-A">
+                    </div>
+                    <div>
+                        <label for="ciscoPortType">Port Type</label>
+                        <select id="ciscoPortType">
+                            <option value="TenGigE" selected>TenGigE</option>
+                            <option value="GigabitEthernet">GigabitEthernet</option>
+                            <option value="HundredGigE">HundredGigE</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="ciscoPortNumber">Port Number</label>
+                        <input type="text" id="ciscoPortNumber" placeholder="0/0/0/1">
+                    </div>
+                    <div>
+                        <label for="ciscoBhIp">Interface IP</label>
+                        <input type="text" id="ciscoBhIp" placeholder="10.42.10.1">
+                    </div>
+                    <div>
+                        <label for="ciscoBhMask">Subnet</label>
+                        <select id="ciscoBhMask">
+                            <option value="255.255.255.252" selected>/30</option>
+                            <option value="255.255.255.248">/29</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="ciscoOspfCost">OSPF Cost</label>
+                        <input type="number" id="ciscoOspfCost" value="10" min="1" max="65535">
+                    </div>
+                    <div>
+                        <label for="ciscoPassive">Passive</label>
+                        <select id="ciscoPassive">
+                            <option value="No" selected>No</option>
+                            <option value="Yes">Yes</option>
+                        </select>
                     </div>
                 </div>
-                <div style="margin-top: 40px;">
-                    <button onclick="window.navigateToTab && window.navigateToTab('home')"
-                        style="background: var(--accent-color); color: white; padding: 15px 40px; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold;">
-                         Back to Home
-                    </button>
-                </div>
+            </div>
+
+            <div style="margin-bottom: 14px; display:flex; gap:10px; flex-wrap:wrap;">
+                <button type="button" onclick="generateCiscoConfig()" style="background: var(--accent-color); color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">Generate Cisco Config</button>
+                <button type="button" onclick="copyCiscoConfig()" style="background: #2196F3; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">Copy</button>
+                <button type="button" onclick="downloadCiscoConfig()" style="background: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">Download</button>
+            </div>
+
+            <div id="ciscoConfigStatus" style="display:none; margin-bottom: 12px; padding: 10px 12px; border-radius: 6px; font-size: 13px;"></div>
+
+            <div class="section" style="background: var(--container-bg); padding: 20px; border-radius: 8px;">
+                <h2 style="color: var(--text-color); margin-top: 0; font-size: 16px;">Generated Cisco Configuration</h2>
+                <textarea id="ciscoConfigOutput" readonly
+                    style="width: 100%; min-height: 320px; padding: 15px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--output-bg); color: var(--text-color); font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 12px; line-height: 1.5; white-space: pre; overflow-x: auto;"
+                    placeholder="Generated Cisco configuration will appear here..."></textarea>
             </div>
         </div>
     </div>
@@ -11460,6 +11643,7 @@ show mac address-table | include &lt;mac&gt;</div>
                 console.warn('[MPLS Enterprise] No ports found for device:', selectedDevice);
                 return;
             }
+            const defaults = getMPLSEnterpriseDefaults(selectedDevice);
 
             // Populate customer handoff interface dropdown
             const handoffSel = document.getElementById('ent_mpls_customerHandoff');
@@ -11471,11 +11655,14 @@ show mac address-table | include &lt;mac&gt;</div>
                     option.textContent = `${port} (${deviceConfig.name})`;
                     handoffSel.appendChild(option);
                 });
+                if (defaults?.customerHandoff && allPorts.includes(defaults.customerHandoff)) {
+                    handoffSel.value = defaults.customerHandoff;
+                }
             }
 
             // Populate uplink interface dropdowns
             const uplinkSels = document.querySelectorAll('.ent_mpls_uplinkInterface');
-            uplinkSels.forEach(uplinkSel => {
+            uplinkSels.forEach((uplinkSel, index) => {
                 if (uplinkSel) {
                     uplinkSel.innerHTML = '<option value="">Select Interface</option>';
                     allPorts.forEach(port => {
@@ -11484,10 +11671,18 @@ show mac address-table | include &lt;mac&gt;</div>
                         option.textContent = `${port} (${deviceConfig.name})`;
                         uplinkSel.appendChild(option);
                     });
+                    if (index === 0 && defaults?.primaryUplink && allPorts.includes(defaults.primaryUplink)) {
+                        uplinkSel.value = defaults.primaryUplink;
+                    }
                 }
             });
 
-            console.log('[MPLS Enterprise] Ports populated for device:', deviceConfig.name);
+            const profileHint = document.getElementById('ent_mpls_profile_hint');
+            if (profileHint && defaults) {
+                profileHint.textContent = `Profile defaults: customer handoff ${defaults.customerHandoff}, primary uplink ${defaults.primaryUplink}, NAT reference ${defaults.natReference}.`;
+            }
+
+            console.log('[MPLS Enterprise] Ports populated for device:', deviceConfig.name, defaults || {});
         }
 
         // Tarana Sectors Device Selection Handler
@@ -17947,6 +18142,49 @@ show mac address-table | include &lt;mac&gt;</div>
             });
             if (prefer && options.includes(prefer)) sel.value = prefer; else if (options.length) sel.value = options[0];
         }
+        const ENTERPRISE_DEVICE_PROFILES = {
+            rb5009: { publicPort: 'ether7', natPort: 'ether8', uplinkPort: 'sfp-sfpplus1', chassis: 'RB', family: 'ether' },
+            ccr1036: { publicPort: 'ether7', natPort: 'ether8', uplinkPort: 'sfp1', chassis: 'CCR', family: 'ether' },
+            ccr1072: { publicPort: 'ether7', natPort: 'ether8', uplinkPort: 'sfp1', chassis: 'CCR', family: 'sfp-sfpplus' },
+            ccr2004: { publicPort: 'sfp-sfpplus7', natPort: 'sfp-sfpplus8', uplinkPort: 'sfp-sfpplus1', chassis: 'CCR', family: 'sfp-sfpplus' },
+            ccr2116: { publicPort: 'ether7', natPort: 'ether8', uplinkPort: 'sfp-sfpplus1', chassis: 'CCR', family: 'mixed' },
+            ccr2216: { publicPort: 'sfp28-7', natPort: 'sfp28-8', uplinkPort: 'sfp28-1', chassis: 'CCR', family: 'sfp28' },
+            rb2011: { publicPort: 'ether7', natPort: 'ether8', uplinkPort: 'sfp1', chassis: 'RB', family: 'ether' },
+            rb1009: { publicPort: 'ether7', natPort: 'ether8', uplinkPort: 'ether1', chassis: 'RB', family: 'ether' }
+        };
+
+        function getEnterpriseDeviceProfile(deviceKey) {
+            const normalized = (deviceKey || '').toLowerCase();
+            return ENTERPRISE_DEVICE_PROFILES[normalized] || null;
+        }
+        function getMPLSEnterpriseDefaults(deviceKey) {
+            const profile = getEnterpriseDeviceProfile(deviceKey);
+            if (!profile) return null;
+            return {
+                customerHandoff: profile.publicPort,
+                primaryUplink: profile.uplinkPort,
+                natReference: profile.natPort
+            };
+        }
+        function validateDistinctEnterpriseInterfaces(roleMap) {
+            const used = new Map();
+            const conflicts = [];
+            Object.entries(roleMap || {}).forEach(([role, iface]) => {
+                const normalized = String(iface || '').trim();
+                if (!normalized) return;
+                if (!used.has(normalized)) {
+                    used.set(normalized, [role]);
+                    return;
+                }
+                used.get(normalized).push(role);
+            });
+            used.forEach((roles, iface) => {
+                if (roles.length > 1) {
+                    conflicts.push(`${iface} (${roles.join(', ')})`);
+                }
+            });
+            return conflicts;
+        }
         function updateEnterpriseInterfaces() {
             const dev = (document.getElementById('ent_routerboard_device')?.value || '').toLowerCase();
             const ports = getDevicePortOptions(dev);
@@ -17956,37 +18194,12 @@ show mac address-table | include &lt;mac&gt;</div>
 
             // Auto-select interfaces based on device type and Nextlink policy
             let publicPort, natPort, backhaulPort;
-            const cfg = (typeof DEVICE_CONFIGS !== 'undefined') && DEVICE_CONFIGS[dev];
-            const hasSfp = cfg && cfg.sfpPorts && cfg.sfpPorts.length > 1;
+            const profile = getEnterpriseDeviceProfile(dev);
 
-            if (dev === 'rb5009') {
-                publicPort = 'ether7';    // Customer Handoff (CX HANDOFF)
-                natPort = 'ether8';       // NAT
-                backhaulPort = 'sfp-sfpplus1'; // Uplink
-            } else if (dev === 'ccr2004') {
-                publicPort = 'sfp-sfpplus7';  // Customer Handoff
-                natPort = 'sfp-sfpplus8';     // NAT
-                backhaulPort = 'sfp-sfpplus1'; // Uplink
-            } else if (dev === 'ccr1036' || dev === 'ccr1072') {
-                publicPort = 'ether7';  // Customer Handoff
-                natPort = 'ether8';     // NAT
-                backhaulPort = 'sfp1';  // Uplink
-            } else if (dev === 'ccr2116') {
-                publicPort = 'ether7';  // Customer Handoff
-                natPort = 'ether8';     // NAT
-                backhaulPort = 'sfp-sfpplus1'; // Uplink
-            } else if (dev === 'ccr2216') {
-                publicPort = 'sfp28-7';   // Customer Handoff
-                natPort = 'sfp28-8';      // NAT
-                backhaulPort = 'sfp28-1';  // Uplink
-            } else if (dev === 'rb2011') {
-                publicPort = 'ether7';    // Customer Handoff
-                natPort = 'ether8';       // NAT
-                backhaulPort = 'sfp1';    // Uplink
-            } else if (dev === 'rb1009') {
-                publicPort = 'ether7';    // Customer Handoff
-                natPort = 'ether8';       // NAT
-                backhaulPort = 'ether1';  // Uplink (no SFP on RB1009)
+            if (profile) {
+                publicPort = profile.publicPort;
+                natPort = profile.natPort;
+                backhaulPort = profile.uplinkPort;
             } else {
                 // Dynamic fallback using DEVICE_CONFIGS
                 publicPort = ports.find(p => p.includes('ether7')) || ports[ports.length - 2] || ports[0];
@@ -18219,6 +18432,21 @@ show mac address-table | include &lt;mac&gt;</div>
                     private_cidr: privateIP,  // e.g., 192.168.88.1/24
                     private_pool: privatePool  // e.g., 192.168.88.10-192.168.88.254
                 };
+                const profile = getEnterpriseDeviceProfile(device);
+                if (profile) {
+                    addProgressLog('info', `Enterprise profile: public=${profile.publicPort}, nat=${profile.natPort}, uplink=${profile.uplinkPort}`);
+                }
+                const enterpriseConflicts = validateDistinctEnterpriseInterfaces({
+                    'customer handoff': payload.public_port,
+                    'nat': payload.nat_port,
+                    'backhaul uplink': payload.uplink_interface
+                });
+                if (enterpriseConflicts.length) {
+                    addProgressLog('error', `Validation failed: overlapping enterprise interfaces (${enterpriseConflicts.join('; ')})`);
+                    completeProgressTracker(false);
+                    showAIStatus(` Enterprise interfaces must be unique. Conflicts: ${enterpriseConflicts.join('; ')}`, 'error');
+                    return;
+                }
 
                 const btn = document.getElementById('generateEnterpriseBtn');
                 if (btn) { btn.disabled = true; btn.textContent = ' Generating...'; }
@@ -18366,6 +18594,13 @@ show mac address-table | include &lt;mac&gt;</div>
                                 ospf_area: '',
                                 bgp_peers: [],
                                 uplinks: []
+                            });
+                            window.sendActivityToBackend({
+                                type: 'generated enterprise config',
+                                device: device,
+                                siteName: customerCode || 'Enterprise Config',
+                                routeros: version,
+                                success: true
                             });
 
                             // Track activity for live feed
@@ -18566,6 +18801,10 @@ show mac address-table | include &lt;mac&gt;</div>
             const customerHandoff = document.getElementById('ent_mpls_customerHandoff')?.value || '';
 
             addProgressLog('info', `Customer: ${customerCode}, Device: ${routerboardDevice}`);
+            const mplsProfile = getMPLSEnterpriseDefaults(routerboardDevice);
+            if (mplsProfile) {
+                addProgressLog('info', `MPLS profile: handoff=${mplsProfile.customerHandoff}, uplink=${mplsProfile.primaryUplink}`);
+            }
 
             // Validate required fields
             if (!routerboardDevice || !customerCode || !loopbackIPRaw) {
@@ -18669,6 +18908,16 @@ show mac address-table | include &lt;mac&gt;</div>
                     });
                 }
             });
+            if (!uplinkData.length) {
+                addProgressLog('error', 'Validation failed: At least one MPLS uplink is required');
+                completeProgressTracker(false);
+                document.getElementById('mplsEnterprise_warn').innerHTML = '<div style="background: #f44336; color: white; padding: 10px; border-radius: 5px;"> Please add at least one uplink interface and uplink IP/network.</div>';
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = ' Generate MPLS Enterprise Configuration';
+                }
+                return;
+            }
 
             // Parse BGP ASN and peers only if BGP is explicitly enabled
             const entMplsBgpToggle = document.getElementById('ent_mpls_enableBGP');
@@ -18704,15 +18953,33 @@ show mac address-table | include &lt;mac&gt;</div>
 
             // Auto-select customer handoff interface if not specified
             let effectiveHandoff = customerHandoff;
+            const mplsDefaults = getMPLSEnterpriseDefaults(deviceKey);
+            if (!effectiveHandoff && mplsDefaults?.customerHandoff) {
+                effectiveHandoff = mplsDefaults.customerHandoff;
+            }
             if (!effectiveHandoff && deviceConfig) {
                 if (deviceConfig.sfpPorts && deviceConfig.sfpPorts.length > 0) {
-                    // Prefer sfp-sfpplus1 for customer handoff (typical policy)
-                    effectiveHandoff = deviceConfig.sfpPorts.find(p => p.includes('sfp-sfpplus1')) || deviceConfig.sfpPorts[0];
+                    effectiveHandoff = deviceConfig.sfpPorts[0];
                 } else if (deviceConfig.ports && deviceConfig.ports.length > 0) {
                     effectiveHandoff = deviceConfig.ports[0];
                 } else {
                     effectiveHandoff = 'sfp-sfpplus1'; // Default fallback
                 }
+            }
+            const mplsConflicts = validateDistinctEnterpriseInterfaces({
+                'customer handoff': effectiveHandoff,
+                'primary uplink': uplinkData[0]?.interface || '',
+                'nat reference': mplsDefaults?.natReference || ''
+            });
+            if (mplsConflicts.length) {
+                addProgressLog('error', `Validation failed: overlapping MPLS interfaces (${mplsConflicts.join('; ')})`);
+                completeProgressTracker(false);
+                document.getElementById('mplsEnterprise_warn').innerHTML = `<div style="background: #f44336; color: white; padding: 10px; border-radius: 5px;"> Enterprise profile interfaces must be unique. Conflicts: ${mplsConflicts.join('; ')}</div>`;
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = ' Generate MPLS Enterprise Configuration';
+                }
+                return;
             }
 
             // Determine VPLS cisco-static-id (2245 per example, but can be dynamic)
@@ -18725,6 +18992,10 @@ show mac address-table | include &lt;mac&gt;</div>
             config += `################################\n`;
             config += `###       BASE CONFIG        ###\n`;
             config += `################################\n\n`;
+            config += `# PORT MAP SUMMARY\n`;
+            config += `# Customer handoff: ${effectiveHandoff || 'UNSET'}\n`;
+            config += `# Primary uplink: ${uplinkData[0]?.interface || 'UNSET'}\n`;
+            config += `# NAT reference: ${mplsDefaults?.natReference || 'UNSET'}\n\n`;
 
             // IP SERVICES (individual set commands - matches example format)
             config += `# IP SERVICES\n`;
@@ -19077,6 +19348,13 @@ show mac address-table | include &lt;mac&gt;</div>
                         bgp_peers: [],
                         uplinks: uplinkData
                     });
+                    window.sendActivityToBackend({
+                        type: 'generated mpls enterprise config',
+                        device: routerboardDevice,
+                        siteName: deviceName || customerCode || 'MPLS Enterprise',
+                        routeros: routerosVersion,
+                        success: true
+                    });
 
                     updateProgressPercent(100);
                     addProgressLog('success', 'MPLS Enterprise configuration completed!');
@@ -19170,6 +19448,13 @@ show mac address-table | include &lt;mac&gt;</div>
                         ospf_area: 'area0',
                         bgp_peers: [],
                         uplinks: []
+                    });
+                    window.sendActivityToBackend({
+                        type: 'generated mpls enterprise config',
+                        device: routerboardDevice,
+                        siteName: deviceName || customerCode || 'MPLS Enterprise',
+                        routeros: routerosVersion,
+                        success: true
                     });
                 });
         }
@@ -23973,8 +24258,83 @@ Ready for translation!`);
             };
 
             // ========================================
-            // NOKIA 7250 MAKER FUNCTIONS (client-side)
+            // NOKIA CONFIGURATOR FUNCTIONS (client-side)
             // ========================================
+
+            window.updateNokiaConfiguratorStatus = function () {
+                const model = (document.getElementById('nokiaPlatformModel')?.value || '7250').trim();
+                const profile = (document.getElementById('nokiaPlatformProfile')?.value || 'standard').trim();
+                const status = document.getElementById('nokiaConfiguratorStatus');
+                const heading = document.querySelector('#nokia7250-maker-pane h1');
+                const section7210 = document.getElementById('nokia7210ProfileSection');
+                const section7210Isd = document.getElementById('nokia7210IsdSection');
+                const section7750 = document.getElementById('nokia7750TunnelSection');
+                if (!status || !heading) return;
+
+                const profileLabelMap = {
+                    standard: 'Standard',
+                    bng2: 'BNG 2.0',
+                    isd: 'ISD'
+                };
+                const profileLabel = profileLabelMap[profile] || 'Standard';
+                heading.textContent = `Nokia Configurator`;
+                if (section7210) section7210.style.display = model === '7210' && profile !== 'isd' ? 'block' : 'none';
+                if (section7210Isd) section7210Isd.style.display = model === '7210' && profile === 'isd' ? 'block' : 'none';
+                if (section7750) section7750.style.display = model === '7750' ? 'block' : 'none';
+
+                if (model === '7250' && profile === 'standard') {
+                    status.textContent = '7250 Standard is fully available here. 7210 and 7750 now use this same workspace with profile-specific sections so save, download, and history all stay in one place.';
+                    status.style.background = 'rgba(33,150,243,0.08)';
+                    status.style.borderColor = 'rgba(33,150,243,0.28)';
+                    return;
+                }
+
+                status.textContent = `${model} ${profileLabel} is active in this same configurator. The form now adapts to the selected Nokia platform/profile and generates profile-specific output instead of a disconnected separate tool.`;
+                status.style.background = 'rgba(76,175,80,0.08)';
+                status.style.borderColor = 'rgba(76,175,80,0.28)';
+            };
+
+            function buildNokiaSectionHeader(title) {
+                return [`##################################`, `# ${title}`, `##################################`];
+            }
+
+            function getNokiaConfiguratorSelection() {
+                return {
+                    model: (document.getElementById('nokiaPlatformModel')?.value || '7250').trim(),
+                    profile: (document.getElementById('nokiaPlatformProfile')?.value || 'standard').trim()
+                };
+            }
+
+            function getNokiaOutputMetadataBase(hostname, loopback, lat, lon, tz, extras) {
+                return Object.assign({
+                    latitude: lat,
+                    longitude: lon,
+                    timezone: tz,
+                    selection: getNokiaConfiguratorSelection()
+                }, extras || {});
+            }
+
+            (function initNokiaConfiguratorControls() {
+                const bind = () => {
+                    const modelSelect = document.getElementById('nokiaPlatformModel');
+                    const profileSelect = document.getElementById('nokiaPlatformProfile');
+                    if (!modelSelect || !profileSelect) return;
+                    if (!modelSelect.dataset.bound) {
+                        modelSelect.addEventListener('change', window.updateNokiaConfiguratorStatus);
+                        modelSelect.dataset.bound = '1';
+                    }
+                    if (!profileSelect.dataset.bound) {
+                        profileSelect.addEventListener('change', window.updateNokiaConfiguratorStatus);
+                        profileSelect.dataset.bound = '1';
+                    }
+                    window.updateNokiaConfiguratorStatus();
+                };
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', bind, { once: true });
+                } else {
+                    bind();
+                }
+            })();
 
             // --- Table row helpers for main pane ---
             window.nokia7250MainAddConnector = function () {
@@ -24375,10 +24735,156 @@ Ready for translation!`);
                 }
             });
 
+            function finalizeNokiaConfiguratorOutput(output, options) {
+                const deviceName = options.deviceName || 'nokia-config';
+                const deviceType = options.deviceType || 'Nokia';
+                const configType = options.configType || 'nokia-config';
+                const loopback = options.loopback || '';
+                const metadata = options.metadata || {};
+
+                document.getElementById('nokia7250_config_output').value = output;
+                document.getElementById('nokia7250_output').style.display = 'block';
+                document.getElementById('nokia7250_copyBtn').style.display = 'inline-block';
+                document.getElementById('nokia7250_dlBtn').style.display = 'inline-block';
+                document.getElementById('nokia7250_output').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+                if (typeof saveCompletedConfig === 'function') {
+                    saveCompletedConfig({
+                        config_type: configType,
+                        device_name: deviceName,
+                        device_type: deviceType,
+                        customer_code: '',
+                        loopback_ip: loopback,
+                        config_content: output,
+                        site_name: deviceName,
+                        metadata
+                    });
+                }
+
+                const activityPayload = {
+                    type: 'new-config',
+                    device: deviceType,
+                    siteName: deviceName,
+                    routeros: '',
+                    success: true
+                };
+                if (typeof sendActivityToBackend === 'function' || typeof window.sendActivityToBackend === 'function') {
+                    const activityFn = typeof sendActivityToBackend === 'function' ? sendActivityToBackend : window.sendActivityToBackend;
+                    activityFn(activityPayload);
+                }
+                if (typeof saveConfigToHistory === 'function' || typeof window.saveConfigToHistory === 'function') {
+                    const historyFn = typeof saveConfigToHistory === 'function' ? saveConfigToHistory : window.saveConfigToHistory;
+                    historyFn({
+                        type: configType,
+                        device: deviceType,
+                        siteName: deviceName,
+                        routeros: '',
+                        success: true
+                    });
+                }
+            }
+
+            function renderNokia7210ProfileConfig(params) {
+                const lines = [];
+                const isIsd = params.profile === 'isd';
+                const isBng2 = params.profile === 'bng2';
+                const sectionName = isIsd ? 'NOKIA 7210 ISD CONFIG' : isBng2 ? 'NOKIA 7210 BNG 2.0 CONFIG' : 'NOKIA 7210 STANDARD CONFIG';
+
+                lines.push(...buildNokiaSectionHeader(sectionName));
+                lines.push('/configure system management-interface cli classic-cli');
+                lines.push('/configure system management-interface configuration-mode classic');
+                lines.push(`/configure system name "${params.hostname}"`);
+                lines.push(`/configure router interface "system" address ${params.loopback}`);
+                lines.push(`/configure router router-id ${params.systemIp}`);
+                lines.push(`/configure system location "${params.lat},${params.lon}"`);
+                lines.push(`/configure system security snmp community "${params.snmpCommunity}" r version both`);
+                lines.push(`/configure system security user nlroot password "${params.nlrootPw}"`);
+                lines.push(`/configure system security user admin password "${params.adminPw}"`);
+                lines.push(`/configure system time zone ${params.tz}`);
+                lines.push('');
+
+                if (isIsd) {
+                    lines.push(...buildNokiaSectionHeader('ISD SERVICE SETTINGS'));
+                    lines.push(`/configure service ies 100 customer 1 create`);
+                    lines.push(`/configure service ies 100 interface "public" address ${params.isdPublic || '0.0.0.0/0'}`);
+                    lines.push(`/configure service ies 100 interface "private" address ${params.isdPrivate || '0.0.0.0/0'}`);
+                    if (params.staticHop) lines.push(`/configure router static-route-entry ${params.staticHop} next-hop ${params.staticHop}`);
+                    lines.push('/configure service ies 100 no shutdown');
+                    lines.push('');
+                } else {
+                    lines.push(...buildNokiaSectionHeader(isBng2 ? 'BNG 2.0 ROUTING' : 'ROUTING'));
+                    lines.push(`/configure router autonomous-system ${params.asn}`);
+                    lines.push(`/configure router ospf 1 area ${params.ospfArea} interface "system" no shutdown`);
+                    lines.push(`/configure router bgp group "DALLAS-RR" peer-as ${params.asn}`);
+                    lines.push(`/configure router bgp group "DALLAS-RR" local-address ${params.systemIp}`);
+                    lines.push(`/configure router bgp group "DALLAS-RR" authentication-key "${params.bgpKey}"`);
+                    params.bgpPeers.filter(Boolean).forEach(peer => {
+                        lines.push(`/configure router bgp group "DALLAS-RR" neighbor ${peer}`);
+                    });
+                    if (params.vplsNum) {
+                        lines.push(`/configure service sdp 101 mpls create`);
+                        if (params.vplsTarget1) lines.push(`/configure service sdp 101 far-end ${params.vplsTarget1}`);
+                        lines.push('/configure service sdp 101 ldp');
+                        lines.push('/configure service sdp 101 no shutdown');
+                        lines.push(`/configure service vpls ${params.vplsNum} customer ${params.vplsNum} create`);
+                        lines.push(`/configure service vpls ${params.vplsNum} mesh-sdp 101:${params.vplsNum} create`);
+                        if (params.vplsTarget2) {
+                            lines.push('/configure service sdp 102 mpls create');
+                            lines.push(`/configure service sdp 102 far-end ${params.vplsTarget2}`);
+                            lines.push('/configure service sdp 102 ldp');
+                            lines.push('/configure service sdp 102 no shutdown');
+                            lines.push(`/configure service vpls ${params.vplsNum} mesh-sdp 102:${params.vplsNum} create`);
+                        }
+                        lines.push(`/configure service vpls ${params.vplsNum} no shutdown`);
+                    }
+                    lines.push('');
+                }
+
+                lines.push(...buildNokiaSectionHeader('BACKHAULS'));
+                params.uplinks.forEach((uplink, index) => {
+                    const port = uplink.port || `1/1/${index + 1}`;
+                    lines.push(`/configure port ${port} description "${uplink.desc || `BH-${index + 1}`}"`);
+                    if (uplink.speed) lines.push(`/configure port ${port} ethernet speed ${uplink.speed}`);
+                    if (uplink.ip) lines.push(`/configure router interface "BH-${index + 1}" address ${uplink.ip}`);
+                    lines.push(`/configure port ${port} no shutdown`);
+                    lines.push('');
+                });
+
+                lines.push('/admin save');
+                return lines.join('\n');
+            }
+
+            function renderNokia7750ProfileConfig(params) {
+                const lines = [];
+                lines.push(...buildNokiaSectionHeader(params.profile === 'bng2' ? 'NOKIA 7750 BNG 2.0 CONFIG' : 'NOKIA 7750 TUNNEL CONFIG'));
+                lines.push(`/configure system name "${params.hostname}"`);
+                lines.push(`/configure router interface "system" address ${params.loopback}`);
+                lines.push(`/configure router router-id ${params.systemIp}`);
+                lines.push(`/configure service sdp ${params.sdpNumber} mpls create`);
+                if (params.sdpDescription) lines.push(`/configure service sdp ${params.sdpNumber} mpls description "${params.sdpDescription}"`);
+                if (params.sdpFarEnd) lines.push(`/configure service sdp ${params.sdpNumber} mpls far-end ${params.sdpFarEnd}`);
+                lines.push(`/configure service sdp ${params.sdpNumber} mpls ldp`);
+                lines.push(`/configure service sdp ${params.sdpNumber} no shutdown`);
+                [
+                    { label: 'CGN', value: params.vplsCgn },
+                    { label: 'STATIC', value: params.vplsStatic },
+                    { label: 'INFRA', value: params.vplsInfra },
+                    { label: 'CPE', value: params.vplsCpe }
+                ].forEach(item => {
+                    if (!item.value) return;
+                    lines.push(`/configure service vpls ${item.value} description "${item.label}-${params.hostname}"`);
+                    lines.push(`/configure service vpls ${item.value} mesh-sdp ${params.sdpNumber}:${item.value} create`);
+                    lines.push(`/configure service vpls ${item.value} no shutdown`);
+                });
+                lines.push('/admin save');
+                return lines.join('\n');
+            }
+
             // ---- CLIENT-SIDE CONFIG GENERATOR ----
             window.generateNokia7250Config = async function () {
                 const $ = id => document.getElementById(id);
                 const v = id => ($( id )?.value || '').trim();
+                const selection = getNokiaConfiguratorSelection();
 
                 const hostname = v('nokia7250_systemName');
                 const loopback = v('nokia7250_systemIP');
@@ -24426,6 +24932,127 @@ Ready for translation!`);
                     return;
                 }
                 const allInterfaces = [];
+
+                if (selection.model === '7210' || selection.model === '7750') {
+                    const backendPayload = {
+                        model: selection.model,
+                        profile: selection.profile,
+                        system_name: hostname,
+                        system_ip: loopback,
+                        latitude: lat,
+                        longitude: lon,
+                        timezone: tz,
+                        uplinks,
+                        bgp_peers: [
+                            v('nokia7210_bgpPeer1') || '10.2.0.107',
+                            v('nokia7210_bgpPeer2') || '10.2.0.108'
+                        ],
+                        ospf_area: v('nokia7210_ospfArea') || '0.0.0.0',
+                        asn: v('nokia7210_asn') || '26077',
+                        vpls_num: v('nokia7210_vplsNum') || '2245',
+                        vpls_target1: v('nokia7210_vplsTarget1') || '10.249.0.200',
+                        vpls_target2: v('nokia7210_vplsTarget2'),
+                        static_hop: v('nokia7210_isdStaticHop'),
+                        isd_public: v('nokia7210_isdVplsPublic'),
+                        isd_private: v('nokia7210_isdVplsPrivate'),
+                        site_name: v('nokia7210_isdSiteName'),
+                        sdp_number: v('nokia7750_sdpNumber') || '101',
+                        sdp_description: v('nokia7750_sdpDescription') || hostname,
+                        sdp_far_end: v('nokia7750_sdpFarEnd'),
+                        vpls_cgn: v('nokia7750_vplsCgn') || '1245',
+                        vpls_static: v('nokia7750_vplsStatic') || '2245',
+                        vpls_infra: v('nokia7750_vplsInfra') || '3245',
+                        vpls_cpe: v('nokia7750_vplsCpe') || '4245'
+                    };
+                    try {
+                        const backendResp = await fetch(`${AI_API_BASE}/generate-nokia-configurator`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(backendPayload)
+                        });
+                        const backendData = await backendResp.json();
+                        if (!backendResp.ok || !backendData.success || !backendData.config) {
+                            throw new Error(backendData.error || `HTTP ${backendResp.status}`);
+                        }
+                        finalizeNokiaConfiguratorOutput(backendData.config, {
+                            deviceName: hostname,
+                            deviceType: backendData.device_type || `Nokia ${selection.model}`,
+                            configType: backendData.config_type || `nokia-${selection.model}-${selection.profile}`,
+                            loopback,
+                            metadata: getNokiaOutputMetadataBase(hostname, loopback, lat, lon, tz, {
+                                selection,
+                                uplink_count: uplinks.length
+                            })
+                        });
+                        return;
+                    } catch (backendErr) {
+                        console.warn('[NOKIA CONFIGURATOR] Backend generation failed, using local renderer fallback:', backendErr);
+                        if (selection.model === '7210') {
+                            const output7210 = renderNokia7210ProfileConfig({
+                                profile: selection.profile,
+                                hostname,
+                                loopback,
+                                systemIp,
+                                lat,
+                                lon,
+                                tz,
+                                snmpCommunity,
+                                nlrootPw,
+                                adminPw,
+                                bgpKey,
+                                uplinks,
+                                ospfArea: v('nokia7210_ospfArea') || '0.0.0.0',
+                                asn: v('nokia7210_asn') || '26077',
+                                bgpPeers: [
+                                    v('nokia7210_bgpPeer1') || '10.2.0.107',
+                                    v('nokia7210_bgpPeer2') || '10.2.0.108'
+                                ],
+                                vplsNum: v('nokia7210_vplsNum') || '2245',
+                                vplsTarget1: v('nokia7210_vplsTarget1') || '10.249.0.200',
+                                vplsTarget2: v('nokia7210_vplsTarget2'),
+                                staticHop: v('nokia7210_isdStaticHop'),
+                                isdPublic: v('nokia7210_isdVplsPublic'),
+                                isdPrivate: v('nokia7210_isdVplsPrivate')
+                            });
+                            finalizeNokiaConfiguratorOutput(output7210, {
+                                deviceName: hostname,
+                                deviceType: `Nokia 7210 ${selection.profile === 'bng2' ? 'BNG 2.0' : selection.profile === 'isd' ? 'ISD' : 'Standard'}`,
+                                configType: `nokia-7210-${selection.profile}`,
+                                loopback,
+                                metadata: getNokiaOutputMetadataBase(hostname, loopback, lat, lon, tz, {
+                                    bgp_neighbor_count: 2,
+                                    uplink_count: uplinks.length,
+                                    site_name: v('nokia7210_isdSiteName')
+                                })
+                            });
+                            return;
+                        }
+                        const output7750 = renderNokia7750ProfileConfig({
+                            profile: selection.profile,
+                            hostname,
+                            loopback,
+                            systemIp,
+                            sdpNumber: v('nokia7750_sdpNumber') || '101',
+                            sdpDescription: v('nokia7750_sdpDescription') || hostname,
+                            sdpFarEnd: v('nokia7750_sdpFarEnd'),
+                            vplsCgn: v('nokia7750_vplsCgn') || '1245',
+                            vplsStatic: v('nokia7750_vplsStatic') || '2245',
+                            vplsInfra: v('nokia7750_vplsInfra') || '3245',
+                            vplsCpe: v('nokia7750_vplsCpe') || '4245'
+                        });
+                        finalizeNokiaConfiguratorOutput(output7750, {
+                            deviceName: hostname,
+                            deviceType: `Nokia 7750 ${selection.profile === 'bng2' ? 'BNG 2.0' : 'Tunnel'}`,
+                            configType: `nokia-7750-${selection.profile}`,
+                            loopback,
+                            metadata: getNokiaOutputMetadataBase(hostname, loopback, lat, lon, tz, {
+                                sdp_number: v('nokia7750_sdpNumber') || '101',
+                                sdp_far_end: v('nokia7750_sdpFarEnd')
+                            })
+                        });
+                        return;
+                    }
+                }
 
                 connectors.forEach(c => allInterfaces.push({ port: c.port + '/1', desc: c.desc, ip: c.ip, speed: '100000', isConnector: true, connPort: c.port, mtu: c.mtu }));
                 uplinks.forEach(u => allInterfaces.push({ port: u.port, desc: u.desc, ip: u.ip, speed: u.speed, isConnector: false, mtu: u.mtu }));
@@ -26454,6 +27081,256 @@ Ready for translation!`);
             }
         };
 
+        window.generateFtthFiberCustomerConfig = function () {
+            const provider = (document.getElementById('ftthFiberProvider')?.value || '').trim();
+            const port = (document.getElementById('ftthFiberPort')?.value || 'sfp-sfpplus8').trim();
+            const address = (document.getElementById('ftthFiberAddress')?.value || '').trim();
+            const network = (document.getElementById('ftthFiberNetwork')?.value || '').trim();
+            const vlanMode = (document.getElementById('ftthFiberVlanMode')?.value || 'none').trim();
+            const vlanNum = (document.getElementById('ftthFiberVlanNum')?.value || '').trim();
+            const statusEl = document.getElementById('ftthFiberStatus');
+            const outputEl = document.getElementById('ftthFiberConfigOutput');
+
+            const setStatus = (message, ok) => {
+                if (!statusEl) return;
+                statusEl.style.display = 'block';
+                statusEl.textContent = message;
+                statusEl.style.background = ok ? 'rgba(76,175,80,0.08)' : 'rgba(244,67,54,0.08)';
+                statusEl.style.border = ok ? '1px solid rgba(76,175,80,0.28)' : '1px solid rgba(244,67,54,0.28)';
+            };
+
+            if (!provider || !port || !address || !network) {
+                setStatus('Provider, port, address, and network are required.', false);
+                return;
+            }
+            if (vlanMode === 'tagged' && !vlanNum) {
+                setStatus('VLAN ID is required when VLAN mode is tagged.', false);
+                return;
+            }
+
+            const cidr = address.split('/')[1];
+            if (!cidr) {
+                setStatus('Provider IP must include CIDR notation, for example 10.42.10.2/30.', false);
+                return;
+            }
+
+            let config = '\n# FIBER SITE SETTINGS\n\n/interface ethernet\n';
+            config += `set [ find default-name="${port}" ] comment="${provider}"\n\n`;
+            if (vlanMode === 'tagged') {
+                const vlanName = `VLAN ${vlanNum}`;
+                config += '/interface vlan\n';
+                config += `add interface="${port}" name="${vlanName}" vlan-id="${vlanNum}"\n\n`;
+                config += '/ip address\n';
+                config += `add address=${address} comment="${provider} VLAN ${vlanNum}" interface="${vlanName}" network=${network.split('/')[0]}\n\n`;
+                config += '#OSPF Settings\n/routing ospf interface-template\n';
+                config += `add area=backbone-v2 auth=md5 auth-id=1 auth-key=m8M5JwvdYM cost=10 disabled=no interfaces="${vlanName}" networks=${network} priority=1 type=ptp comment="${provider} VLAN ${vlanNum}"\n`;
+            } else {
+                config += '/ip address\n';
+                config += `add address=${address} comment="${provider}" interface=${port} network=${network.split('/')[0]}\n\n`;
+                config += '#OSPF Settings\n/routing ospf interface-template\n';
+                config += `add area=backbone-v2 auth=md5 auth-id=1 auth-key=m8M5JwvdYM cost=10 disabled=no interfaces=${port} networks=${network} priority=1 type=ptp comment="${provider}"\n`;
+            }
+
+            const rendered = config.trim() + '\n';
+            if (outputEl) outputEl.value = rendered;
+            setStatus('Fiber customer configuration generated.', true);
+
+            if (typeof saveCompletedConfig === 'function') {
+                saveCompletedConfig({
+                    config_type: 'ftth-fiber-customer',
+                    device_name: provider,
+                    device_type: 'MikroTik Fiber Customer',
+                    customer_code: provider,
+                    loopback_ip: '',
+                    config_content: rendered,
+                    site_name: provider,
+                    metadata: {
+                        provider,
+                        port,
+                        address,
+                        network,
+                        vlan_mode: vlanMode,
+                        vlan_id: vlanNum || ''
+                    }
+                });
+            }
+
+            if (typeof window.sendActivityToBackend === 'function') {
+                window.sendActivityToBackend({
+                    type: 'new-config',
+                    device: 'MikroTik Fiber Customer',
+                    siteName: provider,
+                    routeros: '7',
+                    success: true
+                });
+            }
+
+            if (typeof window.saveConfigToHistory === 'function') {
+                window.saveConfigToHistory({
+                    type: 'ftth-fiber-customer',
+                    device: 'MikroTik Fiber Customer',
+                    siteName: provider,
+                    routeros: '7',
+                    success: true
+                });
+            }
+        };
+
+        window.copyFtthFiberCustomerConfig = async function () {
+            const text = document.getElementById('ftthFiberConfigOutput')?.value || '';
+            if (!text) return;
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(text);
+            } else {
+                const area = document.createElement('textarea');
+                area.value = text;
+                document.body.appendChild(area);
+                area.select();
+                document.execCommand('copy');
+                document.body.removeChild(area);
+            }
+        };
+
+        window.downloadFtthFiberCustomerConfig = function () {
+            const text = document.getElementById('ftthFiberConfigOutput')?.value || '';
+            if (!text) return;
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'ftth_fiber_customer.rsc';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        };
+
+        window.generateCiscoConfig = function () {
+            const desc = (document.getElementById('ciscoPortDesc')?.value || '').trim();
+            const type = (document.getElementById('ciscoPortType')?.value || 'TenGigE').trim();
+            const port = (document.getElementById('ciscoPortNumber')?.value || '').trim();
+            const ip = (document.getElementById('ciscoBhIp')?.value || '').trim();
+            const mask = (document.getElementById('ciscoBhMask')?.value || '255.255.255.252').trim();
+            const ospfCost = (document.getElementById('ciscoOspfCost')?.value || '10').trim();
+            const passive = (document.getElementById('ciscoPassive')?.value || 'No').trim();
+            const statusEl = document.getElementById('ciscoConfigStatus');
+            const outputEl = document.getElementById('ciscoConfigOutput');
+
+            const setStatus = (message, ok) => {
+                if (!statusEl) return;
+                statusEl.style.display = 'block';
+                statusEl.textContent = message;
+                statusEl.style.background = ok ? 'rgba(76,175,80,0.08)' : 'rgba(244,67,54,0.08)';
+                statusEl.style.border = ok ? '1px solid rgba(76,175,80,0.28)' : '1px solid rgba(244,67,54,0.28)';
+            };
+
+            if (!desc || !port || !ip) {
+                setStatus('Description, port number, and interface IP are required.', false);
+                return;
+            }
+
+            const isIpv4 = (value) => /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/.test(value);
+            if (!isIpv4(ip)) {
+                setStatus('Cisco interface IP must be a valid IPv4 address.', false);
+                return;
+            }
+            if (!isIpv4(mask)) {
+                setStatus('Cisco subnet must be a valid IPv4 netmask.', false);
+                return;
+            }
+
+            const passiveLine = passive === 'Yes' ? 'passive enable' : '';
+            const lines = [
+                'configure terminal',
+                '',
+                `interface ${type} ${port}`,
+                `description ${desc}`,
+                `ipv4 address ${ip} ${mask}`,
+                ' ',
+                'router ospf 1 area 0',
+                '',
+                `interface ${type} ${port}`,
+                `cost ${ospfCost}`,
+                'authentication message-digest',
+                'message-digest-key 1 md5 encrypted 0456532B5A0B5B580D2028',
+                'network point-to-point',
+                passiveLine
+            ];
+            const config = lines.filter((line, index) => line !== '' || (index > 0 && lines[index - 1] !== '')).join('\n').trim() + '\n';
+            if (outputEl) outputEl.value = config;
+            setStatus('Cisco configuration generated.', true);
+
+            if (typeof saveCompletedConfig === 'function') {
+                saveCompletedConfig({
+                    config_type: 'cisco-interface',
+                    device_name: `${type} ${port}`,
+                    device_type: 'Cisco',
+                    customer_code: '',
+                    loopback_ip: ip,
+                    config_content: config,
+                    site_name: desc,
+                    metadata: {
+                        port_description: desc,
+                        port_type: type,
+                        port_number: port,
+                        interface_ip: ip,
+                        subnet_mask: mask,
+                        ospf_cost: ospfCost,
+                        passive
+                    }
+                });
+            }
+
+            if (typeof window.sendActivityToBackend === 'function') {
+                window.sendActivityToBackend({
+                    type: 'new-config',
+                    device: 'Cisco',
+                    siteName: desc,
+                    routeros: '',
+                    success: true
+                });
+            }
+
+            if (typeof window.saveConfigToHistory === 'function') {
+                window.saveConfigToHistory({
+                    type: 'cisco-config',
+                    device: 'Cisco',
+                    siteName: desc,
+                    routeros: '',
+                    success: true
+                });
+            }
+        };
+
+        window.copyCiscoConfig = async function () {
+            const text = document.getElementById('ciscoConfigOutput')?.value || '';
+            if (!text) return;
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(text);
+            } else {
+                const area = document.createElement('textarea');
+                area.value = text;
+                document.body.appendChild(area);
+                area.select();
+                document.execCommand('copy');
+                document.body.removeChild(area);
+            }
+        };
+
+        window.downloadCiscoConfig = function () {
+            const text = document.getElementById('ciscoConfigOutput')?.value || '';
+            if (!text) return;
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'cisco_interface_config.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        };
+
         document.addEventListener('DOMContentLoaded', () => {
             initFtthHomeTabs();
             initCommandVaultTabs();
@@ -28406,10 +29283,10 @@ Ready for translation!`);
             { cat: 'Navigate', icon: '', label: '6GHz Switch Port', desc: 'VLAN 3000/4000 config', action: () => window.navigateToTab('ccr2004') },
             { cat: 'Navigate', icon: '', label: 'MikroTik Switch Maker', desc: 'Switch config (309/326/2004)', action: () => window.navigateToTab('switch-maker') },
             { cat: 'Navigate', icon: '', label: 'Device Config Studio', desc: 'AP/SM/Switch/UPS/RPC/Aviat/Wave/7250', action: () => window.navigateToTab('field-config-studio') },
-            { cat: 'Navigate', icon: '', label: 'Nokia 7250 Config Maker', desc: 'Full Nokia 7250 IXR form', action: () => window.navigateToTab('nokia7250-maker') },
+            { cat: 'Navigate', icon: '', label: 'Nokia Configurator', desc: 'Unified Nokia configuration workspace', action: () => window.navigateToTab('nokia7250-maker') },
             { cat: 'Navigate', icon: '', label: 'Nokia Migration', desc: 'MikroTik → Nokia conversion', action: () => window.navigateToTab('mikrotik-to-nokia') },
             { cat: 'Navigate', icon: '', label: 'Aviat Backhaul Updater', desc: 'Firmware upgrade for WTM4200', action: () => window.navigateToTab('aviat-backhaul') },
-            { cat: 'Navigate', icon: '', label: 'FTTH Home / OLT', desc: 'FTTH OLT & BNG configs', action: () => window.navigateToTab('ftth-home') },
+            { cat: 'Navigate', icon: '', label: 'FTTH Configurator', desc: 'FTTH OLT and BNG workspaces', action: () => window.navigateToTab('ftth-home') },
             { cat: 'Navigate', icon: '', label: 'Command Vault', desc: 'Nokia/Cisco/MikroTik quick commands', action: () => window.navigateToTab('command-vault') },
             { cat: 'Navigate', icon: '', label: 'Cisco Config', desc: 'Cisco configuration (coming soon)', action: () => window.navigateToTab('cisco-config') },
             { cat: 'Navigate', icon: '', label: 'Completed Configs', desc: 'Saved configurations archive', action: () => window.navigateToTab('completed-configs') },

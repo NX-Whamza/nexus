@@ -54,13 +54,55 @@ def test_ftth_speed_controls_and_backend_payload_hooks_exist():
         'Found stale /save-config endpoint reference in NOC-configMaker.html'
 
 
+def test_ftth_fiber_customer_and_cisco_generator_exist():
+    content = UI_FILE.read_text(encoding='utf-8')
+    assert 'data-ftth-home-tab="fiber"' in content, 'Missing FTTH Fiber Customer subtab in NOC-configMaker.html'
+    assert 'id="ftth-home-fiber-section"' in content, 'Missing FTTH Fiber Customer section in NOC-configMaker.html'
+    assert 'generateFtthFiberCustomerConfig' in content, 'Missing FTTH Fiber Customer generator hook in NOC-configMaker.html'
+    assert 'id="cisco-config-pane"' in content, 'Missing Cisco Config pane in NOC-configMaker.html'
+    assert 'generateCiscoConfig' in content, 'Missing Cisco Config generator hook in NOC-configMaker.html'
+    assert "config_type: 'ftth-fiber-customer'" in content, 'Missing FTTH Fiber Customer completed-config save wiring in NOC-configMaker.html'
+    assert "device: 'MikroTik Fiber Customer'" in content, 'Missing FTTH Fiber Customer activity wiring in NOC-configMaker.html'
+    assert "config_type: 'cisco-interface'" in content, 'Missing Cisco completed-config save wiring in NOC-configMaker.html'
+    assert "device: 'Cisco'" in content, 'Missing Cisco activity wiring in NOC-configMaker.html'
+
+
+def test_enterprise_uses_single_routerboard_source_of_truth():
+    content = UI_FILE.read_text(encoding='utf-8')
+    assert 'const ENTERPRISE_DEVICE_PROFILES =' in content, 'Missing shared enterprise device profile map in NOC-configMaker.html'
+    assert 'getEnterpriseDeviceProfile(deviceKey)' in content, 'Missing enterprise device profile helper in NOC-configMaker.html'
+    assert 'getMPLSEnterpriseDefaults(deviceKey)' in content, 'Missing MPLS enterprise device profile helper in NOC-configMaker.html'
+    assert 'validateDistinctEnterpriseInterfaces(roleMap)' in content, 'Missing shared enterprise interface collision validator in NOC-configMaker.html'
+    assert 'Enterprise generation uses this single device selector as the source of truth' in content, 'Missing enterprise single-selector guidance in NOC-configMaker.html'
+    assert '<label for="targetDevice">Target Device:</label>' not in content, 'Found duplicated Target Device selector inside enterprise UI in NOC-configMaker.html'
+    assert 'id="ent_mpls_profile_hint"' in content, 'Missing MPLS profile hint element in NOC-configMaker.html'
+    assert 'Please add at least one uplink interface and uplink IP/network.' in content, 'Missing MPLS uplink validation guard in NOC-configMaker.html'
+    assert '# PORT MAP SUMMARY' in content, 'Missing MPLS port map summary block in NOC-configMaker.html'
+    assert "type: 'generated enterprise config'" in content, 'Missing Non-MPLS enterprise activity logging in NOC-configMaker.html'
+    assert "type: 'generated mpls enterprise config'" in content, 'Missing MPLS enterprise activity logging in NOC-configMaker.html'
+
+
+def test_nokia_configurator_is_truly_unified():
+    content = UI_FILE.read_text(encoding='utf-8')
+    assert 'id="nokiaPlatformModel"' in content, 'Missing Nokia platform model selector in NOC-configMaker.html'
+    assert 'id="nokiaPlatformProfile"' in content, 'Missing Nokia platform profile selector in NOC-configMaker.html'
+    assert 'id="nokia7210ProfileSection"' in content, 'Missing Nokia 7210 profile section in NOC-configMaker.html'
+    assert 'id="nokia7210IsdSection"' in content, 'Missing Nokia 7210 ISD profile section in NOC-configMaker.html'
+    assert 'id="nokia7750TunnelSection"' in content, 'Missing Nokia 7750 tunnel section in NOC-configMaker.html'
+    assert 'renderNokia7210ProfileConfig' in content, 'Missing Nokia 7210 renderer in NOC-configMaker.html'
+    assert 'renderNokia7750ProfileConfig' in content, 'Missing Nokia 7750 renderer in NOC-configMaker.html'
+    assert 'finalizeNokiaConfiguratorOutput' in content, 'Missing shared Nokia output finalizer in NOC-configMaker.html'
+    assert 'configType: `nokia-7210-${selection.profile}`' in content, 'Missing Nokia 7210 profile-specific save type in NOC-configMaker.html'
+    assert 'configType: `nokia-7750-${selection.profile}`' in content, 'Missing Nokia 7750 profile-specific save type in NOC-configMaker.html'
+    assert '/generate-nokia-configurator' in content, 'Missing backend Nokia configurator endpoint wiring in NOC-configMaker.html'
+
 def test_sidebar_and_nokia_7250_layout_updates_exist():
     content = UI_FILE.read_text(encoding='utf-8')
     assert 'IDO Tools Space' not in content, 'Standalone IDO Tools pane should be removed from NOC-configMaker.html'
     assert 'data-sb-tab="ido-tools"' not in content, 'Sidebar should not include the removed IDO Tools entry'
     assert 'data-tab="ido-tools"' not in content, 'Top navigation should not include the removed IDO Tools tab'
     assert 'data-tool="nokia-7250"' not in content, 'Field Config Studio should not include the Nokia 7250 subtab'
-    assert '>Nokia 7250 Configuration Maker<' in content, 'Missing unified Nokia 7250 page title'
+    assert '> Nokia Configurator<' in content or '>Nokia Configurator<' in content, 'Missing unified Nokia Configurator page title'
     assert 'IN-STATE Nokia 7250 Configuration Maker' not in content, 'Old Nokia 7250 in-state-only title should be removed'
     assert 'id="nokia7250_siteSuffix"' in content, 'Missing Nokia 7250 short site-name input'
     assert 'id="nokia7250_output_format"' in content, 'Missing Nokia 7250 output format selector'
@@ -79,6 +121,9 @@ if __name__ == '__main__':
     try:
         test_ftth_modal_exists()
         test_ftth_speed_controls_and_backend_payload_hooks_exist()
+        test_ftth_fiber_customer_and_cisco_generator_exist()
+        test_enterprise_uses_single_routerboard_source_of_truth()
+        test_nokia_configurator_is_truly_unified()
         test_sidebar_and_nokia_7250_layout_updates_exist()
         print('[OK] test_ftth_modal_exists')
         raise SystemExit(0)
