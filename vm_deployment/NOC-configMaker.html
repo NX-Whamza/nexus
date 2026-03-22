@@ -3696,6 +3696,14 @@
                             <span class="sb-item-icon">&#128252;</span>
                             <span class="sb-item-label">Fiber Customer</span>
                         </div>
+                        <div class="sb-item" data-sb-tab="ftth-home" data-sb-subtab="fiber-site">
+                            <span class="sb-item-icon">&#127959;</span>
+                            <span class="sb-item-label">1072/1036 Fiber Site</span>
+                        </div>
+                        <div class="sb-item" data-sb-tab="ftth-home" data-sb-subtab="isd-fiber">
+                            <span class="sb-item-icon">&#128268;</span>
+                            <span class="sb-item-label">ISD Fiber</span>
+                        </div>
                     </div>
                 </div>
 
@@ -3836,6 +3844,8 @@
                         <a data-tab="ftth-home" data-ftth-home-tab="olt">OLT CONFIGURATION</a>
                         <a data-tab="ftth-home" data-ftth-home-tab="bng">BNG CONFIGURATION</a>
                         <a data-tab="ftth-home" data-ftth-home-tab="fiber">FIBER CUSTOMER</a>
+                        <a data-tab="ftth-home" data-ftth-home-tab="fiber-site">1072/1036 FIBER SITE</a>
+                        <a data-tab="ftth-home" data-ftth-home-tab="isd-fiber">ISD FIBER</a>
                     </div>
                 </div>
                 <div class="nav-item dropdown" data-tab="command-vault"><button>COMMAND VAULT</button>
@@ -8001,6 +8011,10 @@
                                     data-ftth-home-tab="bng">BNG CONFIGURATION</button>
                                 <button class="ftth-home-dropdown-item" type="button"
                                     data-ftth-home-tab="fiber">FIBER CUSTOMER</button>
+                                <button class="ftth-home-dropdown-item" type="button"
+                                    data-ftth-home-tab="fiber-site">1072/1036 FIBER SITE</button>
+                                <button class="ftth-home-dropdown-item" type="button"
+                                    data-ftth-home-tab="isd-fiber">ISD FIBER</button>
                             </div>
                         </div>
                     </div>
@@ -8109,6 +8123,103 @@
                             <textarea id="ftthFiberConfigOutput" readonly
                                 style="width:100%; min-height: 520px; margin-top:16px; padding:15px; border:1px solid var(--border-color); border-radius: 4px; background: var(--output-bg); color: var(--text-color); font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 12px; line-height: 1.5; white-space: pre; overflow-x: auto; resize: vertical;"
                                 placeholder="Generated fiber customer config will appear here..."></textarea>
+                        </div>
+                    </div>
+
+                    <div id="ftth-home-fiber-site-section" class="ftth-home-section">
+                        <div class="section">
+                            <h2>1072/1036 FIBER SITE</h2>
+                            <p style="color: var(--text-color-secondary); margin-bottom: 16px;">
+                                Generate the paired 1072 and 1036 fiber-site configs plus the backhaul IP / port map.
+                            </p>
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                                <div><label for="ftthSiteTowerName">Tower Name</label><input type="text" id="ftthSiteTowerName" placeholder="TX-MARLIN-W-FC-2"></div>
+                                <div><label for="ftthSiteTowerGps">Tower GPS</label><input type="text" id="ftthSiteTowerGps" placeholder="30.1234,-96.1234"></div>
+                                <div><label for="ftthSiteAsn">ASN</label><input type="text" id="ftthSiteAsn" value="26077"></div>
+                                <div><label for="ftthSiteRouteros1072">1072 RouterOS</label><input type="text" id="ftthSiteRouteros1072" value="7.19.4"></div>
+                                <div><label for="ftthSiteLoopback1072">1072 Loopback /32</label><input type="text" id="ftthSiteLoopback1072" placeholder="10.26.0.7/32"></div>
+                                <div><label for="ftthSiteLoopback1036">1036 Loopback /32</label><input type="text" id="ftthSiteLoopback1036" placeholder="10.26.0.8/32"></div>
+                                <div><label for="ftthSiteBh1Subnet">BH1 Subnet</label><input type="text" id="ftthSiteBh1Subnet" placeholder="10.25.10.0/29"></div>
+                                <div><label for="ftthSiteCpeSubnet">CPE Subnet</label><input type="text" id="ftthSiteCpeSubnet" placeholder="10.40.0.0/22"></div>
+                                <div><label for="ftthSiteLinkA">1072-1036 Port 1 Subnet</label><input type="text" id="ftthSiteLinkA" placeholder="10.25.10.8/30"></div>
+                                <div><label for="ftthSiteLinkB">1072-1036 Port 2 Subnet</label><input type="text" id="ftthSiteLinkB" placeholder="10.25.10.12/30"></div>
+                                <div><label for="ftthSiteUnauthSubnet">UNAUTH Subnet</label><input type="text" id="ftthSiteUnauthSubnet" placeholder="10.130.0.0/22"></div>
+                                <div><label for="ftthSiteCgnPrivSubnet">CGNAT Private Subnet</label><input type="text" id="ftthSiteCgnPrivSubnet" placeholder="100.64.0.0/22"></div>
+                                <div><label for="ftthSiteCgnPubIp">CGNAT Public IP</label><input type="text" id="ftthSiteCgnPubIp" placeholder="132.147.184.147/32"></div>
+                                <div><label for="ftthSiteFiberProvider">Fiber Provider</label><input type="text" id="ftthSiteFiberProvider" placeholder="ATT"></div>
+                                <div><label for="ftthSiteFiberPort">1072 Fiber Port</label><select id="ftthSiteFiberPort"></select></div>
+                                <div><label for="ftthSiteFiberAddress">Fiber Port IP / CIDR</label><input type="text" id="ftthSiteFiberAddress" placeholder="10.42.10.2/30"></div>
+                                <div><label for="ftthSiteFiberVlanMode">Fiber VLAN Mode</label><select id="ftthSiteFiberVlanMode"><option value="none" selected>No VLAN</option><option value="tagged">Tagged VLAN</option></select></div>
+                                <div><label for="ftthSiteFiberVlanId">Fiber VLAN ID</label><input type="number" id="ftthSiteFiberVlanId" placeholder="300" min="1" max="4094"></div>
+                                <div><label for="ftthSitePeer1Name">BGP Peer 1 Name</label><input type="text" id="ftthSitePeer1Name" value="CR7"></div>
+                                <div><label for="ftthSitePeer1Ip">BGP Peer 1 IP</label><input type="text" id="ftthSitePeer1Ip" value="10.2.0.107"></div>
+                                <div><label for="ftthSitePeer2Name">BGP Peer 2 Name</label><input type="text" id="ftthSitePeer2Name" value="CR8"></div>
+                                <div><label for="ftthSitePeer2Ip">BGP Peer 2 IP</label><input type="text" id="ftthSitePeer2Ip" value="10.2.0.108"></div>
+                            </div>
+                            <label style="display:flex; align-items:center; gap:8px; margin-top: 14px; cursor:pointer;">
+                                <input type="checkbox" id="ftthSiteApplyCompliance" checked>
+                                <span>Apply Nextlink compliance blocks to both router configs</span>
+                            </label>
+                            <div class="section" style="margin-top: 18px;">
+                                <h3 style="margin-top: 0;">Backhauls</h3>
+                                <div id="ftthSiteBackhauls"></div>
+                                <button type="button" onclick="addFtthFiberBackhaulRow('ftthSiteBackhauls', '1072')" style="background: #2196F3; color: white; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer;">Add Backhaul</button>
+                            </div>
+                            <div style="margin-top: 16px; display:flex; gap:10px; flex-wrap:wrap;">
+                                <button type="button" onclick="generateFtthFiberSiteConfig()" style="background: var(--accent-color); color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">Generate Fiber Site Configs</button>
+                                <button type="button" onclick="copyFtthFiberSiteBundle()" style="background: #2196F3; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">Copy Bundle</button>
+                                <button type="button" onclick="downloadFtthFiberSiteBundle()" style="background: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">Download Bundle</button>
+                            </div>
+                            <div id="ftthSiteStatus" style="display:none; margin-top: 12px; padding: 10px 12px; border-radius: 6px; font-size: 13px;"></div>
+                            <h3 style="margin-top:18px;">1072 Config</h3>
+                            <textarea id="ftthSite1072Output" readonly style="width:100%; min-height:280px; margin-top:8px; padding:15px; border:1px solid var(--border-color); border-radius:4px; background:var(--output-bg); color:var(--text-color); font-family:'JetBrains Mono','Courier New',monospace; font-size:12px; line-height:1.5; white-space:pre; overflow-x:auto; resize:vertical;" placeholder="Generated 1072 config will appear here..."></textarea>
+                            <h3 style="margin-top:18px;">1036 Config</h3>
+                            <textarea id="ftthSite1036Output" readonly style="width:100%; min-height:280px; margin-top:8px; padding:15px; border:1px solid var(--border-color); border-radius:4px; background:var(--output-bg); color:var(--text-color); font-family:'JetBrains Mono','Courier New',monospace; font-size:12px; line-height:1.5; white-space:pre; overflow-x:auto; resize:vertical;" placeholder="Generated 1036 config will appear here..."></textarea>
+                            <h3 style="margin-top:18px;">Backhaul Port Map</h3>
+                            <textarea id="ftthSitePortMapOutput" readonly style="width:100%; min-height:180px; margin-top:8px; padding:15px; border:1px solid var(--border-color); border-radius:4px; background:var(--output-bg); color:var(--text-color); font-family:'JetBrains Mono','Courier New',monospace; font-size:12px; line-height:1.5; white-space:pre; overflow-x:auto; resize:vertical;" placeholder="Backhaul port map will appear here..."></textarea>
+                        </div>
+                    </div>
+
+                    <div id="ftth-home-isd-fiber-section" class="ftth-home-section">
+                        <div class="section">
+                            <h2>ISD FIBER</h2>
+                            <p style="color: var(--text-color-secondary); margin-bottom: 16px;">
+                                Generate the ISD fiber router config and backhaul IP / port map from the old toolbox workflow.
+                            </p>
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                                <div><label for="ftthIsdRouterType">Router Type</label><select id="ftthIsdRouterType"><option value="2004" selected>CCR2004</option><option value="1072">CCR1072</option><option value="1036">CCR1036</option><option value="1009">RB1009</option></select></div>
+                                <div><label for="ftthIsdRouteros">RouterOS</label><input type="text" id="ftthIsdRouteros" value="7.19.4"></div>
+                                <div><label for="ftthIsdTowerName">Tower Name</label><input type="text" id="ftthIsdTowerName" placeholder="TX-MARLIN-W-FC-2"></div>
+                                <div><label for="ftthIsdTowerGps">Tower GPS</label><input type="text" id="ftthIsdTowerGps" placeholder="30.1234,-96.1234"></div>
+                                <div><label for="ftthIsdLoopback">Loopback /32</label><input type="text" id="ftthIsdLoopback" placeholder="10.26.0.7/32"></div>
+                                <div><label for="ftthIsdBh1Subnet">BH1 Subnet</label><input type="text" id="ftthIsdBh1Subnet" placeholder="10.25.10.0/29"></div>
+                                <div><label for="ftthIsdPrivateSubnet">Private IP Subnet</label><input type="text" id="ftthIsdPrivateSubnet" placeholder="10.50.0.0/24"></div>
+                                <div><label for="ftthIsdPublicSubnet">Public IP Subnet</label><input type="text" id="ftthIsdPublicSubnet" placeholder="198.51.100.0/29"></div>
+                                <div><label for="ftthIsdFiberProvider">Fiber Provider</label><input type="text" id="ftthIsdFiberProvider" placeholder="ATT"></div>
+                                <div><label for="ftthIsdFiberPort">Fiber Port</label><select id="ftthIsdFiberPort"></select></div>
+                                <div><label for="ftthIsdFiberAddress">Fiber Port IP / CIDR</label><input type="text" id="ftthIsdFiberAddress" placeholder="10.42.10.2/30"></div>
+                                <div><label for="ftthIsdFiberVlanMode">Fiber VLAN Mode</label><select id="ftthIsdFiberVlanMode"><option value="none" selected>No VLAN</option><option value="tagged">Tagged VLAN</option></select></div>
+                                <div><label for="ftthIsdFiberVlanId">Fiber VLAN ID</label><input type="number" id="ftthIsdFiberVlanId" placeholder="300" min="1" max="4094"></div>
+                            </div>
+                            <label style="display:flex; align-items:center; gap:8px; margin-top: 14px; cursor:pointer;">
+                                <input type="checkbox" id="ftthIsdApplyCompliance" checked>
+                                <span>Apply Nextlink compliance blocks</span>
+                            </label>
+                            <div class="section" style="margin-top: 18px;">
+                                <h3 style="margin-top: 0;">Backhauls</h3>
+                                <div id="ftthIsdBackhauls"></div>
+                                <button type="button" onclick="addFtthFiberBackhaulRow('ftthIsdBackhauls', document.getElementById('ftthIsdRouterType')?.value || '2004')" style="background: #2196F3; color: white; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer;">Add Backhaul</button>
+                            </div>
+                            <div style="margin-top: 16px; display:flex; gap:10px; flex-wrap:wrap;">
+                                <button type="button" onclick="generateFtthIsdFiberConfig()" style="background: var(--accent-color); color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">Generate ISD Fiber Config</button>
+                                <button type="button" onclick="copyFtthIsdFiberBundle()" style="background: #2196F3; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">Copy Bundle</button>
+                                <button type="button" onclick="downloadFtthIsdFiberBundle()" style="background: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">Download Bundle</button>
+                            </div>
+                            <div id="ftthIsdStatus" style="display:none; margin-top: 12px; padding: 10px 12px; border-radius: 6px; font-size: 13px;"></div>
+                            <h3 style="margin-top:18px;">ISD Fiber Config</h3>
+                            <textarea id="ftthIsdConfigOutput" readonly style="width:100%; min-height:320px; margin-top:8px; padding:15px; border:1px solid var(--border-color); border-radius:4px; background:var(--output-bg); color:var(--text-color); font-family:'JetBrains Mono','Courier New',monospace; font-size:12px; line-height:1.5; white-space:pre; overflow-x:auto; resize:vertical;" placeholder="Generated ISD fiber config will appear here..."></textarea>
+                            <h3 style="margin-top:18px;">Backhaul Port Map</h3>
+                            <textarea id="ftthIsdPortMapOutput" readonly style="width:100%; min-height:180px; margin-top:8px; padding:15px; border:1px solid var(--border-color); border-radius:4px; background:var(--output-bg); color:var(--text-color); font-family:'JetBrains Mono','Courier New',monospace; font-size:12px; line-height:1.5; white-space:pre; overflow-x:auto; resize:vertical;" placeholder="Backhaul port map will appear here..."></textarea>
                         </div>
                     </div>
                 </div>
@@ -27328,6 +27439,282 @@ Ready for translation!`);
             URL.revokeObjectURL(url);
         };
 
+        function setFtthFiberStatus(elementId, message, ok) {
+            const statusEl = document.getElementById(elementId);
+            if (!statusEl) return;
+            statusEl.style.display = 'block';
+            statusEl.textContent = message;
+            statusEl.style.background = ok ? 'rgba(76,175,80,0.08)' : 'rgba(244,67,54,0.08)';
+            statusEl.style.border = ok ? '1px solid rgba(76,175,80,0.28)' : '1px solid rgba(244,67,54,0.28)';
+        }
+
+        window.addFtthFiberBackhaulRow = function (containerId, routerType) {
+            const host = document.getElementById(containerId);
+            if (!host) return;
+            const family = ['1009', '1036'].includes(String(routerType || '').trim()) ? 'ether' : 'sfp-sfpplus';
+            const row = document.createElement('div');
+            row.className = 'ftth-fiber-backhaul-row';
+            row.style.cssText = 'display:grid; grid-template-columns: 1fr 1.3fr 1.3fr 0.9fr 1fr auto; gap:10px; margin-bottom:10px; align-items:end;';
+            row.innerHTML = `
+                <div>
+                    <label>Port</label>
+                    <input type="text" class="ftth-fiber-bh-port" placeholder="${family}3">
+                </div>
+                <div>
+                    <label>Name</label>
+                    <input type="text" class="ftth-fiber-bh-name" placeholder="BH-TO-SITE-A">
+                </div>
+                <div>
+                    <label>Subnet</label>
+                    <input type="text" class="ftth-fiber-bh-subnet" placeholder="10.25.10.16/29">
+                </div>
+                <div>
+                    <label>Master</label>
+                    <select class="ftth-fiber-bh-master">
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Bandwidth</label>
+                    <input type="text" class="ftth-fiber-bh-bandwidth" placeholder="1G">
+                </div>
+                <button type="button" onclick="removeFtthFiberBackhaulRow(this)" style="background:#6c757d; color:#fff; padding:8px 10px; border:none; border-radius:4px; cursor:pointer;">Remove</button>
+            `;
+            host.appendChild(row);
+        };
+
+        window.removeFtthFiberBackhaulRow = function (buttonEl) {
+            buttonEl?.closest('.ftth-fiber-backhaul-row')?.remove();
+        };
+
+        function collectFtthFiberBackhauls(containerId) {
+            const host = document.getElementById(containerId);
+            if (!host) return [];
+            return Array.from(host.querySelectorAll('.ftth-fiber-backhaul-row')).map((row) => ({
+                port: row.querySelector('.ftth-fiber-bh-port')?.value?.trim() || '',
+                name: row.querySelector('.ftth-fiber-bh-name')?.value?.trim() || '',
+                subnet: row.querySelector('.ftth-fiber-bh-subnet')?.value?.trim() || '',
+                master: row.querySelector('.ftth-fiber-bh-master')?.value || 'yes',
+                bandwidth: row.querySelector('.ftth-fiber-bh-bandwidth')?.value?.trim() || ''
+            })).filter((row) => row.port || row.name || row.subnet);
+        }
+
+        function buildFtthFiberSiteBundle() {
+            const a = document.getElementById('ftthSite1072Output')?.value || '';
+            const b = document.getElementById('ftthSite1036Output')?.value || '';
+            const c = document.getElementById('ftthSitePortMapOutput')?.value || '';
+            return [`# ===== 1072 CONFIG =====`, a.trim(), '', `# ===== 1036 CONFIG =====`, b.trim(), '', `# ===== BACKHAUL PORT MAP =====`, c.trim(), '']
+                .filter(Boolean).join('\n');
+        }
+
+        function buildFtthIsdFiberBundle() {
+            const a = document.getElementById('ftthIsdConfigOutput')?.value || '';
+            const b = document.getElementById('ftthIsdPortMapOutput')?.value || '';
+            return [`# ===== ISD FIBER CONFIG =====`, a.trim(), '', `# ===== BACKHAUL PORT MAP =====`, b.trim(), '']
+                .filter(Boolean).join('\n');
+        }
+
+        function downloadTextAsFile(text, filename) {
+            if (!text) return;
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        window.generateFtthFiberSiteConfig = async function () {
+            const payload = {
+                tower_name: document.getElementById('ftthSiteTowerName')?.value?.trim() || '',
+                tower_gps: document.getElementById('ftthSiteTowerGps')?.value?.trim() || '',
+                asn: document.getElementById('ftthSiteAsn')?.value?.trim() || '26077',
+                routeros_1072: document.getElementById('ftthSiteRouteros1072')?.value?.trim() || '7.19.4',
+                loopback_1072: document.getElementById('ftthSiteLoopback1072')?.value?.trim() || '',
+                loopback_1036: document.getElementById('ftthSiteLoopback1036')?.value?.trim() || '',
+                bh1_subnet: document.getElementById('ftthSiteBh1Subnet')?.value?.trim() || '',
+                link_1072_1036_a: document.getElementById('ftthSiteLinkA')?.value?.trim() || '',
+                link_1072_1036_b: document.getElementById('ftthSiteLinkB')?.value?.trim() || '',
+                cpe_subnet: document.getElementById('ftthSiteCpeSubnet')?.value?.trim() || '',
+                unauth_subnet: document.getElementById('ftthSiteUnauthSubnet')?.value?.trim() || '',
+                cgn_priv_subnet: document.getElementById('ftthSiteCgnPrivSubnet')?.value?.trim() || '',
+                cgn_pub_ip: document.getElementById('ftthSiteCgnPubIp')?.value?.trim() || '',
+                fiber_provider: document.getElementById('ftthSiteFiberProvider')?.value?.trim() || '',
+                fiber_port: document.getElementById('ftthSiteFiberPort')?.value?.trim() || 'sfp-sfpplus8',
+                fiber_port_ip: document.getElementById('ftthSiteFiberAddress')?.value?.trim() || '',
+                fiber_vlan_mode: document.getElementById('ftthSiteFiberVlanMode')?.value || 'none',
+                fiber_vlan_id: document.getElementById('ftthSiteFiberVlanId')?.value?.trim() || '',
+                peer1_name: document.getElementById('ftthSitePeer1Name')?.value?.trim() || 'CR7',
+                peer1_ip: document.getElementById('ftthSitePeer1Ip')?.value?.trim() || '10.2.0.107',
+                peer2_name: document.getElementById('ftthSitePeer2Name')?.value?.trim() || 'CR8',
+                peer2_ip: document.getElementById('ftthSitePeer2Ip')?.value?.trim() || '10.2.0.108',
+                apply_compliance: !!document.getElementById('ftthSiteApplyCompliance')?.checked,
+                backhauls: collectFtthFiberBackhauls('ftthSiteBackhauls')
+            };
+            try {
+                setFtthFiberStatus('ftthSiteStatus', 'Generating 1072/1036 fiber site configs...', true);
+                const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : (window.AI_API_BASE || '/api');
+                const resp = await fetch(`${apiBase.replace(/\/+$/, '')}/generate-ftth-fiber-site`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const body = await resp.json().catch(() => ({}));
+                if (!resp.ok || !body.success) throw new Error(body.error || `Request failed with status ${resp.status}`);
+                document.getElementById('ftthSite1072Output').value = String(body.router_1072_config || '').trim() + '\n';
+                document.getElementById('ftthSite1036Output').value = String(body.router_1036_config || '').trim() + '\n';
+                document.getElementById('ftthSitePortMapOutput').value = String(body.port_map || '').trim() + '\n';
+                const note = body.compliance_source ? ` Compliance source: ${body.compliance_source}.` : '';
+                setFtthFiberStatus('ftthSiteStatus', `1072/1036 fiber site configs generated.${note}`, true);
+                if (typeof saveCompletedConfig === 'function') {
+                    saveCompletedConfig({
+                        config_type: 'ftth-fiber-site',
+                        device_name: payload.tower_name,
+                        device_type: 'MikroTik 1072/1036 Fiber Site',
+                        customer_code: payload.tower_name,
+                        loopback_ip: payload.loopback_1072,
+                        config_content: buildFtthFiberSiteBundle(),
+                        site_name: payload.tower_name,
+                        metadata: payload
+                    });
+                }
+                if (typeof window.sendActivityToBackend === 'function') {
+                    window.sendActivityToBackend({
+                        type: 'new-config',
+                        device: 'MikroTik 1072/1036 Fiber Site',
+                        siteName: payload.tower_name,
+                        routeros: payload.routeros_1072,
+                        success: true
+                    });
+                }
+                if (typeof window.saveConfigToHistory === 'function') {
+                    window.saveConfigToHistory({
+                        type: 'ftth-fiber-site',
+                        device: 'MikroTik 1072/1036 Fiber Site',
+                        siteName: payload.tower_name,
+                        routeros: payload.routeros_1072,
+                        success: true
+                    });
+                }
+            } catch (error) {
+                console.error('[FTTH FIBER SITE] Generation failed:', error);
+                setFtthFiberStatus('ftthSiteStatus', error?.message || 'Failed to generate 1072/1036 fiber site configs.', false);
+            }
+        };
+
+        window.copyFtthFiberSiteBundle = async function () {
+            const text = buildFtthFiberSiteBundle();
+            if (!text.trim()) return;
+            await navigator.clipboard.writeText(text);
+        };
+
+        window.downloadFtthFiberSiteBundle = function () {
+            const name = (document.getElementById('ftthSiteTowerName')?.value || 'fiber_site').trim().replace(/[^A-Za-z0-9._-]+/g, '_');
+            downloadTextAsFile(buildFtthFiberSiteBundle(), `${name || 'fiber_site'}_1072_1036_bundle.rsc`);
+        };
+
+        window.updateFtthIsdFiberPortOptions = function () {
+            const routerType = (document.getElementById('ftthIsdRouterType')?.value || '2004').trim();
+            const select = document.getElementById('ftthIsdFiberPort');
+            if (!select) return;
+            const deviceKey = routerType === '1009' ? 'rb1009' : `ccr${routerType}`;
+            const ports = typeof getDevicePortOptions === 'function' ? getDevicePortOptions(deviceKey) : [];
+            select.innerHTML = '';
+            ports.forEach((portName) => {
+                const option = document.createElement('option');
+                option.value = portName;
+                option.textContent = portName;
+                select.appendChild(option);
+            });
+            if (ports.length) {
+                const preferred = window.getFtthFiberPreferredPort(deviceKey);
+                select.value = ports.includes(preferred) ? preferred : ports[0];
+            }
+        };
+
+        window.generateFtthIsdFiberConfig = async function () {
+            const payload = {
+                router_type: document.getElementById('ftthIsdRouterType')?.value || '2004',
+                routeros: document.getElementById('ftthIsdRouteros')?.value?.trim() || '7.19.4',
+                tower_name: document.getElementById('ftthIsdTowerName')?.value?.trim() || '',
+                tower_gps: document.getElementById('ftthIsdTowerGps')?.value?.trim() || '',
+                loopback_subnet: document.getElementById('ftthIsdLoopback')?.value?.trim() || '',
+                bh1_subnet: document.getElementById('ftthIsdBh1Subnet')?.value?.trim() || '',
+                private_ip: document.getElementById('ftthIsdPrivateSubnet')?.value?.trim() || '',
+                public_ip: document.getElementById('ftthIsdPublicSubnet')?.value?.trim() || '',
+                fiber_provider: document.getElementById('ftthIsdFiberProvider')?.value?.trim() || '',
+                fiber_port: document.getElementById('ftthIsdFiberPort')?.value?.trim() || '',
+                fiber_port_ip: document.getElementById('ftthIsdFiberAddress')?.value?.trim() || '',
+                has_vlan: document.getElementById('ftthIsdFiberVlanMode')?.value === 'tagged',
+                fiber_vlan_num: document.getElementById('ftthIsdFiberVlanId')?.value?.trim() || '',
+                apply_compliance: !!document.getElementById('ftthIsdApplyCompliance')?.checked,
+                backhauls: collectFtthFiberBackhauls('ftthIsdBackhauls')
+            };
+            try {
+                setFtthFiberStatus('ftthIsdStatus', 'Generating ISD fiber config...', true);
+                const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : (window.AI_API_BASE || '/api');
+                const resp = await fetch(`${apiBase.replace(/\/+$/, '')}/generate-ftth-isd-fiber`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const body = await resp.json().catch(() => ({}));
+                if (!resp.ok || !body.success) throw new Error(body.error || `Request failed with status ${resp.status}`);
+                document.getElementById('ftthIsdConfigOutput').value = String(body.config || '').trim() + '\n';
+                document.getElementById('ftthIsdPortMapOutput').value = String(body.port_map || '').trim() + '\n';
+                const note = body.compliance_source ? ` Compliance source: ${body.compliance_source}.` : '';
+                setFtthFiberStatus('ftthIsdStatus', `ISD fiber config generated.${note}`, true);
+                if (typeof saveCompletedConfig === 'function') {
+                    saveCompletedConfig({
+                        config_type: 'ftth-isd-fiber',
+                        device_name: payload.tower_name,
+                        device_type: 'MikroTik ISD Fiber',
+                        customer_code: payload.tower_name,
+                        loopback_ip: payload.loopback_subnet,
+                        config_content: buildFtthIsdFiberBundle(),
+                        site_name: payload.tower_name,
+                        metadata: payload
+                    });
+                }
+                if (typeof window.sendActivityToBackend === 'function') {
+                    window.sendActivityToBackend({
+                        type: 'new-config',
+                        device: 'MikroTik ISD Fiber',
+                        siteName: payload.tower_name,
+                        routeros: payload.routeros,
+                        success: true
+                    });
+                }
+                if (typeof window.saveConfigToHistory === 'function') {
+                    window.saveConfigToHistory({
+                        type: 'ftth-isd-fiber',
+                        device: 'MikroTik ISD Fiber',
+                        siteName: payload.tower_name,
+                        routeros: payload.routeros,
+                        success: true
+                    });
+                }
+            } catch (error) {
+                console.error('[FTTH ISD FIBER] Generation failed:', error);
+                setFtthFiberStatus('ftthIsdStatus', error?.message || 'Failed to generate ISD fiber config.', false);
+            }
+        };
+
+        window.copyFtthIsdFiberBundle = async function () {
+            const text = buildFtthIsdFiberBundle();
+            if (!text.trim()) return;
+            await navigator.clipboard.writeText(text);
+        };
+
+        window.downloadFtthIsdFiberBundle = function () {
+            const name = (document.getElementById('ftthIsdTowerName')?.value || 'isd_fiber').trim().replace(/[^A-Za-z0-9._-]+/g, '_');
+            downloadTextAsFile(buildFtthIsdFiberBundle(), `${name || 'isd_fiber'}_bundle.rsc`);
+        };
+
         window.generateCiscoConfig = function () {
             const desc = (document.getElementById('ciscoPortDesc')?.value || '').trim();
             const type = (document.getElementById('ciscoPortType')?.value || 'TenGigE').trim();
@@ -27475,12 +27862,36 @@ Ready for translation!`);
                 ftthFiberBoard.addEventListener('change', window.updateFtthFiberPortOptions);
                 ftthFiberBoard.dataset.bound = '1';
             }
+            const ftthIsdType = document.getElementById('ftthIsdRouterType');
+            if (ftthIsdType && !ftthIsdType.dataset.bound) {
+                ftthIsdType.addEventListener('change', window.updateFtthIsdFiberPortOptions);
+                ftthIsdType.dataset.bound = '1';
+            }
             window.updateFtthFiberPortOptions();
+            if (typeof window.updateFtthIsdFiberPortOptions === 'function') window.updateFtthIsdFiberPortOptions();
+            const siteFiberPort = document.getElementById('ftthSiteFiberPort');
+            if (siteFiberPort && !siteFiberPort.options.length) {
+                const ports = typeof getDevicePortOptions === 'function' ? getDevicePortOptions('ccr1072') : [];
+                ports.forEach((portName) => {
+                    const option = document.createElement('option');
+                    option.value = portName;
+                    option.textContent = portName;
+                    siteFiberPort.appendChild(option);
+                });
+                if (ports.includes('sfp-sfpplus8')) siteFiberPort.value = 'sfp-sfpplus8';
+            }
+            if (!document.querySelector('#ftthSiteBackhauls .ftth-fiber-backhaul-row')) {
+                window.addFtthFiberBackhaulRow('ftthSiteBackhauls', '1072');
+            }
+            if (!document.querySelector('#ftthIsdBackhauls .ftth-fiber-backhaul-row')) {
+                window.addFtthFiberBackhaulRow('ftthIsdBackhauls', ftthIsdType?.value || '2004');
+            }
         });
         window.addEventListener('load', () => {
             if (typeof initFtthHomeTabs === 'function') initFtthHomeTabs();
             if (typeof initCommandVaultTabs === 'function') initCommandVaultTabs();
             if (typeof window.updateFtthFiberPortOptions === 'function') window.updateFtthFiberPortOptions();
+            if (typeof window.updateFtthIsdFiberPortOptions === 'function') window.updateFtthIsdFiberPortOptions();
         });
 
         // ========================================

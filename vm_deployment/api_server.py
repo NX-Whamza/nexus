@@ -13110,6 +13110,8 @@ _API_REGISTRY = [
     {"method": "POST", "path": "/api/gen-ftth-bng",          "category": "FTTH BNG",          "summary": "Alternate FTTH BNG input contract",         "payload": {"loopback_ip": "str", "cpe_cidr": "str", "cgnat_cidr": "str"}},
     {"method": "POST", "path": "/api/preview-ftth-bng",      "category": "FTTH BNG",          "summary": "Preview FTTH CIDR details (no config gen)", "payload": {"loopback_ip": "str", "cpe_cidr": "str", "cgnat_cidr": "str"}},
     {"method": "POST", "path": "/api/generate-ftth-fiber-customer", "category": "FTTH BNG",   "summary": "Generate FTTH fiber customer handoff config", "payload": {"routerboard": "str", "routeros": "str", "provider": "str", "port?": "str", "address": "str", "network": "str", "loopback_ip?": "str", "vlan_mode?": "none|tagged", "vlan_id?": "str", "apply_compliance?": "bool"}},
+    {"method": "POST", "path": "/api/generate-ftth-fiber-site", "category": "FTTH BNG",       "summary": "Generate paired 1072/1036 fiber site configs", "payload": {"tower_name": "str", "loopback_1072": "str", "loopback_1036": "str", "bh1_subnet": "str", "link_1072_1036_a": "str", "link_1072_1036_b": "str", "fiber_port_ip": "str", "backhauls?": "array", "apply_compliance?": "bool"}},
+    {"method": "POST", "path": "/api/generate-ftth-isd-fiber", "category": "FTTH BNG",        "summary": "Generate ISD fiber config + port map", "payload": {"router_type": "str", "tower_name": "str", "loopback_subnet": "str", "private_ip": "str", "public_ip": "str", "fiber_port_ip": "str", "backhauls?": "array", "apply_compliance?": "bool"}},
     {"method": "POST", "path": "/api/ftth-home/mf2-package", "category": "FTTH BNG",          "summary": "Generate MF2 ZIP package",                  "payload": {"gateway_ip": "str", "primary_ip": "str"}},
     # ── Nokia 7250 ──
     {"method": "GET",  "path": "/api/nokia7250-defaults",    "category": "Nokia 7250",        "summary": "Nokia credentials/secrets from env"},
@@ -16785,6 +16787,467 @@ def generate_ftth_fiber_customer():
         'base_config': base_config,
         'metadata': metadata,
         'selected_port': metadata.get('port'),
+        'compliance': compliance_validation,
+        'compliance_source': compliance_source,
+        'warnings': warnings,
+    })
+
+
+def _boolish(value) -> bool:
+    return str(value or '').strip().lower() in {'1', 'true', 'yes', 'y', 'master'}
+
+
+def _normalize_router_type(value: str) -> str:
+    normalized = str(value or '').strip().lower()
+    aliases = {
+        '1009': '1009',
+        'rb1009': '1009',
+        '1036': '1036',
+        'ccr1036': '1036',
+        '1072': '1072',
+        'ccr1072': '1072',
+        '2004': '2004',
+        'ccr2004': '2004',
+    }
+    return aliases.get(normalized, normalized)
+
+
+def _router_port_family(router_type: str) -> str:
+    return 'ether' if _normalize_router_type(router_type) in {'1009', '1036'} else 'sfp-sfpplus'
+
+
+def _normalize_backhaul_interface(port_value: str, router_type: str) -> str:
+    raw = str(port_value or '').strip()
+    if not raw:
+        raise ValueError('Backhaul port is required')
+    if re.fullmatch(r'\d+', raw):
+        return f'{_router_port_family(router_type)}{raw}'
+    return raw
+
+
+def _ip_at_offset(network: ipaddress.IPv4Network, offset: int) -> str:
+    return str(network.network_address + offset)
+
+
+def _range_value(network: ipaddress.IPv4Network, offset_from_start: int, fallback_to_last_usable: bool = True) -> str:
+    hosts = list(network.hosts())
+    if not hosts:
+        raise ValueError(f'Network {network} has no usable host addresses')
+    if offset_from_start < len(hosts):
+        return str(hosts[offset_from_start])
+    if fallback_to_last_usable:
+        return str(hosts[-1])
+    raise ValueError(f'Network {network} does not contain host offset {offset_from_start}')
+
+
+def _parse_backhaul_rows(backhauls, router_type: str):
+    parsed = []
+    for idx, item in enumerate(backhauls or [], start=1):
+        name = str((item or {}).get('name', '')).strip()
+        subnet_text = str((item or {}).get('subnet', '')).strip()
+        port_value = str((item or {}).get('port', '')).strip()
+        if not name or not subnet_text or not port_value:
+            raise ValueError(f'Backhaul row {idx} requires port, name, and subnet')
+        try:
+            subnet = ipaddress.ip_network(subnet_text, strict=False)
+        except ValueError as exc:
+            raise ValueError(f'Backhaul row {idx} has invalid subnet: {exc}') from exc
+        if subnet.version != 4:
+            raise ValueError(f'Backhaul row {idx} must use IPv4 subnetting')
+        interface_name = _normalize_backhaul_interface(port_value, router_type)
+        is_master = _boolish((item or {}).get('master'))
+        offset = 1 if is_master else 4
+        interface_ip = _ip_at_offset(subnet, offset)
+        parsed.append({
+            'index': idx,
+            'name': name,
+            'subnet': subnet,
+            'interface': interface_name,
+            'interface_ip': interface_ip,
+            'master': is_master,
+            'bandwidth': str((item or {}).get('bandwidth', '')).strip(),
+        })
+    return parsed
+
+
+def _render_backhaul_sections(backhauls):
+    config_lines = []
+    portmap_lines = [
+        '===================================================================',
+        'BH IPs/Port Map',
+        '===================================================================',
+        '',
+    ]
+    for backhaul in backhauls:
+        config_lines.extend([
+            '# Setup IP Address/Interface Comment',
+            '/interface ethernet',
+            f'set [ find default-name="{backhaul["interface"]}" ] comment="{backhaul["name"]}"',
+            '',
+            '/ip address',
+            f'add address={backhaul["interface_ip"]}/{backhaul["subnet"].prefixlen} interface={backhaul["interface"]} comment="{backhaul["name"]}"',
+            '',
+            '# OSPF SETTINGS',
+            '/routing ospf interface-template',
+            f'add area=backbone-v2 auth=md5 auth-id=1 auth-key=m8M5JwvdYM cost=10 disabled=no interfaces="{backhaul["interface"]}" networks={backhaul["subnet"].with_prefixlen} priority=1 type=ptp comment="{backhaul["name"]}"',
+            '',
+        ])
+
+        masterbh_int = _ip_at_offset(backhaul['subnet'], 1)
+        masterbh = _ip_at_offset(backhaul['subnet'], 2)
+        slavebh = _ip_at_offset(backhaul['subnet'], 3)
+        slavebh_int = _ip_at_offset(backhaul['subnet'], 4)
+        towername = backhaul['name'] if not backhaul['master'] else 'LOCAL'
+        bhname = 'LOCAL' if not backhaul['master'] else backhaul['name']
+        portmap_lines.extend([
+            f'{towername}.{backhaul["interface"]}: {masterbh_int}/{backhaul["subnet"].prefixlen}',
+            f'{bhname}-{towername}: {masterbh}/{backhaul["subnet"].prefixlen}',
+            f'{towername}-{bhname}: {slavebh}/{backhaul["subnet"].prefixlen}',
+            f'{bhname}.{backhaul["interface"]}: {slavebh_int}/{backhaul["subnet"].prefixlen}',
+            '',
+        ])
+    return '\n'.join(config_lines).strip() + ('\n' if config_lines else ''), '\n'.join(portmap_lines).strip() + '\n'
+
+
+def _apply_optional_compliance_to_config(config_text: str, loopback_ip: str, apply_flag: bool):
+    if not apply_flag:
+        return config_text, None, None, []
+    if not loopback_ip:
+        raise ValueError('loopback_ip is required when apply_compliance is enabled')
+
+    warnings = []
+    rendered = config_text
+    compliance_validation = None
+    compliance_source = None
+    compliance_blocks, compliance_source = _get_dynamic_compliance_blocks(loopback_ip, return_source=True)
+    if compliance_blocks:
+        rendered = inject_compliance_blocks(config_text, compliance_blocks, loopback_ip=loopback_ip)
+        if HAS_COMPLIANCE:
+            try:
+                compliance_validation = validate_compliance(rendered)
+            except Exception as exc:
+                warnings.append(f'Compliance validation failed: {exc}')
+    else:
+        warnings.append('No compliance blocks were available to append.')
+    return rendered, compliance_validation, compliance_source, warnings
+
+
+def _build_ftth_1072_config(data: dict, backhauls):
+    tower_name = str(data.get('tower_name', '')).strip()
+    if not tower_name:
+        raise ValueError('tower_name is required')
+    asn = str(data.get('asn', '26077')).strip() or '26077'
+    gps = str(data.get('tower_gps', '')).strip()
+    loopback = ipaddress.ip_interface(str(data.get('loopback_1072', '')).strip())
+    bh1 = ipaddress.ip_network(str(data.get('bh1_subnet', '')).strip(), strict=False)
+    uplink1 = ipaddress.ip_network(str(data.get('link_1072_1036_a', '')).strip(), strict=False)
+    uplink2 = ipaddress.ip_network(str(data.get('link_1072_1036_b', '')).strip(), strict=False)
+    peer1_name = str(data.get('peer1_name', 'CR7')).strip() or 'CR7'
+    peer1 = str(data.get('peer1_ip', '10.2.0.107')).strip() or '10.2.0.107'
+    peer2_name = str(data.get('peer2_name', 'CR8')).strip() or 'CR8'
+    peer2 = str(data.get('peer2_ip', '10.2.0.108')).strip() or '10.2.0.108'
+
+    fiber_config, _meta = _build_ftth_fiber_customer_base_config({
+        'routerboard': 'ccr1072',
+        'routeros': data.get('routeros_1072', '7.19.4'),
+        'provider': data.get('fiber_provider', ''),
+        'port': data.get('fiber_port', 'sfp-sfpplus8'),
+        'address': data.get('fiber_port_ip', ''),
+        'network': data.get('fiber_port_ip', ''),
+        'vlan_mode': data.get('fiber_vlan_mode', 'none'),
+        'vlan_id': data.get('fiber_vlan_id', ''),
+        'loopback_ip': str(loopback),
+    })
+
+    backhaul_section, port_map = _render_backhaul_sections(backhauls)
+    lines = [
+        f'# 1072 FIBER SITE CONFIG - {tower_name}',
+        '/system identity',
+        f'set name=RTR-MTCCR1072-1.{tower_name}',
+        '',
+        '/interface bridge',
+        'add name=loop0',
+        '',
+        '/ip address',
+        f'add address={loopback.with_prefixlen} interface=loop0 comment=loop0',
+        '',
+        '/routing ospf instance',
+        f'add disabled=no name=default-v2 router-id={loopback.ip}',
+        '',
+        '/routing ospf area',
+        'add disabled=no instance=default-v2 name=backbone-v2 area-id=0.0.0.0',
+        '',
+        '/routing ospf interface-template',
+        f'add area=backbone-v2 cost=10 disabled=no interfaces=loop0 networks={loopback.with_prefixlen} passive priority=1 comment="loop0"',
+        '',
+        '/routing bgp template',
+        f'set default as={asn} disabled=no multihop=yes output.network=bgp-networks router-id={loopback.ip} routing-table=main',
+        '',
+        '/routing bgp connection',
+        f'add cisco-vpls-nlri-len-fmt=auto-bits connect=yes listen=yes local.address={loopback.ip} .role=ibgp multihop=yes name={peer1_name} remote.address={peer1} .as={asn} .port=179 templates=default tcp-md5-key=m8M5JwvdYM',
+        f'add cisco-vpls-nlri-len-fmt=auto-bits connect=yes listen=yes local.address={loopback.ip} .role=ibgp multihop=yes name={peer2_name} remote.address={peer2} .as={asn} .port=179 templates=default tcp-md5-key=m8M5JwvdYM',
+        '',
+        '# UPLINKS TO 1036',
+        '/interface ethernet',
+        f'set [ find default-name="sfp-sfpplus1" ] comment="CCR1036-1.{tower_name} sfp1"',
+        f'set [ find default-name="sfp-sfpplus2" ] comment="CCR1036-1.{tower_name} sfp2"',
+        '',
+        '/ip address',
+        f'add address={_ip_at_offset(uplink1, 1)}/{uplink1.prefixlen} interface=sfp-sfpplus1 comment="CCR1036-1.{tower_name} sfp1"',
+        f'add address={_ip_at_offset(uplink2, 1)}/{uplink2.prefixlen} interface=sfp-sfpplus2 comment="CCR1036-1.{tower_name} sfp2"',
+        '',
+        '/routing ospf interface-template',
+        f'add area=backbone-v2 auth=md5 auth-id=1 auth-key=m8M5JwvdYM cost=10 disabled=no interfaces="sfp-sfpplus1" networks={uplink1.with_prefixlen} priority=1 type=ptp comment="CCR1036-1.{tower_name} sfp1"',
+        f'add area=backbone-v2 auth=md5 auth-id=1 auth-key=m8M5JwvdYM cost=10 disabled=no interfaces="sfp-sfpplus2" networks={uplink2.with_prefixlen} priority=1 type=ptp comment="CCR1036-1.{tower_name} sfp2"',
+        '',
+        fiber_config.strip(),
+        '',
+        '# BACKHAULS',
+        backhaul_section.strip(),
+        '',
+        f'# Gateway reference: { _ip_at_offset(bh1, 1) }',
+    ]
+    if gps:
+        lines.insert(1, f'# GPS: {gps}')
+    return '\n'.join([line for line in lines if line is not None]).strip() + '\n', str(loopback), port_map
+
+
+def _build_ftth_1036_config(data: dict):
+    tower_name = str(data.get('tower_name', '')).strip()
+    if not tower_name:
+        raise ValueError('tower_name is required')
+    asn = str(data.get('asn', '26077')).strip() or '26077'
+    gps = str(data.get('tower_gps', '')).strip()
+    loopback = ipaddress.ip_interface(str(data.get('loopback_1036', '')).strip())
+    cpe_net = ipaddress.ip_network(str(data.get('cpe_subnet', '')).strip(), strict=False)
+    unauth_net = ipaddress.ip_network(str(data.get('unauth_subnet', '')).strip(), strict=False)
+    cgn_priv = ipaddress.ip_network(str(data.get('cgn_priv_subnet', '')).strip(), strict=False)
+    cgn_pub = str(data.get('cgn_pub_ip', '')).strip()
+    uplink1 = ipaddress.ip_network(str(data.get('link_1072_1036_a', '')).strip(), strict=False)
+    uplink2 = ipaddress.ip_network(str(data.get('link_1072_1036_b', '')).strip(), strict=False)
+    peer1_name = str(data.get('peer1_name', 'CR7')).strip() or 'CR7'
+    peer1 = str(data.get('peer1_ip', '10.2.0.107')).strip() or '10.2.0.107'
+    peer2_name = str(data.get('peer2_name', 'CR8')).strip() or 'CR8'
+    peer2 = str(data.get('peer2_ip', '10.2.0.108')).strip() or '10.2.0.108'
+
+    cpe_ip = _ip_at_offset(cpe_net, 1)
+    unauth_ip = _ip_at_offset(unauth_net, 1)
+    cgn_priv_ip = _ip_at_offset(cgn_priv, 1)
+    lines = [
+        f'# 1036 FIBER SITE CONFIG - {tower_name}',
+        '/system identity',
+        f'set name=RTR-MTCCR1036-1.{tower_name}',
+        '',
+        '/interface bridge',
+        'add name=lan-bridge priority=0x1',
+        'add name=loop0',
+        '',
+        '/interface bridge port',
+        'add bridge=lan-bridge interface=ether5',
+        'add bridge=lan-bridge interface=ether6',
+        '',
+        '/interface ethernet',
+        'set [ find default-name="ether5" ] comment="RPC"',
+        'set [ find default-name="ether6" ] comment="Switch"',
+        'set [ find default-name="ether1" ] comment="to-CCR1072-1"',
+        'set [ find default-name="ether2" ] comment="to-CCR1072-2"',
+        '',
+        '/ip address',
+        f'add address={loopback.with_prefixlen} interface=loop0 comment=loop0',
+        f'add address={cpe_ip}/{cpe_net.prefixlen} interface=lan-bridge comment="CPE/Tower Gear"',
+        f'add address={unauth_ip}/{unauth_net.prefixlen} interface=lan-bridge comment="UNAUTH"',
+        f'add address={cgn_priv_ip}/{cgn_priv.prefixlen} interface=lan-bridge comment="CGNAT Private"',
+        f'add address={_ip_at_offset(uplink1, 2)}/{uplink1.prefixlen} interface=ether1 comment="to-CCR1072-1"',
+        f'add address={_ip_at_offset(uplink2, 2)}/{uplink2.prefixlen} interface=ether2 comment="to-CCR1072-2"',
+        '',
+        '/routing ospf instance',
+        f'add disabled=no name=default-v2 router-id={loopback.ip}',
+        '',
+        '/routing ospf area',
+        'add disabled=no instance=default-v2 name=backbone-v2 area-id=0.0.0.0',
+        '',
+        '/routing ospf interface-template',
+        f'add area=backbone-v2 cost=10 disabled=no interfaces=loop0 networks={loopback.with_prefixlen} passive priority=1 comment="loop0"',
+        f'add area=backbone-v2 cost=10 disabled=no interfaces=lan-bridge networks={cpe_net.with_prefixlen} priority=1 comment="CPE/Tower Gear"',
+        f'add area=backbone-v2 auth=md5 auth-id=1 auth-key=m8M5JwvdYM cost=10 disabled=no interfaces=ether1 networks={uplink1.with_prefixlen} priority=1 type=ptp comment="to-CCR1072-1"',
+        f'add area=backbone-v2 auth=md5 auth-id=1 auth-key=m8M5JwvdYM cost=10 disabled=no interfaces=ether2 networks={uplink2.with_prefixlen} priority=1 type=ptp comment="to-CCR1072-2"',
+        '',
+        '/routing bgp template',
+        f'set default as={asn} disabled=no multihop=yes output.network=bgp-networks router-id={loopback.ip} routing-table=main',
+        '',
+        '/routing bgp connection',
+        f'add cisco-vpls-nlri-len-fmt=auto-bits connect=yes listen=yes local.address={loopback.ip} .role=ibgp multihop=yes name={peer1_name} remote.address={peer1} .as={asn} .port=179 templates=default tcp-md5-key=m8M5JwvdYM',
+        f'add cisco-vpls-nlri-len-fmt=auto-bits connect=yes listen=yes local.address={loopback.ip} .role=ibgp multihop=yes name={peer2_name} remote.address={peer2} .as={asn} .port=179 templates=default tcp-md5-key=m8M5JwvdYM',
+        '',
+        '/ip pool',
+        f'add name=cpe ranges="{_range_value(cpe_net, 49)}-{_range_value(cpe_net, 1021)}"',
+        f'add name=unauth ranges="{_range_value(unauth_net, 1)}-{_range_value(unauth_net, 1021)}"',
+        f'add name=cust ranges="{_range_value(cgn_priv, 2)}-{_range_value(cgn_priv, 1021)}"',
+        '',
+        '/ip dhcp-server',
+        'add address-pool=cust disabled=no interface=lan-bridge lease-time=1h name=server1 use-radius=yes authoritative=yes',
+        '',
+        '/ip dhcp-server network',
+        f'add address={cpe_net.with_prefixlen} dns-server=142.147.112.3,142.147.112.19 gateway={cpe_ip} netmask={cpe_net.prefixlen}',
+        f'add address={unauth_net.with_prefixlen} dns-server=142.147.112.3,142.147.112.19 gateway={unauth_ip} netmask={unauth_net.prefixlen}',
+        f'add address={cgn_priv.with_prefixlen} dns-server=142.147.112.3,142.147.112.19 gateway={cgn_priv_ip} netmask={cgn_priv.prefixlen}',
+    ]
+    if cgn_pub:
+        lines.extend([
+            '',
+            '/interface bridge',
+            'add name=nat-public-bridge',
+            '',
+            '/ip address',
+            f'add address={cgn_pub} interface=nat-public-bridge comment="CGNAT Public"',
+        ])
+    if gps:
+        lines.insert(1, f'# GPS: {gps}')
+    return '\n'.join(lines).strip() + '\n', str(loopback)
+
+
+@app.route('/api/generate-ftth-fiber-site', methods=['POST'])
+def generate_ftth_fiber_site():
+    data = request.get_json(silent=True) or {}
+    try:
+        backhauls = _parse_backhaul_rows(data.get('backhauls', []), '1072')
+        config_1072, loop_1072, port_map = _build_ftth_1072_config(data, backhauls)
+        config_1036, loop_1036 = _build_ftth_1036_config(data)
+        apply_flag = bool(data.get('apply_compliance', True))
+        rendered_1072, compliance_1072, source_1072, warnings_1072 = _apply_optional_compliance_to_config(config_1072, loop_1072, apply_flag)
+        rendered_1036, compliance_1036, source_1036, warnings_1036 = _apply_optional_compliance_to_config(config_1036, loop_1036, apply_flag)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    except Exception as exc:
+        return jsonify({'error': f'Failed to generate FTTH fiber site: {exc}'}), 500
+
+    return jsonify({
+        'success': True,
+        'router_1072_config': rendered_1072,
+        'router_1036_config': rendered_1036,
+        'router_1072_base_config': config_1072,
+        'router_1036_base_config': config_1036,
+        'port_map': port_map,
+        'compliance': {
+            'router_1072': compliance_1072,
+            'router_1036': compliance_1036,
+        },
+        'compliance_source': source_1072 or source_1036,
+        'warnings': warnings_1072 + warnings_1036,
+    })
+
+
+def _build_isd_fiber_config(data: dict, backhauls):
+    router_type = _normalize_router_type(data.get('router_type', '2004'))
+    if router_type not in {'1009', '1036', '1072', '2004'}:
+        raise ValueError('router_type must be one of 1009, 1036, 1072, or 2004')
+    tower_name = str(data.get('tower_name', '')).strip()
+    if not tower_name:
+        raise ValueError('tower_name is required')
+    gps = str(data.get('tower_gps', '')).strip()
+    loopback = ipaddress.ip_interface(str(data.get('loopback_subnet', '')).strip())
+    bh1 = ipaddress.ip_network(str(data.get('bh1_subnet', '')).strip(), strict=False)
+    private_net = ipaddress.ip_network(str(data.get('private_ip', '')).strip(), strict=False)
+    public_net = ipaddress.ip_network(str(data.get('public_ip', '')).strip(), strict=False)
+    fiber_config, _meta = _build_ftth_fiber_customer_base_config({
+        'routerboard': f'ccr{router_type}' if router_type in {'1036', '1072', '2004'} else f'rb{router_type}',
+        'routeros': data.get('routeros', '7.19.4'),
+        'provider': data.get('fiber_provider', ''),
+        'port': data.get('fiber_port', _preferred_ftth_fiber_port(f'ccr{router_type}' if router_type in {'1036', '1072', '2004'} else f'rb{router_type}')),
+        'address': data.get('fiber_port_ip', ''),
+        'network': data.get('fiber_port_ip', ''),
+        'vlan_mode': 'tagged' if _boolish(data.get('has_vlan')) else 'none',
+        'vlan_id': data.get('fiber_vlan_num', ''),
+        'loopback_ip': str(loopback),
+    })
+
+    family = _router_port_family(router_type)
+    backhaul_section, port_map = _render_backhaul_sections(backhauls)
+    lines = [
+        f'# ISD FIBER CONFIG - {tower_name}',
+        '/system identity',
+        f'set name=RTR-MTCCR{router_type}-1.{tower_name}',
+        '',
+        '/interface bridge',
+        'add name=public-bridge priority=0x1',
+        'add name=nat-bridge priority=0x1',
+        'add name=loop0',
+        '',
+        '/interface bridge port',
+        f'add bridge=public-bridge interface={family}7',
+        f'add bridge=nat-bridge interface={family}8',
+        '',
+        '/interface ethernet',
+        f'set [ find default-name="{family}7" ] comment="CX HANDOFF"',
+        f'set [ find default-name="{family}8" ] comment="NAT"',
+        '',
+        '/ip address',
+        f'add address={loopback.with_prefixlen} interface=loop0 comment=loop0',
+        f'add address={_ip_at_offset(public_net, 1)}/{public_net.prefixlen} interface=public-bridge comment="PUBLIC(S)"',
+        f'add address={_ip_at_offset(private_net, 1)}/{private_net.prefixlen} interface=nat-bridge comment="PRIVATES"',
+        '',
+        '/routing ospf instance',
+        f'add disabled=no name=default-v2 router-id={loopback.ip}',
+        '',
+        '/routing ospf area',
+        'add disabled=no instance=default-v2 name=backbone-v2 area-id=0.0.0.0',
+        '',
+        '/routing ospf interface-template',
+        f'add area=backbone-v2 cost=10 disabled=no interfaces=loop0 networks={loopback.with_prefixlen} passive priority=1 comment="loop0"',
+        '',
+        '/routing bgp template',
+        f'set default as=26077 disabled=no multihop=yes output.network=bgp-networks router-id={loopback.ip} routing-table=main',
+        '',
+        '/routing bgp connection',
+        f'add cisco-vpls-nlri-len-fmt=auto-bits connect=yes listen=yes local.address={loopback.ip} .role=ibgp multihop=yes name=CR7 remote.address=10.2.0.107 .as=26077 .port=179 templates=default tcp-md5-key=m8M5JwvdYM',
+        f'add cisco-vpls-nlri-len-fmt=auto-bits connect=yes listen=yes local.address={loopback.ip} .role=ibgp multihop=yes name=CR8 remote.address=10.2.0.108 .as=26077 .port=179 templates=default tcp-md5-key=m8M5JwvdYM',
+        '',
+        '/ip pool',
+        f'add name=public ranges="{_range_value(public_net, 1)}-{_range_value(public_net, max(1, len(list(public_net.hosts())) - 2))}"',
+        f'add name=private ranges="{_range_value(private_net, min(9, max(0, len(list(private_net.hosts())) - 1)))}-{_range_value(private_net, min(253, max(0, len(list(private_net.hosts())) - 1)))}"',
+        '',
+        '/ip dhcp-server',
+        'add address-pool=public disabled=no interface=public-bridge lease-time=1h name=public-server use-radius=no authoritative=yes',
+        'add address-pool=private disabled=no interface=nat-bridge lease-time=1h name=nat-server use-radius=no authoritative=yes',
+        '',
+        '/ip dhcp-server network',
+        f'add address={public_net.with_prefixlen} dns-server=142.147.112.3,142.147.112.19 comment="PUBLIC(S)" gateway={_ip_at_offset(public_net, 1)} netmask={public_net.prefixlen}',
+        f'add address={private_net.with_prefixlen} dns-server=142.147.112.3,142.147.112.19 comment="PRIVATES" gateway={_ip_at_offset(private_net, 1)} netmask={private_net.prefixlen}',
+        '',
+        fiber_config.strip(),
+        '',
+        '# BACKHAULS',
+        backhaul_section.strip(),
+        '',
+        f'# Gateway reference: { _ip_at_offset(bh1, 1) }',
+    ]
+    if gps:
+        lines.insert(1, f'# GPS: {gps}')
+    return '\n'.join([line for line in lines if line is not None]).strip() + '\n', str(loopback), port_map
+
+
+@app.route('/api/generate-ftth-isd-fiber', methods=['POST'])
+def generate_ftth_isd_fiber():
+    data = request.get_json(silent=True) or {}
+    try:
+        router_type = _normalize_router_type(data.get('router_type', '2004'))
+        backhauls = _parse_backhaul_rows(data.get('backhauls', []), router_type)
+        config_text, loopback_ip, port_map = _build_isd_fiber_config(data, backhauls)
+        rendered, compliance_validation, compliance_source, warnings = _apply_optional_compliance_to_config(
+            config_text,
+            loopback_ip,
+            bool(data.get('apply_compliance', True)),
+        )
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    except Exception as exc:
+        return jsonify({'error': f'Failed to generate FTTH ISD fiber config: {exc}'}), 500
+
+    return jsonify({
+        'success': True,
+        'config': rendered,
+        'base_config': config_text,
+        'port_map': port_map,
         'compliance': compliance_validation,
         'compliance_source': compliance_source,
         'warnings': warnings,

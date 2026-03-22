@@ -57,7 +57,11 @@ def test_ftth_speed_controls_and_backend_payload_hooks_exist():
 def test_ftth_fiber_customer_and_cisco_generator_exist():
     content = UI_FILE.read_text(encoding='utf-8')
     assert 'data-ftth-home-tab="fiber"' in content, 'Missing FTTH Fiber Customer subtab in NOC-configMaker.html'
+    assert 'data-ftth-home-tab="fiber-site"' in content, 'Missing FTTH Fiber Site subtab in NOC-configMaker.html'
+    assert 'data-ftth-home-tab="isd-fiber"' in content, 'Missing FTTH ISD Fiber subtab in NOC-configMaker.html'
     assert 'id="ftth-home-fiber-section"' in content, 'Missing FTTH Fiber Customer section in NOC-configMaker.html'
+    assert 'id="ftth-home-fiber-site-section"' in content, 'Missing FTTH Fiber Site section in NOC-configMaker.html'
+    assert 'id="ftth-home-isd-fiber-section"' in content, 'Missing FTTH ISD Fiber section in NOC-configMaker.html'
     assert 'id="ftthFiberRouterboard"' in content, 'Missing FTTH Fiber Customer RouterBoard selector in NOC-configMaker.html'
     assert 'id="ftthFiberRouteros"' in content, 'Missing FTTH Fiber Customer RouterOS selector in NOC-configMaker.html'
     assert 'id="ftthFiberLoopback"' in content, 'Missing FTTH Fiber Customer loopback field in NOC-configMaker.html'
@@ -65,6 +69,11 @@ def test_ftth_fiber_customer_and_cisco_generator_exist():
     assert 'updateFtthFiberPortOptions' in content, 'Missing FTTH Fiber Customer dynamic port helper in NOC-configMaker.html'
     assert 'generateFtthFiberCustomerConfig' in content, 'Missing FTTH Fiber Customer generator hook in NOC-configMaker.html'
     assert '/generate-ftth-fiber-customer' in content, 'Missing FTTH Fiber Customer backend endpoint wiring in NOC-configMaker.html'
+    assert 'generateFtthFiberSiteConfig' in content, 'Missing FTTH Fiber Site generator hook in NOC-configMaker.html'
+    assert '/generate-ftth-fiber-site' in content, 'Missing FTTH Fiber Site backend endpoint wiring in NOC-configMaker.html'
+    assert 'generateFtthIsdFiberConfig' in content, 'Missing FTTH ISD Fiber generator hook in NOC-configMaker.html'
+    assert '/generate-ftth-isd-fiber' in content, 'Missing FTTH ISD Fiber backend endpoint wiring in NOC-configMaker.html'
+    assert 'addFtthFiberBackhaulRow' in content, 'Missing shared FTTH fiber backhaul row helper in NOC-configMaker.html'
     assert 'id="cisco-config-pane"' in content, 'Missing Cisco Config pane in NOC-configMaker.html'
     assert 'Cisco Port Configuration Generator' in content, 'Missing Cisco Port Configuration Generator title in NOC-configMaker.html'
     assert 'id="ciscoHostname"' not in content, 'Cisco hostname field should not be present in NOC-configMaker.html'

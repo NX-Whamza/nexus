@@ -807,6 +807,92 @@ Generate the FTTH Fiber Customer handoff block for MikroTik, with optional Nextl
 
 ---
 
+### `POST /api/generate-ftth-fiber-site`
+
+Generate the paired MikroTik `1072` and `1036` FTTH fiber-site configs and the backhaul IP / port map.
+
+**Request**
+```json
+{
+  "tower_name": "TX-MARLIN-W-FC-2",
+  "tower_gps": "30.1,-96.1",
+  "asn": "26077",
+  "routeros_1072": "7.19.4",
+  "loopback_1072": "10.26.0.7/32",
+  "loopback_1036": "10.26.0.8/32",
+  "bh1_subnet": "10.25.10.0/29",
+  "link_1072_1036_a": "10.25.10.8/30",
+  "link_1072_1036_b": "10.25.10.12/30",
+  "cpe_subnet": "10.40.0.0/22",
+  "unauth_subnet": "10.130.0.0/22",
+  "cgn_priv_subnet": "100.64.0.0/22",
+  "cgn_pub_ip": "132.147.184.147/32",
+  "fiber_provider": "ATT",
+  "fiber_port": "sfp-sfpplus8",
+  "fiber_port_ip": "10.42.10.2/30",
+  "fiber_vlan_mode": "tagged",
+  "fiber_vlan_id": "300",
+  "backhauls": [
+    { "port": "3", "name": "BH-TO-SITE-A", "subnet": "10.25.10.16/29", "master": "yes", "bandwidth": "1G" }
+  ],
+  "apply_compliance": true
+}
+```
+
+**Response `200`**
+```json
+{
+  "success": true,
+  "router_1072_config": "# 1072 FIBER SITE CONFIG ...",
+  "router_1036_config": "# 1036 FIBER SITE CONFIG ...",
+  "port_map": "===================================================================",
+  "compliance_source": "bundled-local",
+  "warnings": []
+}
+```
+
+---
+
+### `POST /api/generate-ftth-isd-fiber`
+
+Generate the MikroTik ISD fiber config and the backhaul IP / port map.
+
+**Request**
+```json
+{
+  "router_type": "2004",
+  "routeros": "7.19.4",
+  "tower_name": "TX-MARLIN-W-FC-2",
+  "tower_gps": "30.1,-96.1",
+  "loopback_subnet": "10.26.0.7/32",
+  "bh1_subnet": "10.25.10.0/29",
+  "private_ip": "10.50.0.0/24",
+  "public_ip": "198.51.100.0/29",
+  "fiber_provider": "ATT",
+  "fiber_port": "sfp-sfpplus1",
+  "fiber_port_ip": "10.42.10.2/30",
+  "has_vlan": true,
+  "fiber_vlan_num": "300",
+  "backhauls": [
+    { "port": "4", "name": "BH-TO-SITE-B", "subnet": "10.25.10.24/29", "master": "no", "bandwidth": "1G" }
+  ],
+  "apply_compliance": true
+}
+```
+
+**Response `200`**
+```json
+{
+  "success": true,
+  "config": "# ISD FIBER CONFIG ...",
+  "port_map": "===================================================================",
+  "compliance_source": "bundled-local",
+  "warnings": []
+}
+```
+
+---
+
 ### `POST /api/ftth-home/mf2-package`
 
 Generate MF2 ZIP package with updated gateway/primary IP in startup XML.
