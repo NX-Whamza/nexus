@@ -5445,17 +5445,15 @@
                             <button type="button" class="field-config-subtab" data-tool="smartsys-ups">SmartSys UPS</button>
                             <button type="button" class="field-config-subtab" data-tool="ict-rpc">ICT RPC</button>
                             <button type="button" class="field-config-subtab" data-tool="ict-ups">ICT UPS</button>
-                            <button type="button" class="field-config-subtab" data-tool="aviat-bh">Aviat Backhaul</button>
                             <button type="button" class="field-config-subtab" data-tool="ub-wave">Ubiquiti Wave</button>
                         </div>
 
                         <div class="ido-tools-input-grid">
                             <input type="text" id="fieldConfigTargetIp" placeholder="Target IP (e.g. 10.247.62.131)">
                             <select id="fieldConfigDeviceType"></select>
-                            <datalist id="fieldConfigDeviceTypeList"></datalist>
-                            <input type="text" id="fieldConfigLinkType" placeholder="Link Type (optional)">
                             <input type="password" id="fieldConfigPassword" placeholder="Password (optional override)">
                         </div>
+                        <div id="fieldConfigDynamicFields" class="ido-tools-input-grid" style="margin-top:10px;"></div>
                         <div class="field-config-helper" style="display:flex; gap:18px; align-items:center; flex-wrap:wrap;">
                             <label style="display:flex; align-items:center; gap:8px;">
                                 <input type="checkbox" id="fieldConfigRunTests">
@@ -15767,72 +15765,158 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 }
             }
 
+            function buildFieldConfigRange(start, stop, step = 5) {
+                const out = [];
+                for (let value = start; value <= stop; value += step) out.push(String(value));
+                return out;
+            }
+
+            const FIELD_CONFIG_FORM_STATE = {};
+            const FIELD_CONFIG_REGION_OPTIONS = [
+                { value: 'https://cnm-tx1.nxlink.com/', label: 'TX1' },
+                { value: 'https://cnm-tx2.nxlink.com/', label: 'TX2' },
+                { value: 'https://cnm-tx3.nxlink.com/', label: 'TX3' },
+                { value: 'https://cnm-ok1.nxlink.com/', label: 'OK1' },
+                { value: 'https://cnm-ks1.nxlink.com/', label: 'KS1' },
+                { value: 'https://cnm-ne1.nxlink.com/', label: 'NE1' },
+                { value: 'https://cnm-ia1.nxlink.com/', label: 'IA1' },
+                { value: 'https://cnm-il1.nxlink.com/', label: 'IL1' },
+                { value: 'https://cnm-la1.nxlink.com/', label: 'LA1' },
+            ];
+            const FIELD_CONFIG_ZABBIX_OPTIONS = [
+                { value: '132.147.138.29', label: 'Zab-core-proxy1.nxlink.com' },
+                { value: '132.147.138.30', label: 'Zab-tx1-proxy1.nxlink.com' },
+                { value: '132.147.138.31', label: 'Zab-tx2-proxy1.nxlink.com' },
+                { value: '52.128.51.68', label: 'Zab-tx3-proxy1.nxlink.com' },
+                { value: '143.55.37.40', label: 'Zab-ok1-proxy1.nxlink.com' },
+                { value: '143.55.37.41', label: 'Zab-ks1-proxy1.nxlink.com' },
+                { value: '132.147.132.24', label: 'Zab-ne1-proxy1.nxlink.com' },
+                { value: '132.147.132.26', label: 'Zab-ia1-proxy1.nxlink.com' },
+                { value: '198.100.49.99', label: 'Zab-il1-proxy1.nxlink.com' },
+                { value: '173.215.67.124', label: 'Zab-ia1-proxy2.nxlink.com' },
+                { value: '204.11.183.126', label: 'Zab-ne1-proxy2.nxlink.com' },
+                { value: '52.128.51.80', label: 'Zab-la1-proxy1.nxlink.com' },
+            ];
+            const FIELD_CONFIG_DEVICE_PROFILES = {
+                CNEP3K: {
+                    antennaOptions: [
+                        { value: 'CN090', label: 'Cambium CN090' },
+                        { value: 'RFA090', label: 'RF Elements RFA090' },
+                        { value: 'AL060', label: 'Alpha AL060' },
+                    ],
+                    frequencyOptions: [
+                        ...buildFieldConfigRange(5190, 5310),
+                        ...buildFieldConfigRange(5510, 5695),
+                        ...buildFieldConfigRange(5745, 5870),
+                    ],
+                    requiresRegion: true,
+                    supportsHeight: true,
+                },
+                CNEP3KL: {
+                    antennaOptions: [
+                        { value: 'CN090', label: 'Cambium CN090' },
+                        { value: 'RFA090', label: 'RF Elements RFA090' },
+                        { value: 'AL060', label: 'Alpha AL060' },
+                    ],
+                    frequencyOptions: [
+                        ...buildFieldConfigRange(5190, 5310),
+                        ...buildFieldConfigRange(5510, 5695),
+                        ...buildFieldConfigRange(5745, 5870),
+                    ],
+                    requiresRegion: true,
+                    supportsHeight: true,
+                },
+                CN4600: {
+                    antennaOptions: [{ value: 'AL060', label: 'Alpha AL060' }],
+                    frequencyOptions: buildFieldConfigRange(6025, 6795),
+                    requiresRegion: true,
+                    supportsHeight: true,
+                },
+                F4600C: { requiresRegion: true, supportsHeight: true },
+                F4525: { requiresRegion: true },
+                'F300-13': { requiresRegion: true },
+                'F300-16': { requiresRegion: true },
+                'F300-25': { requiresRegion: true },
+                'F300-CSM': {
+                    requiresRegion: true,
+                    antennaOptions: [
+                        { value: 'TP550', label: 'UltraDish TP 550' },
+                        { value: 'TP27', label: 'UltraDish TP 27' },
+                        { value: 'TP24', label: 'UltraDish TP 24' },
+                    ],
+                },
+                TYN301: {
+                    antennaOptions: [{ value: 'TY120', label: 'Tachyon TY120' }],
+                    frequencyOptions: ['1', '2', '3', '4', '5', '6'],
+                },
+                TYN302: {},
+            };
+
             const FIELD_CONFIG_TOOL_MAP = {
                 'ap': {
                     label: 'AP',
-                    desc: 'Cambium AP tooling via /api/ap.',
-                    deviceTypes: ['CNEP3K', 'CN4600', 'CNF300-13', 'CNF300-16', 'CNF300-25', 'CNF300-CSM', 'TYN301', 'TYN302', 'UBWAP', 'UBWAPM'],
+                    desc: 'AP preview and live configure using the IDO AP backend.',
+                    deviceTypes: ['CNEP3K', 'CNEP3KL', 'CN4600', 'TYN301'],
+                    primaryActionLabel: 'Configure',
                     actions: {
                         device_info: { method: 'GET', path: 'api/ap/device_info', needsIp: true, needsDeviceType: true, query: ({ ip, deviceType, runTests, password }) => ({ ip_address: ip, device_type: deviceType, run_tests: runTests, ...(password ? { password } : {}) }) },
                         running: { method: 'GET', path: 'api/ap/running_config', needsIp: true, needsDeviceType: true, query: ({ ip, deviceType, password }) => ({ ip_address: ip, device_type: deviceType, ...(password ? { password } : {}) }) },
                         standard: { method: 'GET', path: 'api/ap/standard_config', needsIp: true, needsDeviceType: true, query: ({ ip, deviceType, password }) => ({ ip_address: ip, device_type: deviceType, ...(password ? { password } : {}) }) },
+                        generate: { method: 'POST', path: 'api/ap/configure', needsIp: true, needsDeviceType: true, payloadMode: 'deviceFields' },
                     }
                 },
                 'sm': {
                     label: 'SM',
-                    desc: 'SM support uses AP endpoints with SM device type values.',
-                    deviceTypes: ['CNEP3K', 'CN4600', 'CNF300-13', 'CNF300-16', 'CNF300-25', 'CNF300-CSM', 'TYN301', 'TYN302', 'UBWAP', 'UBWAPM'],
+                    desc: 'SM preview and live configure using the IDO AP backend.',
+                    deviceTypes: ['F4600C', 'F4525', 'F300-13', 'F300-16', 'F300-25', 'F300-CSM', 'TYN302'],
+                    primaryActionLabel: 'Configure',
                     actions: {
                         device_info: { method: 'GET', path: 'api/ap/device_info', needsIp: true, needsDeviceType: true, query: ({ ip, deviceType, runTests, password }) => ({ ip_address: ip, device_type: deviceType, run_tests: runTests, ...(password ? { password } : {}) }) },
                         running: { method: 'GET', path: 'api/ap/running_config', needsIp: true, needsDeviceType: true, query: ({ ip, deviceType, password }) => ({ ip_address: ip, device_type: deviceType, ...(password ? { password } : {}) }) },
                         standard: { method: 'GET', path: 'api/ap/standard_config', needsIp: true, needsDeviceType: true, query: ({ ip, deviceType, password }) => ({ ip_address: ip, device_type: deviceType, ...(password ? { password } : {}) }) },
+                        generate: { method: 'POST', path: 'api/ap/configure', needsIp: true, needsDeviceType: true, payloadMode: 'deviceFields' },
                     }
                 },
                 'switch': {
                     label: 'Switch',
-                    desc: 'Switch inventory details via /api/swt/device_info.',
+                    desc: 'Switch inventory and live configure for Netonix, CNMatrix, and Tachyon switch families.',
                     deviceTypes: ['NXWS12', 'NXWS14', 'NXWS24', 'NXWS26', 'CN1012', 'TYT100'],
+                    primaryActionLabel: 'Configure',
                     actions: {
                         device_info: { method: 'GET', path: 'api/swt/device_info', needsIp: true, needsDeviceType: true, query: ({ ip, deviceType, runTests, password }) => ({ ip_address: ip, device_type: deviceType, run_tests: runTests, ...(password ? { password } : {}) }) },
+                        generate: { method: 'POST', path: 'api/swt/configure', needsIp: true, needsDeviceType: true, payloadMode: 'deviceFields' },
                     }
                 },
                 'smartsys-ups': {
                     label: 'SmartSys UPS',
-                    desc: 'UPS status/details via /api/ups/device_info.',
+                    desc: 'SmartSys inventory and live configure.',
                     deviceTypes: ['SS'],
                     lockDeviceType: true,
+                    primaryActionLabel: 'Configure',
                     actions: {
                         device_info: { method: 'GET', path: 'api/ups/device_info', needsIp: true, needsDeviceType: true, query: ({ ip, deviceType, runTests, password }) => ({ ip_address: ip, device_type: deviceType, run_tests: runTests, ...(password ? { password } : {}) }) },
+                        generate: { method: 'POST', path: 'api/ups/configure', needsIp: true, needsDeviceType: true, payloadMode: 'deviceFields' },
                     }
                 },
                 'ict-rpc': {
                     label: 'ICT RPC',
-                    desc: 'RPC status/details via /api/rpc/device_info.',
-                    deviceTypes: ['ICT200DB'],
+                    desc: 'ICT RPC inventory and live configure.',
+                    deviceTypes: ['ICT200DB12'],
                     lockDeviceType: true,
+                    primaryActionLabel: 'Configure',
                     actions: {
                         device_info: { method: 'GET', path: 'api/rpc/device_info', needsIp: true, needsDeviceType: true, query: ({ ip, deviceType, runTests, password }) => ({ ip_address: ip, device_type: deviceType, run_tests: runTests, ...(password ? { password } : {}) }) },
+                        generate: { method: 'POST', path: 'api/rpc/configure', needsIp: true, needsDeviceType: true, payloadMode: 'deviceFields' },
                     }
                 },
                 'ict-ups': {
                     label: 'ICT UPS',
-                    desc: 'UPS status/details via /api/ups/device_info.',
-                    deviceTypes: ['ICT800'],
-                    lockDeviceType: true,
+                    desc: 'ICT UPS inventory and live configure.',
+                    deviceTypes: ['ICT800', 'ICTMPS'],
+                    primaryActionLabel: 'Configure',
                     actions: {
                         device_info: { method: 'GET', path: 'api/ups/device_info', needsIp: true, needsDeviceType: true, query: ({ ip, deviceType, runTests, password }) => ({ ip_address: ip, device_type: deviceType, run_tests: runTests, ...(password ? { password } : {}) }) },
-                    }
-                },
-                'aviat-bh': {
-                    label: 'Aviat Backhaul',
-                    desc: 'Backhaul helpers via /api/bh (device info, running, standard, configure).',
-                    deviceTypes: ['AV4200', 'AV4100'],
-                    payloadPlaceholder: '{"ip_address":"10.248.20.83","device_type":"AV4200","link_type":"2_0","local_site_name":"LOCAL-SITE","remote_site_name":"REMOTE-SITE","tx_frequency_v":"10985000","rx_frequency_v":"11495000","tx_frequency_h":"10995000","rx_frequency_h":"11505000","bandwidth":"80 MHz","modulation_min":"qam-16","modulation_max":"qam-1024","power_min":"16.0","power_max":"24.0","password":"Fr3knL@zr!","device_number":"1","latitude":"32.123456","longitude":"-97.123456","xpic":true}',
-                    actions: {
-                        device_info: { method: 'GET', path: 'api/bh/device_info', needsIp: true, needsDeviceType: true, query: ({ ip, deviceType, runTests, password }) => ({ ip_address: ip, device_type: deviceType, run_tests: runTests, ...(password ? { password } : {}) }) },
-                        running: { method: 'GET', path: 'api/bh/running_config', needsIp: true, needsDeviceType: true, query: ({ ip, deviceType, password }) => ({ ip_address: ip, device_type: deviceType, ...(password ? { password } : {}) }) },
-                        standard: { method: 'GET', path: 'api/bh/standard_config', needsIp: false, needsDeviceType: true, query: ({ deviceType, linkType }) => ({ device_type: deviceType, link_type: linkType || '2_0' }) },
-                        generate: { method: 'POST', path: 'api/bh/configure', payloadMode: 'json' },
+                        generate: { method: 'POST', path: 'api/ups/configure', needsIp: true, needsDeviceType: true, payloadMode: 'deviceFields' },
                     }
                 },
                 'ub-wave': {
@@ -15862,15 +15946,149 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 return (active?.dataset?.tool || 'ap').trim();
             }
 
+            function getFieldConfigProfile(deviceType) {
+                return FIELD_CONFIG_DEVICE_PROFILES[deviceType] || {};
+            }
+
+            function escAttr(value) {
+                return String(value || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            }
+
+            function getFieldConfigState(toolKey) {
+                return FIELD_CONFIG_FORM_STATE[toolKey] || {};
+            }
+
+            function setFieldConfigState(toolKey, values) {
+                FIELD_CONFIG_FORM_STATE[toolKey] = { ...(FIELD_CONFIG_FORM_STATE[toolKey] || {}), ...(values || {}) };
+            }
+
+            function getFieldConfigSchema(toolKey, deviceType) {
+                const profile = getFieldConfigProfile(deviceType);
+                const state = getFieldConfigState(toolKey);
+                if (toolKey === 'ap') {
+                    return [
+                        { name: 'site_name', label: 'Site Name', type: 'text', placeholder: 'AA-BBBBBB-CC-#', requiredFor: ['standard', 'generate'] },
+                        { name: 'azimuth', label: 'Azimuth', type: 'text', placeholder: '0-359', requiredFor: ['standard', 'generate'] },
+                        { name: 'device_number', label: 'Device Number', type: 'text', defaultValue: '1', requiredFor: ['standard', 'generate'] },
+                        ...(profile.frequencyOptions?.length ? [{ name: 'frequency', label: 'Frequency', type: 'select', options: profile.frequencyOptions.map((value) => ({ value, label: value })), requiredFor: ['standard', 'generate'] }] : []),
+                        ...(profile.antennaOptions?.length ? [{ name: 'antenna', label: 'Antenna', type: 'select', options: profile.antennaOptions, requiredFor: ['standard', 'generate'] }] : []),
+                        ...(profile.requiresRegion ? [{ name: 'cnm_url', label: 'Region', type: 'select', options: FIELD_CONFIG_REGION_OPTIONS, requiredFor: ['standard', 'generate'] }] : []),
+                        { name: 'latitude', label: 'Latitude', type: 'text', placeholder: 'XX.XXXXXX', requiredFor: ['standard', 'generate'] },
+                        { name: 'longitude', label: 'Longitude', type: 'text', placeholder: '-XX.XXXXXX', requiredFor: ['standard', 'generate'] },
+                        ...(profile.supportsHeight ? [{ name: 'height', label: 'Height (m)', type: 'text', placeholder: 'Optional' }] : []),
+                    ];
+                }
+                if (toolKey === 'sm') {
+                    return [
+                        { name: 'user_number', label: 'User Number', type: 'text', placeholder: 'Subscriber number', requiredFor: ['standard', 'generate'] },
+                        { name: 'mac_address', label: 'Wireless MAC Address', type: 'text', placeholder: 'XX:XX:XX:XX:XX:XX', requiredFor: ['standard', 'generate'] },
+                        ...(profile.antennaOptions?.length ? [{ name: 'antenna', label: 'Antenna', type: 'select', options: profile.antennaOptions, requiredFor: ['standard', 'generate'] }] : []),
+                        ...(profile.requiresRegion ? [{ name: 'cnm_url', label: 'Region', type: 'select', options: FIELD_CONFIG_REGION_OPTIONS, requiredFor: ['standard', 'generate'] }] : []),
+                        { name: 'latitude', label: 'Latitude', type: 'text', placeholder: 'XX.XXXXXX', requiredFor: ['standard', 'generate'] },
+                        { name: 'longitude', label: 'Longitude', type: 'text', placeholder: '-XX.XXXXXX', requiredFor: ['standard', 'generate'] },
+                        ...(profile.supportsHeight ? [{ name: 'height', label: 'Height (m)', type: 'text', placeholder: 'Optional' }] : []),
+                    ];
+                }
+                if (toolKey === 'switch') {
+                    return [
+                        { name: 'site_name', label: 'Site Name', type: 'text', placeholder: 'AA-BBBBBB-CC-#', requiredFor: ['generate'] },
+                        { name: 'device_number', label: 'Device Number', type: 'text', defaultValue: '1', requiredFor: ['generate'] },
+                        { name: 'latitude', label: 'Latitude', type: 'text', placeholder: 'XX.XXXXXX', requiredFor: ['generate'] },
+                        { name: 'longitude', label: 'Longitude', type: 'text', placeholder: '-XX.XXXXXX', requiredFor: ['generate'] },
+                        ...((deviceType || '').startsWith('NX') ? [
+                            { name: 'ap_count', label: 'AP Count', type: 'text', defaultValue: '6', requiredFor: ['generate'] },
+                            { name: 'ap_voltage', label: 'AP PoE Voltage', type: 'select', options: [{ value: '48V', label: '48V' }, { value: '24V', label: '24V' }, { value: '0V', label: '0V' }], requiredFor: ['generate'] },
+                            { name: 'use_standard_vlans', label: 'Configure Standard VLANs', type: 'checkbox' },
+                        ] : []),
+                        ...(deviceType === 'CN1012' ? [
+                            { name: 'bng_version', label: 'BNG Version', type: 'select', options: [{ value: '1', label: 'BNG1' }, { value: '2', label: 'BNG2' }], requiredFor: ['generate'] },
+                            { name: 'dual_router', label: 'Dual Router Uplink', type: 'checkbox' },
+                        ] : []),
+                    ];
+                }
+                if (toolKey === 'smartsys-ups') {
+                    const batteryType = state.battery_type || 'li_ion';
+                    const batteryCapacityOptions = batteryType === 'lead_acid'
+                        ? [{ value: '190', label: '190 Ah' }, { value: '100', label: '100 Ah' }]
+                        : [{ value: '200', label: '200 Ah' }, { value: '100', label: '100 Ah' }];
+                    return [
+                        { name: 'site_name', label: 'Site Name', type: 'text', placeholder: 'AA-BBBBBB-CC-#', requiredFor: ['generate'] },
+                        { name: 'device_number', label: 'Device Number', type: 'text', defaultValue: '1', requiredFor: ['generate'] },
+                        { name: 'latitude', label: 'Latitude', type: 'text', placeholder: 'XX.XXXXXX', requiredFor: ['generate'] },
+                        { name: 'longitude', label: 'Longitude', type: 'text', placeholder: '-XX.XXXXXX', requiredFor: ['generate'] },
+                        { name: 'battery_type', label: 'Battery Type', type: 'select', options: [{ value: 'li_ion', label: 'Lithium Ion' }, { value: 'lead_acid', label: 'Lead Acid' }], defaultValue: 'li_ion', requiredFor: ['generate'] },
+                        { name: 'battery_capacity', label: 'Battery Capacity (Ah)', type: 'select', options: batteryCapacityOptions, defaultValue: batteryCapacityOptions[0]?.value || '200', requiredFor: ['generate'] },
+                        { name: 'trap_addr', label: 'Zabbix Proxy Address', type: 'select', options: FIELD_CONFIG_ZABBIX_OPTIONS, requiredFor: ['generate'] },
+                    ];
+                }
+                if (toolKey === 'ict-rpc') {
+                    return [
+                        { name: 'site_name', label: 'Site Name', type: 'text', placeholder: 'AA-BBBBBB-CC-#', requiredFor: ['generate'] },
+                        { name: 'device_number', label: 'Device Number', type: 'text', defaultValue: '1', requiredFor: ['generate'] },
+                    ];
+                }
+                if (toolKey === 'ict-ups') {
+                    return [
+                        { name: 'site_name', label: 'Site Name', type: 'text', placeholder: 'AA-BBBBBB-CC-#', requiredFor: ['generate'] },
+                        { name: 'device_number', label: 'Device Number', type: 'text', defaultValue: '1', requiredFor: ['generate'] },
+                        { name: 'snmp_community', label: 'SNMP Community', type: 'text', placeholder: 'Optional override' },
+                        ...(deviceType === 'ICTMPS' ? [{ name: 'battery_capacity', label: 'Battery Capacity', type: 'text', defaultValue: '100', requiredFor: ['generate'] }] : []),
+                    ];
+                }
+                return [];
+            }
+
+            function renderFieldConfigDynamicFields(toolKey, deviceType) {
+                const host = document.getElementById('fieldConfigDynamicFields');
+                if (!host) return;
+                const tool = FIELD_CONFIG_TOOL_MAP[toolKey] || FIELD_CONFIG_TOOL_MAP.ap;
+                if (tool.payloadPlaceholder) {
+                    host.style.display = 'none';
+                    host.innerHTML = '';
+                    return;
+                }
+                const schema = getFieldConfigSchema(toolKey, deviceType);
+                const state = getFieldConfigState(toolKey);
+                host.style.display = schema.length ? 'grid' : 'none';
+                host.innerHTML = schema.map((field) => {
+                    const currentValue = (state[field.name] !== undefined && state[field.name] !== null && state[field.name] !== '') ? state[field.name] : (field.defaultValue ?? '');
+                    if (field.type === 'select') {
+                        const options = (field.options || []).map((option) => {
+                            const selected = String(currentValue) === String(option.value) ? ' selected' : '';
+                            return `<option value="${escAttr(option.value)}"${selected}>${escAttr(option.label)}</option>`;
+                        }).join('');
+                        return `<div><label for="fieldConfigDynamic_${field.name}" style="display:block; margin-bottom:6px;">${field.label}</label><select id="fieldConfigDynamic_${field.name}" data-field-config-name="${field.name}">${options}</select></div>`;
+                    }
+                    if (field.type === 'checkbox') {
+                        const checked = currentValue ? ' checked' : '';
+                        return `<div style="display:flex; align-items:flex-end;"><label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" id="fieldConfigDynamic_${field.name}" data-field-config-name="${field.name}"${checked}> ${field.label}</label></div>`;
+                    }
+                    return `<div><label for="fieldConfigDynamic_${field.name}" style="display:block; margin-bottom:6px;">${field.label}</label><input type="text" id="fieldConfigDynamic_${field.name}" data-field-config-name="${field.name}" value="${escAttr(currentValue)}" placeholder="${escAttr(field.placeholder || '')}"></div>`;
+                }).join('');
+            }
+
+            function collectFieldConfigDynamicValues() {
+                const values = {};
+                document.querySelectorAll('#fieldConfigDynamicFields [data-field-config-name]').forEach((el) => {
+                    const key = el.dataset.fieldConfigName;
+                    if (!key) return;
+                    values[key] = el.type === 'checkbox' ? !!el.checked : (el.value || '').trim();
+                });
+                return values;
+            }
+
             function getFieldConfigInputs() {
                 const deviceTypeEl = document.getElementById('fieldConfigDeviceType');
+                const toolKey = getActiveFieldConfigTool();
+                const fields = collectFieldConfigDynamicValues();
+                setFieldConfigState(toolKey, fields);
                 return {
                     ip: (document.getElementById('fieldConfigTargetIp')?.value || '').trim(),
                     deviceType: (deviceTypeEl?.value || '').trim(),
-                    linkType: (document.getElementById('fieldConfigLinkType')?.value || '').trim(),
                     password: (document.getElementById('fieldConfigPassword')?.value || '').trim(),
                     payload: (document.getElementById('fieldConfigPayload')?.value || '').trim(),
                     runTests: !!document.getElementById('fieldConfigRunTests')?.checked,
+                    fields,
                 };
             }
 
@@ -15915,6 +16133,29 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 }
             }
 
+            function buildFieldConfigBasePayload(inputs) {
+                return {
+                    ip_address: inputs.ip,
+                    device_type: inputs.deviceType,
+                    ...(inputs.password ? { password: inputs.password } : {}),
+                    ...Object.fromEntries(Object.entries(inputs.fields || {}).filter(([, value]) => value !== '' && value !== null && value !== undefined)),
+                };
+            }
+
+            function validateFieldConfigActionInputs(toolKey, actionKey, inputs) {
+                if (!['standard', 'generate'].includes(actionKey)) return;
+                const schema = getFieldConfigSchema(toolKey, inputs.deviceType);
+                const missing = schema
+                    .filter((field) => Array.isArray(field.requiredFor) && field.requiredFor.includes(actionKey))
+                    .filter((field) => {
+                        const value = inputs.fields?.[field.name];
+                        if (field.type === 'checkbox') return false;
+                        return value === undefined || value === null || String(value).trim() === '';
+                    })
+                    .map((field) => field.label);
+                if (missing.length) throw new Error(`Missing required fields: ${missing.join(', ')}`);
+            }
+
             function renderFieldConfigToolState() {
                 const toolKey = getActiveFieldConfigTool();
                 const tool = FIELD_CONFIG_TOOL_MAP[toolKey] || FIELD_CONFIG_TOOL_MAP.ap;
@@ -15931,25 +16172,21 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     if (hasDeviceType) {
                         const opts = (tool.deviceTypes || []).map((d) => `<option value="${d}">${d}</option>`).join('');
                         deviceTypeInput.innerHTML = opts || '<option value="">Select Device Type</option>';
-                        deviceTypeInput.selectedIndex = 0;
-                        deviceTypeInput.value = tool.deviceTypes?.[0] || deviceTypeInput.value || '';
+                        const prior = getFieldConfigState(toolKey).deviceType;
+                        deviceTypeInput.value = prior || tool.deviceTypes?.[0] || deviceTypeInput.value || '';
+                        if (!deviceTypeInput.value && tool.deviceTypes?.length) {
+                            deviceTypeInput.value = tool.deviceTypes[0];
+                        }
                         if (tool.lockDeviceType && tool.deviceTypes?.length) {
                             deviceTypeInput.value = tool.deviceTypes[0];
                             deviceTypeInput.disabled = true;
                         }
                     }
                 }
-                const linkTypeInput = document.getElementById('fieldConfigLinkType');
-                if (linkTypeInput) {
-                    const linkTypeNeeded = toolKey === 'aviat-bh';
-                    linkTypeInput.disabled = !linkTypeNeeded;
-                    if (!linkTypeNeeded) {
-                        linkTypeInput.value = '';
-                    } else if (toolKey === 'aviat-bh' && !linkTypeInput.value.trim()) {
-                        linkTypeInput.value = '2_0';
-                    }
+                if (deviceTypeInput) {
+                    setFieldConfigState(toolKey, { deviceType: deviceTypeInput.value || '' });
+                    renderFieldConfigDynamicFields(toolKey, deviceTypeInput.value || '');
                 }
-
                 const hasDeviceInfo = !!tool.actions.device_info;
                 const hasRunning = !!tool.actions.running;
                 const hasStandard = !!tool.actions.standard;
@@ -15968,6 +16205,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 showOrHideAction(runningBtn, hasRunning, tool.actions.running?.path);
                 showOrHideAction(standardBtn, hasStandard, tool.actions.standard?.path);
                 showOrHideAction(generateBtn, hasGenerate, tool.actions.generate?.path);
+                if (generateBtn) generateBtn.textContent = tool.primaryActionLabel || 'Generate';
 
                 const payloadWrap = document.getElementById('fieldConfigPayloadWrap');
                 const payloadEl = document.getElementById('fieldConfigPayload');
@@ -15999,6 +16237,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 const inputs = getFieldConfigInputs();
                 if (action.needsIp && !inputs.ip) throw new Error('Target IP is required.');
                 if (action.needsDeviceType && !inputs.deviceType) throw new Error('Device Type is required.');
+                validateFieldConfigActionInputs(toolKey, actionKey, inputs);
 
                 let body = null;
                 if (action.payloadMode === 'json') {
@@ -16012,9 +16251,13 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     JSON.parse(inputs.payload);
                     body = new FormData();
                     body.append('device', inputs.payload);
+                } else if (action.payloadMode === 'deviceFields') {
+                    body = buildFieldConfigBasePayload(inputs);
                 }
 
-                const query = typeof action.query === 'function' ? action.query(inputs) : {};
+                const query = action.method === 'GET'
+                    ? { ...buildFieldConfigBasePayload(inputs), ...(actionKey === 'device_info' ? { run_tests: inputs.runTests } : {}) }
+                    : {};
                 writeFieldConfigOutput(`Running ${tool.label} -> ${actionKey}...`);
                 setFieldConfigStatus(`Calling /${action.path} ...`);
                 const result = await callIdoProxyAdvanced(action.path, { method: action.method, query, body });
@@ -16124,6 +16367,29 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                         renderFieldConfigToolState();
                     });
                     fieldSubtabHost.dataset.bound = '1';
+                }
+                const fieldDeviceType = document.getElementById('fieldConfigDeviceType');
+                if (fieldDeviceType && !fieldDeviceType.dataset.bound) {
+                    fieldDeviceType.addEventListener('change', () => {
+                        setFieldConfigState(getActiveFieldConfigTool(), { deviceType: fieldDeviceType.value || '' });
+                        renderFieldConfigDynamicFields(getActiveFieldConfigTool(), fieldDeviceType.value || '');
+                    });
+                    fieldDeviceType.dataset.bound = '1';
+                }
+                const fieldDynamicHost = document.getElementById('fieldConfigDynamicFields');
+                if (fieldDynamicHost && !fieldDynamicHost.dataset.bound) {
+                    fieldDynamicHost.addEventListener('change', (e) => {
+                        const el = e.target.closest('[data-field-config-name]');
+                        if (!el) return;
+                        const key = el.dataset.fieldConfigName;
+                        const value = el.type === 'checkbox' ? !!el.checked : (el.value || '').trim();
+                        const toolKey = getActiveFieldConfigTool();
+                        setFieldConfigState(toolKey, { [key]: value });
+                        if (key === 'battery_type') {
+                            renderFieldConfigDynamicFields(toolKey, document.getElementById('fieldConfigDeviceType')?.value || '');
+                        }
+                    });
+                    fieldDynamicHost.dataset.bound = '1';
                 }
                 const fieldCfgDeviceInfoBtn = document.getElementById('fieldCfgDeviceInfoBtn');
                 if (fieldCfgDeviceInfoBtn && !fieldCfgDeviceInfoBtn.dataset.bound) {

@@ -6,9 +6,27 @@ import re
 import concurrent.futures
 from typing import List
 from fastapi import APIRouter, HTTPException
-from pysnmp.hlapi import *
-from ping3 import ping
 import logging
+
+try:
+    from pysnmp.hlapi import (
+        CommunityData,
+        ContextData,
+        ObjectIdentity,
+        ObjectType,
+        SnmpEngine,
+        UdpTransportTarget,
+        getCmd,
+        nextCmd,
+    )
+    HAS_PYSNMP = True
+except Exception:
+    HAS_PYSNMP = False
+
+try:
+    from ping3 import ping
+except Exception:
+    ping = None
 
 PING_COUNT = 4
 
@@ -26,6 +44,8 @@ app = APIRouter()
 def snmp_walk(
     ip: str, community: str, timeout: float = None, version: int = 2
 ) -> List[str]:
+    if not HAS_PYSNMP:
+        raise RuntimeError("pysnmp is not installed")
     snmp_engine = SnmpEngine()
     community_data = CommunityData(community, mpModel=(0 if version == 1 else 1))
     transport = UdpTransportTarget(
@@ -68,6 +88,8 @@ def snmp_walk(
 
 
 def get_oid(ip: str, community: str, oid: str, version: int = 2) -> str:
+    if not HAS_PYSNMP:
+        raise RuntimeError("pysnmp is not installed")
     snmp_engine = SnmpEngine()
     community_data = CommunityData(community, mpModel=(0 if version == 1 else 1))
     transport = UdpTransportTarget(
@@ -102,6 +124,8 @@ def device_info(
     result = {}
 
     snmp_can_connect = False
+
+    disable_snmp = disable_snmp or not HAS_PYSNMP
 
     if not disable_snmp:
         community = os.getenv("SNMP_COMMUNITY")
@@ -163,7 +187,7 @@ def device_info(
 
         ping_results = []
         for _ in range(PING_COUNT):
-            ping_results.append(ping(ip_address, unit="ms"))
+            ping_results.append(ping(ip_address, unit="ms") if ping else None)
 
         valid_results = [x for x in ping_results if isinstance(x, float)]
         average = sum(valid_results) / len(valid_results) if valid_results else None

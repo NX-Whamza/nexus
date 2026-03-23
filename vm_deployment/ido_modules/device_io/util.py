@@ -9,10 +9,25 @@ import logging
 import os
 import tzdata
 from timezonefinder import TimezoneFinder
-from pysnmp.hlapi import *
-from pysnmp.smi import builder, view
 import sys
 import logging
+
+try:
+    from pysnmp.hlapi import (
+        CommunityData,
+        ContextData,
+        ObjectIdentity,
+        ObjectType,
+        SnmpEngine,
+        UdpTransportTarget,
+        nextCmd,
+    )
+    from pysnmp.smi import builder, view
+    HAS_PYSNMP = True
+except Exception:
+    builder = None
+    view = None
+    HAS_PYSNMP = False
 
 os.environ["MIBS"] = "ALL"
 # from easysnmp import Session
@@ -363,6 +378,8 @@ def snmp_walk(address, community, mib_folder, mib_modules):
     :param mib_folder: The folder containing your compiled MIB files.
     :param mib_modules: A list of MIB module names to load (without file extensions).
     """
+    if not HAS_PYSNMP:
+        raise RuntimeError("pysnmp is not installed")
     # Create an SNMP engine instance
     snmp_engine = SnmpEngine()
 
