@@ -239,6 +239,7 @@ class MTTowerConfig:
             if getattr(self, "is_lte", False):
                 reserved.add("sfp-sfpplus6")
             if getattr(self, "is_tarana", False):
+                reserved.update({"sfp-sfpplus6", "sfp-sfpplus7", "sfp-sfpplus8"})
                 # Reserve the actual Tarana sector ports (custom or default)
                 custom = getattr(self, "_custom_sectors", None)
                 if custom:

@@ -194,6 +194,7 @@ class RadioResult:
     license_detail: Optional[str] = None
     stp_ok: Optional[bool] = None
     stp_detail: Optional[str] = None
+    target_version: Optional[str] = None
     firmware_version_before: Optional[str] = None
     firmware_version_after: Optional[str] = None
     error: Optional[str] = None
@@ -407,13 +408,13 @@ def change_password(client: AviatSSHClient, callback=None) -> Tuple[bool, str]:
             final_lower = final_output.lower()
 
             if 'success' in final_lower or 'changed' in final_lower:
-                log(f"  [{client.ip}] ✓ Password changed via change-password", "success")
+                log(f"  [{client.ip}] [OK] Password changed via change-password", "success")
                 return True, "Password changed successfully"
             elif 'error' in final_lower or 'fail' in final_lower or 'invalid' in final_lower:
                 log(f"  [{client.ip}]   change-password method failed, trying config mode...", "warning")
             else:
                 # Might have worked, continue
-                log(f"  [{client.ip}] ✓ Password change commands sent", "success")
+                log(f"  [{client.ip}] [OK] Password change commands sent", "success")
                 return True, "Password change commands sent"
         
         # If change-password didn't work or isn't available, try config terminal method
@@ -466,11 +467,11 @@ def change_password(client: AviatSSHClient, callback=None) -> Tuple[bool, str]:
         if 'error' in lowered or 'invalid' in lowered or 'abort' in lowered:
             return False, f"Password change may have failed: {output[-200:]}"
         
-        log(f"  [{client.ip}] ✓ Password change commands sent", "success")
+        log(f"  [{client.ip}] [OK] Password change commands sent", "success")
         return True, "Password change commands sent"
         
     except Exception as e:
-        log(f"  [{client.ip}] ✗ Password change error: {e}", "error")
+        log(f"  [{client.ip}] [FAIL] Password change error: {e}", "error")
         return False, str(e)
 
 
@@ -527,11 +528,11 @@ def configure_snmp(client: AviatSSHClient, callback=None) -> Tuple[bool, str]:
         if 'error' in lowered and 'abort' in lowered:
             return False, f"SNMP config may have failed: {output[-200:]}"
         
-        log(f"  [{client.ip}] ✓ SNMP configured", "success")
+        log(f"  [{client.ip}] [OK] SNMP configured", "success")
         return True, "SNMP configured successfully"
         
     except Exception as e:
-        log(f"  [{client.ip}] ✗ SNMP configuration error: {e}", "error")
+        log(f"  [{client.ip}] [FAIL] SNMP configuration error: {e}", "error")
         return False, str(e)
 
 def configure_buffer(client: AviatSSHClient, callback=None) -> Tuple[bool, str]:
@@ -575,13 +576,13 @@ def configure_buffer(client: AviatSSHClient, callback=None) -> Tuple[bool, str]:
                 log(f"  [{client.ip}]   {msg}", "warning", callback=callback)
                 return True, msg
             if "connection interface 10g2" in partner_lower:
-                log(f"  [{client.ip}]   ✓ Detected as PRIMARY radio (10g2)", "info", callback=callback)
+                log(f"  [{client.ip}]   [OK] Detected as PRIMARY radio (10g2)", "info", callback=callback)
             else:
-                log(f"  [{client.ip}]   ✓ partner-device present; treating as PRIMARY/standalone", "info", callback=callback)
+                log(f"  [{client.ip}]   [OK] partner-device present; treating as PRIMARY/standalone", "info", callback=callback)
         elif "syntax error" in partner_lower:
-            log(f"  [{client.ip}]   ✓ partner-device check not supported; treating as standalone", "info", callback=callback)
+            log(f"  [{client.ip}]   [OK] partner-device check not supported; treating as standalone", "info", callback=callback)
         else:
-            log(f"  [{client.ip}]   ✓ Radio is PRIMARY. Proceeding...", "info", callback=callback)
+            log(f"  [{client.ip}]   [OK] Radio is PRIMARY. Proceeding...", "info", callback=callback)
 
         # 3. Check if already correct (Safety Lock-in)
         # Bash script says: Skips radios where queue-limit is already correct
@@ -603,7 +604,7 @@ def configure_buffer(client: AviatSSHClient, callback=None) -> Tuple[bool, str]:
         log(f"  [{client.ip}]   > config", "info", callback=callback)
         out_config_lower = out_config.lower()
         if "syntax error" in out_config_lower or "invalid" in out_config_lower:
-            log(f"  [{client.ip}]   ✗ Command rejected: {out_config.strip()}", "error", callback=callback)
+            log(f"  [{client.ip}]   [FAIL] Command rejected: {out_config.strip()}", "error", callback=callback)
             exit_config_mode(client)
             return False, "Configuration failed: config command rejected"
 
@@ -615,7 +616,7 @@ def configure_buffer(client: AviatSSHClient, callback=None) -> Tuple[bool, str]:
         log(f"  [{client.ip}]   > {line_cmd}", "info", callback=callback)
         out_line_lower = out_line.lower()
         if "syntax error" in out_line_lower or "invalid" in out_line_lower:
-            log(f"  [{client.ip}]   ✗ Command rejected: {out_line.strip()}", "error", callback=callback)
+            log(f"  [{client.ip}]   [FAIL] Command rejected: {out_line.strip()}", "error", callback=callback)
             client.send_command("rollback")
             exit_config_mode(client)
             return False, "Configuration failed: queue-limit command rejected"
@@ -640,18 +641,18 @@ def configure_buffer(client: AviatSSHClient, callback=None) -> Tuple[bool, str]:
             re.I,
         ):
             log(
-                f"  [{client.ip}]   ✗ Verification failed for queue-limit {CONFIG.buffer_queue_limit}",
+                f"  [{client.ip}]   [FAIL] Verification failed for queue-limit {CONFIG.buffer_queue_limit}",
                 "warning",
                 callback=callback,
             )
             return False, "Verification failed for queue-limit"
 
-        log(f"  [{client.ip}] ✓ Buffer script applied", "success", callback=callback)
+        log(f"  [{client.ip}] [OK] Buffer script applied", "success", callback=callback)
         return True, "Buffer configured successfully"
         
     except Exception as e:
         exit_config_mode(client)
-        log(f"  [{client.ip}] ✗ Buffer configuration error: {e}", "error", callback=callback)
+        log(f"  [{client.ip}] [FAIL] Buffer configuration error: {e}", "error", callback=callback)
         return False, str(e)
 
 
@@ -796,6 +797,15 @@ def _version_tuple(version: Optional[str]) -> Tuple[int, int, int]:
     parts = [int(p) for p in re.findall(r"\d+", version)]
     parts = (parts + [0, 0, 0])[:3]
     return tuple(parts)
+
+
+def _requested_target_version(maintenance_params: Optional[Dict[str, Any]]) -> Optional[str]:
+    target = str((maintenance_params or {}).get("firmware_target") or "final").strip().lower()
+    if target == "baseline":
+        return CONFIG.firmware_baseline_version
+    if target == "final":
+        return CONFIG.firmware_final_version
+    return None
 
 def _is_transient_cli_error(exc: Exception) -> bool:
     text = str(exc or "").lower()
@@ -1054,26 +1064,48 @@ def get_uptime_days(client: AviatSSHClient, callback=None) -> Optional[int]:
 
 
 def _first_valid_output(client: AviatSSHClient, commands: List[str]) -> str:
+    def _looks_like_prompt_only(text: str) -> bool:
+        cleaned = _clean_cli_output(text or "").strip()
+        if not cleaned:
+            return True
+        lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+        return len(lines) == 1 and bool(re.search(r"[#>]\s*$", lines[0]))
+
     for command in commands:
         output = client.send_command(command)
         lowered = output.lower()
         if "syntax error" in lowered or "invalid" in lowered:
             continue
-        if output.strip():
+        if output.strip() and not _looks_like_prompt_only(output):
             return output
     return ""
 
 
 def _get_snmp_output(client: AviatSSHClient) -> str:
-    return _first_valid_output(
-        client,
-        [
-            "show running-config | include snmp",
-            "show running-config snmp",
-            "show running-config | include SNMP",
-            "show running-config",
-        ],
-    )
+    commands = [
+        "show running-config | include snmp",
+        "show running-config snmp",
+        "show running-config | include SNMP",
+        "show running-config",
+    ]
+    outputs: List[str] = []
+    for command in commands:
+        output = client.send_command(command)
+        lowered = output.lower()
+        if "syntax error" in lowered or "invalid" in lowered:
+            continue
+        cleaned = _clean_cli_output(output or "").strip()
+        if not cleaned:
+            continue
+        lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+        if len(lines) == 1 and re.search(r"[#>]\s*$", lines[0]):
+            continue
+        outputs.append(output)
+        combined = "\n".join(outputs)
+        mode_ok, comm_ok = _check_snmp_output(combined)
+        if mode_ok and comm_ok:
+            return combined
+    return "\n".join(outputs)
 
 
 def _check_snmp_output(snmp_output: str) -> Tuple[bool, bool]:
@@ -1102,7 +1134,19 @@ def _get_buffer_output(client: AviatSSHClient) -> str:
 
 def _get_subnet_output(client: AviatSSHClient) -> str:
     command = os.getenv("AVIAT_SUBNET_COMMAND", "show interface vlan1 | begin subnet")
-    return _first_valid_output(client, [command, "show interface vlan1", "show interface"])
+    return _first_valid_output(
+        client,
+        [
+            command,
+            "show interface Vlan1 | begin subnet",
+            "show interface vlan1 | begin subnet",
+            "show running-config interface Vlan1",
+            "show running-config interface vlan1",
+            "show interface Vlan1",
+            "show interface vlan1",
+            "show interface",
+        ],
+    )
 
 
 def check_subnet_mask(client: AviatSSHClient) -> Tuple[Optional[bool], str]:
@@ -1122,6 +1166,15 @@ def check_subnet_mask(client: AviatSSHClient) -> Tuple[Optional[bool], str]:
             try:
                 prefix = int(cidr.group(1))
                 actual = str(ipaddress.IPv4Network(f"0.0.0.0/{prefix}", strict=False).netmask)
+            except Exception:
+                actual = None
+
+    # Running-config often exposes IPv4 address + prefix-length instead of dotted mask.
+    if not actual:
+        prefix = re.search(r"\bprefix-length\s+(\d{1,2})\b", output, re.I)
+        if prefix:
+            try:
+                actual = str(ipaddress.IPv4Network(f"0.0.0.0/{int(prefix.group(1))}", strict=False).netmask)
             except Exception:
                 actual = None
 
@@ -1179,14 +1232,28 @@ def check_license_bundles(client: AviatSSHClient) -> Tuple[Optional[bool], str]:
 
 def check_stp_disabled(client: AviatSSHClient) -> Tuple[Optional[bool], str]:
     expected = os.getenv("AVIAT_STP_EXPECTED", "disabled").lower()
-    output = _first_valid_output(client, ["show spanning-tree", "show spanning tree"])
+    output = _first_valid_output(
+        client,
+        [
+            "show spanning-tree",
+            "show running-config | include spanning-tree",
+            "show running-config | include spanning",
+        ],
+    )
     if not output:
         return None, "No output"
     lowered = output.lower()
+    if "no entries found" in lowered:
+        return True, "disabled"
     if expected in ("disabled", "shutdown", "off"):
-        if "shutdown" in lowered or "disabled" in lowered or "off" in lowered:
+        if (
+            "shutdown" in lowered
+            or "disabled" in lowered
+            or "off" in lowered
+            or "administrative-status down" in lowered
+        ):
             return True, "disabled"
-        if "enabled" in lowered or "forwarding" in lowered:
+        if "enabled" in lowered or "forwarding" in lowered or "administrative-status up" in lowered:
             return False, "enabled"
     return None, "Unknown"
 
@@ -1199,6 +1266,38 @@ def trigger_firmware_download(
     activation_mode: str,
     callback=None,
 ) -> Tuple[bool, str]:
+    def _software_status_text() -> str:
+        try:
+            return client.send_command("show software-status status", timeout=10) or ""
+        except Exception:
+            return ""
+
+    def _software_state_from_text(text: str) -> str:
+        lowered_text = (text or "").lower()
+        match = re.search(r"software-status status\s+([a-z]+)", lowered_text)
+        if match:
+            return match.group(1)
+        if "loading started" in lowered_text:
+            return "load"
+        if "automatic activation" in lowered_text:
+            return "load"
+        return "unknown"
+
+    def _send_load(in_config_mode: bool) -> str:
+        if in_config_mode:
+            config_output = client.send_command("config terminal", wait_for=['#', '>'], timeout=10)
+            log(f"  [{client.ip}]   > config terminal", "info", callback=callback)
+            if "invalid input" in (config_output or "").lower():
+                client.send_command("configure terminal", wait_for=['#', '>'], timeout=10)
+                log(f"  [{client.ip}]   > configure terminal", "info", callback=callback)
+        try:
+            output = client.send_command(command, timeout=20)
+            log(f"  [{client.ip}]   > {command}", "info", callback=callback)
+            return output
+        finally:
+            if in_config_mode:
+                exit_config_mode(client)
+
     if activation_mode in ("manual", "scheduled"):
         command = f"software load uri {uri} force"
     elif activate_now:
@@ -1209,11 +1308,26 @@ def trigger_firmware_download(
         command = f"software load uri {uri} force"
 
     log(f"  [{client.ip}] Triggering firmware download...", "info", callback=callback)
-    output = client.send_command(command, timeout=15)
-    log(f"  [{client.ip}]   > {command}", "info", callback=callback)
+    status_before = _software_status_text()
+    if re.search(r"software-status status\s+(rollbackerror|loaderror)", status_before, re.I):
+        try:
+            client.send_command("config terminal", wait_for=['#', '>'], timeout=10)
+            log(f"  [{client.ip}]   > config terminal", "info", callback=callback)
+            client.send_command("software abort", timeout=8)
+            log(f"  [{client.ip}]   > software abort", "info", callback=callback)
+        finally:
+            exit_config_mode(client)
 
-    if "loading started" not in output.lower():
-        return False, f"Firmware download failed: {output[-200:]}"
+    output = _send_load(in_config_mode=False)
+    lowered = (output or "").lower()
+    if "syntax error" in lowered or "invalid input" in lowered:
+        output = _send_load(in_config_mode=True)
+        lowered = (output or "").lower()
+
+    if "loading started" not in lowered and "automatic activation" not in lowered:
+        state_now = _software_state_from_text(_software_status_text())
+        if state_now not in {"prepareload", "load", "activate", "commit"}:
+            return False, f"Firmware download failed: {(output or '').strip()[-200:]}"
     return True, "Firmware download started"
 
 
@@ -1286,77 +1400,131 @@ def activate_firmware(client: AviatSSHClient, callback=None) -> Tuple[bool, str]
         if "software-status status" in lowered_text:
             if re.search(r"\bactivate\b", lowered_text):
                 return "activate"
+            if re.search(r"\brollback\b", lowered_text):
+                return "rollback"
             if re.search(r"\bload\b", lowered_text):
                 return "load"
             if re.search(r"\bidle\b", lowered_text):
                 return "idle"
         if "resp activating new software now" in lowered_text:
             return "activate"
+        if "resp ok" in lowered_text and "rollback" in lowered_text:
+            return "rollback"
         if "loading started" in lowered_text:
             return "load"
         return "unknown"
 
     log(f"  [{client.ip}] Activating firmware...", "info", callback=callback)
-    # Avoid ':' prompt matching here; it can terminate reads too early.
-    output = client.send_command("software activate", wait_for=['#', '>', ']', '?', '[no,yes]'], timeout=20)
-    log(f"  [{client.ip}]   > software activate", "info", callback=callback)
-    lowered = (output or "").lower()
-    if "are you sure" in lowered or "[no,yes]" in lowered or "proceed" in lowered:
-        confirm = client.send_command("yes", wait_for=['#', '>', ']', '?'], timeout=20)
-        output = (output or "") + "\n" + (confirm or "")
-        lowered = output.lower()
-    if "no software ready to activate" in lowered:
-        status_output = ""
-        try:
-            status_output = client.send_command("show software-status", timeout=10)
-            status_lowered = (status_output or "").lower()
-            if "software-status status activate" in status_lowered:
-                return _restart_device_after_activation(client, callback=callback)
-        except Exception:
-            pass
-        try:
-            active_version, inactive_version = _parse_versions_from_status(status_output or "")
-        except Exception:
-            active_version, inactive_version = (None, None)
+    try:
+        config_output = client.send_command("config terminal", wait_for=['#', '>'], timeout=10)
+        log(f"  [{client.ip}]   > config terminal", "info", callback=callback)
+        if "invalid input" in (config_output or "").lower():
+            client.send_command("configure terminal", wait_for=['#', '>'], timeout=10)
+            log(f"  [{client.ip}]   > configure terminal", "info", callback=callback)
 
-        # For activate-now flows, if device is not final and direct activation is not ready,
-        # force the automatic activation load path to avoid dead-end "no software ready".
-        if _version_tuple(active_version) < _version_tuple(CONFIG.firmware_final_version):
+        # Avoid ':' prompt matching here; it can terminate reads too early.
+        output = client.send_command("software activate", wait_for=['#', '>', ']', '?', '[no,yes]'], timeout=20)
+        log(f"  [{client.ip}]   > software activate", "info", callback=callback)
+        lowered = (output or "").lower()
+        if "are you sure" in lowered or "[no,yes]" in lowered or "proceed" in lowered:
+            confirm = client.send_command("yes", wait_for=['#', '>', ']', '?'], timeout=20)
+            output = (output or "") + "\n" + (confirm or "")
+            lowered = output.lower()
+        if "no software ready to activate" in lowered:
+            status_output = ""
             try:
-                client.send_command("software abort", timeout=8)
+                exit_config_mode(client)
+                status_output = client.send_command("show software-status", timeout=10)
+                status_lowered = (status_output or "").lower()
+                if "software-status status activate" in status_lowered:
+                    return _restart_device_after_activation(client, callback=callback)
             except Exception:
                 pass
-            cmd = f"software load uri {CONFIG.firmware_final_uri} force activation-immediately"
-            out = client.send_command(cmd, timeout=20)
-            out_lowered = (out or "").lower()
-            if "loading started" in out_lowered:
-                log(f"  [{client.ip}]   > {cmd}", "info", callback=callback)
-                # Confirm radio really entered an operation state before marking as loading.
-                time.sleep(2)
-                status_now = _software_status_text()
-                state_now = _software_state_from_text(status_now)
-                if state_now in ("load", "activate"):
-                    return True, f"Activation fallback: automatic activation {state_now} started"
-                tail = (status_now or "").strip().replace("\r", "")[-200:]
-                return False, f"Activation fallback did not enter load/activate state: {tail or 'no status'}"
-            tail = (out or "").strip().replace("\r", "")[-200:]
-            return False, f"Firmware activation fallback failed: {tail}"
+            try:
+                active_version, inactive_version = _parse_versions_from_status(status_output or "")
+            except Exception:
+                active_version, inactive_version = (None, None)
 
-        return False, "Firmware activation failed: no software ready to activate"
+            # For activate-now flows, if device is not final and direct activation is not ready,
+            # force the automatic activation load path to avoid dead-end "no software ready".
+            if _version_tuple(active_version) < _version_tuple(CONFIG.firmware_final_version):
+                try:
+                    client.send_command("config terminal", wait_for=['#', '>'], timeout=10)
+                    client.send_command("software abort", timeout=8)
+                except Exception:
+                    pass
+                finally:
+                    exit_config_mode(client)
+                cmd = f"software load uri {CONFIG.firmware_final_uri} force activation-immediately"
+                out = client.send_command(cmd, timeout=20)
+                out_lowered = (out or "").lower()
+                if "loading started" in out_lowered:
+                    log(f"  [{client.ip}]   > {cmd}", "info", callback=callback)
+                    # Confirm radio really entered an operation state before marking as loading.
+                    time.sleep(2)
+                    status_now = _software_status_text()
+                    state_now = _software_state_from_text(status_now)
+                    if state_now in ("load", "activate"):
+                        return True, f"Activation fallback: automatic activation {state_now} started"
+                    tail = (status_now or "").strip().replace("\r", "")[-200:]
+                    return False, f"Activation fallback did not enter load/activate state: {tail or 'no status'}"
+                tail = (out or "").strip().replace("\r", "")[-200:]
+                return False, f"Firmware activation fallback failed: {tail}"
 
-    if re.search(r"\b(activat(ing|ion)|scheduled|reboot|restarting)\b", lowered) or "resp activating" in lowered:
-        return _restart_device_after_activation(client, callback=callback)
-    # Some radios return minimal/no text; verify operation state before failing.
-    status_now = _software_status_text()
-    state_now = _software_state_from_text(status_now)
-    if state_now == "activate":
-        return _restart_device_after_activation(client, callback=callback)
-    if state_now == "load":
-        return True, "Activation accepted; software load in progress"
-    if not (output or "").strip():
-        return _restart_device_after_activation(client, callback=callback)
-    tail = (output or "").strip().replace("\r", "")[-200:]
-    return False, f"Firmware activation failed: {tail}"
+            return False, "Firmware activation failed: no software ready to activate"
+
+        exit_config_mode(client)
+        if re.search(r"\b(activat(ing|ion)|scheduled|reboot|restarting)\b", lowered) or "resp activating" in lowered:
+            return _restart_device_after_activation(client, callback=callback)
+        # Some radios return minimal/no text; verify operation state before failing.
+        status_now = _software_status_text()
+        state_now = _software_state_from_text(status_now)
+        if state_now == "activate":
+            return _restart_device_after_activation(client, callback=callback)
+        if state_now == "load":
+            return True, "Activation accepted; software load in progress"
+        if not (output or "").strip():
+            return _restart_device_after_activation(client, callback=callback)
+        tail = (output or "").strip().replace("\r", "")[-200:]
+        return False, f"Firmware activation failed: {tail}"
+    finally:
+        exit_config_mode(client)
+
+
+def rollback_firmware(client: AviatSSHClient, callback=None) -> Tuple[bool, str]:
+    def _software_status_text() -> str:
+        try:
+            return client.send_command("show software-status status", timeout=10) or ""
+        except Exception:
+            return ""
+
+    log(f"  [{client.ip}] Rolling back firmware...", "info", callback=callback)
+    try:
+        config_output = client.send_command("config terminal", wait_for=['#', '>'], timeout=10)
+        log(f"  [{client.ip}]   > config terminal", "info", callback=callback)
+        if "invalid input" in (config_output or "").lower():
+            client.send_command("configure terminal", wait_for=['#', '>'], timeout=10)
+            log(f"  [{client.ip}]   > configure terminal", "info", callback=callback)
+
+        output = client.send_command("software rollback", wait_for=['#', '>', ']', '?', '[no,yes]'], timeout=20)
+        log(f"  [{client.ip}]   > software rollback", "info", callback=callback)
+        lowered = (output or "").lower()
+        if "are you sure" in lowered or "[no,yes]" in lowered or "proceed" in lowered:
+            confirm = client.send_command("yes", wait_for=['#', '>', ']', '?'], timeout=20)
+            output = (output or "") + "\n" + (confirm or "")
+            lowered = output.lower()
+        exit_config_mode(client)
+
+        status_now = _software_status_text()
+        status_lowered = (status_now or "").lower()
+        if "software-status status rollback" in status_lowered:
+            return True, "Firmware rollback started"
+        if "resp ok" in lowered or "rollback" in lowered or "reboot" in lowered or "restarting" in lowered:
+            return True, "Firmware rollback started"
+        tail = (output or status_now or "").strip().replace("\r", "")[-200:]
+        return False, f"Firmware rollback failed: {tail or 'no status'}"
+    finally:
+        exit_config_mode(client)
 
 
 def _load_sop_checks() -> List[Dict[str, Any]]:
@@ -1573,12 +1741,7 @@ def wait_for_ping(
     start = time.time()
     while time.time() - start < timeout:
         try:
-            result = subprocess.run(
-                ["ping", "-c", "1", "-W", "1", "-s", str(payload_size), ip],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=False,
-            )
+            result = _run_ping(ip, payload_size=payload_size, timeout_seconds=1)
             if result.returncode == 0:
                 log(f"[{ip}] Ping successful; device online.", "info", callback=callback)
                 return True
@@ -1598,6 +1761,37 @@ def wait_after_activation(callback=None):
         callback=callback,
     )
     time.sleep(wait_seconds)
+
+
+def _run_ping(ip: str, payload_size: int, timeout_seconds: int) -> subprocess.CompletedProcess:
+    if os.name == "nt":
+        command = [
+            "ping",
+            "-n",
+            "1",
+            "-w",
+            str(max(1, int(timeout_seconds)) * 1000),
+            "-l",
+            str(payload_size),
+            ip,
+        ]
+    else:
+        command = [
+            "ping",
+            "-c",
+            "1",
+            "-W",
+            str(max(1, int(timeout_seconds))),
+            "-s",
+            str(payload_size),
+            ip,
+        ]
+    return subprocess.run(
+        command,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
 
 
 def wait_for_device_ready(
@@ -1624,7 +1818,7 @@ def wait_for_device_ready(
     ping_available = shutil.which("ping") is not None
     if not ping_available:
         log(
-            f"[{ip}] Ping binary not available; using TCP probe on port 22.",
+            f"[{ip}] Ping binary not available; using TCP probe on port {CONFIG.ssh_port}.",
             "warning",
             callback=callback,
         )
@@ -1632,19 +1826,14 @@ def wait_for_device_ready(
         reachable = False
         try:
             if ping_available:
-                result = subprocess.run(
-                    ["ping", "-c", "1", "-W", "2", "-s", str(payload), ip],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    check=False,
-                )
+                result = _run_ping(ip, payload_size=payload, timeout_seconds=2)
                 if result.returncode == 0:
                     reachable = True
         except Exception:
             pass
         if not reachable:
             try:
-                with socket.create_connection((ip, 22), timeout=2):
+                with socket.create_connection((ip, CONFIG.ssh_port), timeout=2):
                     reachable = True
             except Exception:
                 reachable = False
@@ -1699,7 +1888,7 @@ def wait_for_device_ready_and_reconnect(
     ping_available = shutil.which("ping") is not None
     if not ping_available:
         log(
-            f"[{ip}] Ping binary not available; using TCP probe on port 22.",
+            f"[{ip}] Ping binary not available; using TCP probe on port {CONFIG.ssh_port}.",
             "warning",
             callback=callback,
         )
@@ -1707,19 +1896,14 @@ def wait_for_device_ready_and_reconnect(
         reachable = False
         try:
             if ping_available:
-                result = subprocess.run(
-                    ["ping", "-c", "1", "-W", "2", "-s", str(payload), ip],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    check=False,
-                )
+                result = _run_ping(ip, payload_size=payload, timeout_seconds=2)
                 if result.returncode == 0:
                     reachable = True
         except Exception:
             pass
         if not reachable:
             try:
-                with socket.create_connection((ip, 22), timeout=2):
+                with socket.create_connection((ip, CONFIG.ssh_port), timeout=2):
                     reachable = True
             except Exception:
                 reachable = False
@@ -1778,11 +1962,11 @@ def process_radio(
     maintenance_params = maintenance_params or {}
     firmware_target = maintenance_params.get("firmware_target", "final")
     firmware_uri_override = maintenance_params.get("firmware_uri")
+    result.target_version = _requested_target_version(maintenance_params)
     activation_time = maintenance_params.get("activation_time")
     if activation_time == "":
         activation_time = None
     activation_mode = maintenance_params.get("activation_mode", "scheduled")
-    waited_after_activation = False
     activate_now = maintenance_params.get("activate_now")
     if activate_now is None:
         activate_now = CONFIG.firmware_activate_now
@@ -1906,11 +2090,15 @@ def process_radio(
             current_version = result.firmware_version_before
             inactive_version = get_inactive_firmware_version(client, callback=callback)
             inactive_version = (inactive_version or "").strip()
+            inactive_target = _parse_version(inactive_version) or inactive_version
             ready_versions = {
                 CONFIG.firmware_baseline_version,
                 CONFIG.firmware_final_version,
             }
-            if _version_tuple(current_version) >= _version_tuple(CONFIG.firmware_final_version):
+            if (
+                firmware_target != "baseline"
+                and _version_tuple(current_version) >= _version_tuple(CONFIG.firmware_final_version)
+            ):
                 log(
                     f"[{ip}] Active firmware {current_version} already final; skipping download.",
                     "info",
@@ -1962,7 +2150,7 @@ def process_radio(
                 not firmware_uri_override
                 and firmware_target == "baseline"
                 and _version_tuple(current_version)
-                >= _version_tuple(CONFIG.firmware_baseline_version)
+                == _version_tuple(CONFIG.firmware_baseline_version)
             )
             already_final = (
                 not firmware_uri_override
@@ -2034,32 +2222,50 @@ def process_radio(
                     result.firmware_activated = result.firmware_activated or bool(
                         success and activate_now
                     )
-                    if not success and not result.error:
-                        result.error = msg
-                        break
-                if baseline_needed and step_name == "baseline" and activate_now:
-                    client.close()
-                    client = wait_for_device_ready_and_reconnect(
-                        ip,
-                        username=login_username,
-                        password=login_password,
-                        fallback_password=CONFIG.default_password,
-                        callback=callback,
-                        initial_delay=CONFIG.firmware_first_check_delay,
-                    )
-                    if not client:
-                        result.error = "Device did not recover within 60 minutes after activation"
-                        return result
-                    waited_after_activation = True
-                    current_version = get_firmware_version(client, callback=callback)
-                    if _version_tuple(current_version) < _version_tuple(
-                        CONFIG.firmware_baseline_version
-                    ):
+                    if not success and "software operation already in progress" in str(msg or "").lower():
+                        result.status = "loading"
+                        result.success = True
+                        stage("FIRMWARE_ALREADY_LOADING")
                         log(
-                            f"[{ip}] Baseline firmware not detected after reboot; skipping final.",
+                            f"[{ip}] Firmware operation already in progress; deferring remaining tasks until load completes.",
                             "warning",
                             callback=callback,
                         )
+                        log(f"[{ip}] WORKFLOW: " + " -> ".join(stages), "info", callback=callback)
+                        return result
+                    if not success and not result.error:
+                        result.error = msg
+                        break
+                    if (
+                        success
+                        and activate_now
+                        and baseline_needed
+                        and step_name == "baseline"
+                        and index < len(steps) - 1
+                    ):
+                        try:
+                            client.close()
+                        except Exception:
+                            pass
+                        client = wait_for_device_ready_and_reconnect(
+                            ip,
+                            username=login_username,
+                            password=login_password,
+                            fallback_password=CONFIG.default_password,
+                            callback=callback,
+                            initial_delay=CONFIG.firmware_first_check_delay,
+                        )
+                        if not client:
+                            result.error = "Device did not recover within 60 minutes after baseline activation"
+                            return result
+                        current_version = get_firmware_version(client, callback=callback)
+                        result.firmware_version_after = current_version
+                        if _version_tuple(current_version) < _version_tuple(
+                            CONFIG.firmware_baseline_version
+                        ):
+                            result.error = "Baseline firmware not detected after activation reboot"
+                            return result
+                        stage("BASELINE_ACTIVE")
 
                 if firmware_was_triggered and activation_mode == "manual":
                     log(
@@ -2085,7 +2291,7 @@ def process_radio(
                     log(f"[{ip}] WORKFLOW: " + " -> ".join(stages), "info", callback=callback)
                     return result
 
-                if firmware_was_triggered and activation_mode == "immediate" and not waited_after_activation:
+                if firmware_was_triggered and activation_mode == "immediate" and not result.error:
                     client.close()
                     client = wait_for_device_ready_and_reconnect(
                         ip,

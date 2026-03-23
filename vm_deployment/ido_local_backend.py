@@ -138,7 +138,6 @@ _REQUIRED_MODULE_KEYS = (
     "generic",
     "ap",
     "bh",
-    "ups",
     "rpc",
     "swt",
     "waveconfig",

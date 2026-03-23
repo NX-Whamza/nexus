@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import sys
+import importlib.util
 from pathlib import Path
 
 
@@ -20,23 +21,35 @@ def safe_print(text: str) -> None:
         print(text.encode("utf-8", "backslashreplace").decode("utf-8"))
 
 
+def has_module(module_name: str) -> bool:
+    return importlib.util.find_spec(module_name) is not None
+
+
 def check_python_version() -> bool:
     version = sys.version_info
     if version.major < 3 or (version.major == 3 and version.minor < 8):
         safe_print(f"[ERROR] Python 3.8+ required (you have {version.major}.{version.minor}.{version.micro})")
         return False
     safe_print(f"[OK] Python {version.major}.{version.minor}.{version.micro} - OK")
+    if (version.major, version.minor) != (3, 11):
+        safe_print("[WARN] Python 3.11 is the validated runtime used by Dockerfile; other versions may work but are not the primary target")
     return True
 
 
 def check_pip_packages() -> bool:
-    required = ["flask", "flask_cors", "requests"]
-    optional = ["openai", "jwt"]
+    required = ["flask", "flask_cors", "fastapi", "uvicorn", "requests"]
+    optional = ["jwt"]
+    ai_provider = os.getenv("AI_PROVIDER", "openai").strip().lower()
+    if ai_provider == "openai":
+        required.append("openai")
+    else:
+        optional.append("openai")
 
     missing: list[str] = []
     for package in required:
         try:
-            __import__(package)
+            if not has_module(package):
+                raise ImportError(package)
             safe_print(f"[OK] {package} - installed")
         except ImportError:
             safe_print(f"[ERROR] {package} - NOT installed")
@@ -44,7 +57,8 @@ def check_pip_packages() -> bool:
 
     for package in optional:
         try:
-            __import__(package)
+            if not has_module(package):
+                raise ImportError(package)
             safe_print(f"[OK] {package} - installed (optional)")
         except ImportError:
             safe_print(f"[WARN] {package} - NOT installed (optional)")
@@ -124,6 +138,14 @@ def check_backend_source() -> bool:
     return True
 
 
+def check_dev_test_tools() -> bool:
+    if has_module("pytest"):
+        safe_print("[OK] pytest - installed")
+    else:
+        safe_print("[WARN] pytest - NOT installed (recommended for backend validation)")
+    return True
+
+
 def main() -> int:
     safe_print("=" * 60)
     safe_print("NOC Config Maker - Setup Checker")
@@ -135,6 +157,7 @@ def main() -> int:
         ("OpenAI Key (if needed)", check_openai_key),
         ("Required Files", check_files),
         ("Backend Source Sanity", check_backend_source),
+        ("Dev Test Tools", check_dev_test_tools),
     ]
 
     results: list[bool] = []
@@ -153,9 +176,9 @@ def main() -> int:
     if passed == total:
         safe_print(f"[OK] All checks passed ({passed}/{total})")
         safe_print("Next:")
-        safe_print("  1) python api_server.py")
-        safe_print("  2) python -m http.server 8000")
-        safe_print("  3) Open: http://localhost:8000/vm_deployment/NOC-configMaker.html")
+        safe_print("  1) python -m uvicorn --app-dir vm_deployment fastapi_server:app --host 0.0.0.0 --port 5000")
+        safe_print("  2) python -m http.server 8000 --directory vm_deployment")
+        safe_print("  3) Open: http://localhost:8000/NOC-configMaker.html")
         return 0
 
     safe_print(f"[ERROR] {total - passed} checks failed ({passed}/{total} passed)")

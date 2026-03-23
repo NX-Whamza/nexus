@@ -12,7 +12,8 @@ from datetime import datetime
 from .util import *
 
 
-BASE_PATH = os.getenv("BASE_CONFIG_PATH") + "/SmartSys/"
+_BASE_CONFIG_ROOT = os.getenv("BASE_CONFIG_PATH") or os.getenv("FIRMWARE_PATH") or ""
+BASE_PATH = os.path.join(_BASE_CONFIG_ROOT, "SmartSys") + "/" if _BASE_CONFIG_ROOT else ""
 
 
 BATTERY_CAPACITY = [

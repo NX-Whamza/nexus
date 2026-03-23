@@ -105,6 +105,15 @@ AZURE_CLIENT_SECRET=PASTE_YOUR_CLIENT_SECRET_HERE
 # Deletes rows from secure_data/activity_log.db that match:
 # activity_type='aviat-upgrade' AND success=0 AND routeros_version=<FW>
 # and optional timestamp/user filters below.
+# AVIAT_USER=admin
+# AVIAT_PASS=admin
+# AVIAT_NEW_PASS=CHANGE_ME
+# SSH_PORT=22
+# AVIAT_BASELINE_VERSION=2.11.11
+# AVIAT_FINAL_VERSION=6.1.0
+# AVIAT_FIRMWARE_BASELINE_URI=http://143.55.35.76/updates/wtm4100-2.11.11.18.6069.swpack
+# AVIAT_FIRMWARE_FINAL_URI=http://143.55.35.76/updates/wtm4100-6.1.0.11.52799.swpack
+# AVIAT_EXPECTED_MASK=255.255.255.248
 # AUTO_PURGE_BAD_AVIAT_LOGS=true
 # AUTO_PURGE_BAD_AVIAT_LOGS_FROM=2026-02-02T04:00:00
 # AUTO_PURGE_BAD_AVIAT_LOGS_TO=2026-02-02T05:00:00

@@ -13,7 +13,8 @@ import logging
 
 PRE_CHECK_FIRMWARE_VERSION = "4.01"
 
-BASE_CONFIG_PATH = os.getenv("BASE_CONFIG_PATH") + "/ICT/200DB/"
+_BASE_CONFIG_ROOT = os.getenv("BASE_CONFIG_PATH") or os.getenv("FIRMWARE_PATH") or ""
+BASE_CONFIG_PATH = os.path.join(_BASE_CONFIG_ROOT, "ICT", "200DB") + "/" if _BASE_CONFIG_ROOT else ""
 
 DEBUG = True
 

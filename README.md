@@ -184,16 +184,21 @@ RouterOS Ver Interface Mapping   Syntax Validation   Audit Trail    Verify
 
 2. **Install dependencies**:
    ```bash
-   pip install -r requirements.txt
+   py -3.13 -m pip install -r requirements.txt
    ```
 
-3. **Start the server**:
+3. **Start the backend**:
    ```bash
-   uvicorn --app-dir vm_deployment fastapi_server:app --host 0.0.0.0 --port 5000
+   py -3.13 -m uvicorn --app-dir vm_deployment fastapi_server:app --host 0.0.0.0 --port 5000
    ```
 
-4. **Access the application**:
-   - Navigate to `http://localhost:5000`
+4. **Start the frontend**:
+   ```bash
+   py -3.13 -m http.server 8000 --directory vm_deployment
+   ```
+
+5. **Access the application**:
+   - Navigate to `http://localhost:8000/NOC-configMaker.html`
    - Login and start generating configs
 
 ### Option 3: Production VM Deployment
@@ -502,7 +507,7 @@ noc-configmaker/
 ├── NOC-configMaker.html          # Main application UI
 ├── login.html                    # Authentication page
 ├── change-password.html          # Password management
-├── launcher.py                   # Application entry point
+├── vm_deployment/launcher.py     # Packaged launcher / EXE entrypoint
 ├── build_exe.py                  # Executable builder
 │
 ├── nextlink_standards.py         # RouterOS policies
@@ -545,13 +550,16 @@ git clone https://github.com/NX-Whamza/noc-configmaker.git
 cd noc-configmaker
 
 # 2. Install dependencies
-pip install -r requirements.txt
+py -3.13 -m pip install -r requirements.txt
 
-# 3. Start server
-python api_server.py
+# 3. Start backend
+py -3.13 -m uvicorn --app-dir vm_deployment fastapi_server:app --host 0.0.0.0 --port 5000
 
-# 4. Access application
-# http://localhost:5000
+# 4. Start frontend in another terminal
+py -3.13 -m http.server 8000 --directory vm_deployment
+
+# 5. Access application
+# http://localhost:8000/NOC-configMaker.html
 ```
 
 ### Production VM Deployment

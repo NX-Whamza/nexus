@@ -330,24 +330,11 @@ COMPLIANCE_DHCP_OPTIONS = """
 def get_compliance_radius(loopback_ip):
     """Generate compliance RADIUS configuration with dynamic source IP
     
-    SECURITY: RADIUS secret is loaded from environment variable to protect proprietary information.
-    If not set, returns configuration with placeholder that must be configured manually.
+    Uses the engineering default RADIUS secret unless NEXTLINK_RADIUS_SECRET overrides it.
     """
     import os
-    import warnings
     
-    # Load RADIUS secret from environment variable (NEVER hardcode)
-    radius_secret = os.getenv('NEXTLINK_RADIUS_SECRET', '').strip()
-    
-    if not radius_secret:
-        # Graceful degradation: return placeholder instead of crashing
-        # This allows the system to work even if RADIUS secret isn't set yet
-        warnings.warn(
-            "NEXTLINK_RADIUS_SECRET not set. Falling back to engineering default secret. "
-            "Set NEXTLINK_RADIUS_SECRET to override.",
-            UserWarning
-        )
-        radius_secret = 'Nl22021234'
+    radius_secret = os.getenv('NEXTLINK_RADIUS_SECRET', 'Nl22021234').strip() or 'Nl22021234'
     
     loop_ip_clean = loopback_ip.split('/')[0] if '/' in loopback_ip else loopback_ip
     return f"""
@@ -490,6 +477,38 @@ def get_compliance_ldp_filters():
 # ========================================
 # GET ALL COMPLIANCE BLOCKS
 # ========================================
+def _local_reference_compliance_blocks(loopback_ip=None):
+    if not loopback_ip:
+        loopback_ip = "10.0.0.1/32"
+    return {
+        "variables": (
+            f':global LoopIP "{loopback_ip}"\n'
+            ":global curDate [/system clock get date]\n"
+            ":global curTime [/system clock get time]\n"
+            ':global CurDT ($curDate . " " . $curTime)'
+        ),
+        "ip_services": COMPLIANCE_IP_SERVICES.strip(),
+        "dns": COMPLIANCE_DNS.strip(),
+        "firewall_address_lists": get_compliance_address_lists_block().strip(),
+        "firewall_filter_input": COMPLIANCE_FIREWALL_FILTER_INPUT.strip(),
+        "firewall_raw": COMPLIANCE_FIREWALL_RAW.strip(),
+        "firewall_forward": COMPLIANCE_FIREWALL_FORWARD.strip(),
+        "firewall_nat": COMPLIANCE_FIREWALL_NAT.strip(),
+        "firewall_mangle": COMPLIANCE_FIREWALL_MANGLE.strip(),
+        "clock_ntp": COMPLIANCE_CLOCK_NTP.strip(),
+        "snmp": COMPLIANCE_SNMP.strip(),
+        "system_settings": COMPLIANCE_SYSTEM_SETTINGS.strip(),
+        "vpls_edge": COMPLIANCE_VPLS_EDGE.strip(),
+        "logging": get_compliance_logging(loopback_ip).strip(),
+        "user_aaa": COMPLIANCE_USER_AAA.strip(),
+        "user_groups": COMPLIANCE_USER_GROUPS.strip(),
+        "dhcp_options": COMPLIANCE_DHCP_OPTIONS.strip(),
+        "radius": get_compliance_radius(loopback_ip).strip(),
+        "ldp_filters": get_compliance_ldp_filters().strip(),
+        "sys_note": '/system note set note="COMPLIANCE SCRIPT LAST RUN ON $CurDT"',
+    }
+
+
 def get_all_compliance_blocks(loopback_ip=None):
     """
     Get all compliance configuration blocks.
@@ -522,34 +541,8 @@ def get_all_compliance_blocks(loopback_ip=None):
     else:
         print("[COMPLIANCE-REF] WARNING: GitLab compliance module not available")
 
-    print("[COMPLIANCE-REF] WARNING: GitLab compliance unavailable - using local reference blocks")
-    return {
-        "variables": (
-            f':global LoopIP "{loopback_ip}"\n'
-            ":global curDate [/system clock get date]\n"
-            ":global curTime [/system clock get time]\n"
-            ':global CurDT ($curDate . " " . $curTime)'
-        ),
-        "ip_services": COMPLIANCE_IP_SERVICES.strip(),
-        "dns": COMPLIANCE_DNS.strip(),
-        "firewall_address_lists": get_compliance_address_lists_block().strip(),
-        "firewall_filter_input": COMPLIANCE_FIREWALL_FILTER_INPUT.strip(),
-        "firewall_raw": COMPLIANCE_FIREWALL_RAW.strip(),
-        "firewall_forward": COMPLIANCE_FIREWALL_FORWARD.strip(),
-        "firewall_nat": COMPLIANCE_FIREWALL_NAT.strip(),
-        "firewall_mangle": COMPLIANCE_FIREWALL_MANGLE.strip(),
-        "clock_ntp": COMPLIANCE_CLOCK_NTP.strip(),
-        "snmp": COMPLIANCE_SNMP.strip(),
-        "system_settings": COMPLIANCE_SYSTEM_SETTINGS.strip(),
-        "vpls_edge": COMPLIANCE_VPLS_EDGE.strip(),
-        "logging": get_compliance_logging(loopback_ip).strip(),
-        "user_aaa": COMPLIANCE_USER_AAA.strip(),
-        "user_groups": COMPLIANCE_USER_GROUPS.strip(),
-        "dhcp_options": COMPLIANCE_DHCP_OPTIONS.strip(),
-        "radius": get_compliance_radius(loopback_ip).strip(),
-        "ldp_filters": get_compliance_ldp_filters().strip(),
-        "sys_note": '/system note set note="COMPLIANCE SCRIPT LAST RUN ON $CurDT"',
-    }
+    print("[COMPLIANCE-REF] WARNING: GitLab unavailable, using bundled local compliance reference blocks")
+    return _local_reference_compliance_blocks(loopback_ip)
 
 # ========================================
 # COMPLIANCE VALIDATION

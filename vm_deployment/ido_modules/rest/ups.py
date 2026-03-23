@@ -10,7 +10,13 @@ from .device_info import device_info
 sys.path.append(path.dirname(path.dirname(path.abspath(__file__))))
 
 from device_io.smart_sys_config import SmartSysConfig
-from device_io.ict_ups_config import ICTUPSConfig
+try:
+    from device_io.ict_ups_config import ICTUPSConfig
+    HAS_ICT_UPS = True
+except Exception as ict_ups_import_error:
+    ICTUPSConfig = None
+    HAS_ICT_UPS = False
+    ICT_UPS_IMPORT_ERROR = ict_ups_import_error
 
 VALID_DEVICE_TYPES = {"SS": "SS", "ICT800": "ICT"}
 
@@ -37,6 +43,11 @@ async def get_ups_device_info(
                     ),
                 )
         if oem == "ICT":
+            if not HAS_ICT_UPS or ICTUPSConfig is None:
+                raise HTTPException(
+                    status_code=501,
+                    detail=f"ICT UPS support unavailable on this runtime: {ICT_UPS_IMPORT_ERROR}",
+                )
             loop = asyncio.get_running_loop()
             with concurrent.futures.ProcessPoolExecutor() as pool:
                 result = await loop.run_in_executor(

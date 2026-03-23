@@ -56,6 +56,12 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from ftth_renderer import render_ftth_config
 from typing import Optional
+try:
+    from routes.ftth import create_ftth_blueprint
+    from routes.runtime import create_runtime_blueprint
+except Exception:
+    from vm_deployment.routes.ftth import create_ftth_blueprint
+    from vm_deployment.routes.runtime import create_runtime_blueprint
 
 # Ensure local module imports work regardless of process working directory.
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -196,6 +202,7 @@ from nextlink_standards import (
     NEXTLINK_DEVICE_ROLES,
     NEXTLINK_AUTO_DETECTABLE_ERRORS
 )
+from legacy_toolbox_reference import LEGACY_GENERATOR_INVENTORY, LEGACY_ROLE_PATTERNS
 
 # Import NextLink enterprise reference (standard blocks for non-MPLS)
 try:
@@ -215,12 +222,10 @@ except ImportError:
 
 
 def _get_dynamic_compliance_blocks(loopback_ip: str = "10.0.0.1/32", return_source: bool = False):
-    """Get compliance blocks from GitLab (single source of truth).
+    """Get compliance blocks with GitLab-first loading and bundled fallback.
 
     Every endpoint that needs compliance blocks should call this instead of
-    ``get_all_compliance_blocks()`` directly.  GitLab is the ONLY source —
-    there is no hardcoded fallback.  When GitLab is unavailable the caller
-    receives an empty dict and a clear warning is logged.
+    duplicating the GitLab loader / local reference fallback logic.
 
     Args:
         loopback_ip: Loopback IP address to inject into compliance blocks.
@@ -232,7 +237,7 @@ def _get_dynamic_compliance_blocks(loopback_ip: str = "10.0.0.1/32", return_sour
     """
     blocks = {}
 
-    # GitLab dynamic compliance — single source of truth
+    # GitLab dynamic compliance is preferred when configured.
     if _HAS_GITLAB_COMPLIANCE and _get_gitlab_compliance_loader is not None:
         try:
             loader = _get_gitlab_compliance_loader()
@@ -252,9 +257,19 @@ def _get_dynamic_compliance_blocks(loopback_ip: str = "10.0.0.1/32", return_sour
     else:
         print("[COMPLIANCE] WARNING: GitLab compliance module not available")
 
-    # No hardcoded fallback — GitLab is the single source of truth.
-    # Return empty dict so the caller knows compliance is unavailable.
-    print("[COMPLIANCE] WARNING: No compliance blocks available — GitLab is the only source")
+    # Fall back to the bundled reference blocks so compliance-backed features
+    # keep working in local/dev or when GitLab is temporarily unavailable.
+    try:
+        fallback_blocks = get_all_compliance_blocks(loopback_ip=loopback_ip)
+        if fallback_blocks:
+            print(f"[COMPLIANCE] Using bundled fallback compliance blocks ({len(fallback_blocks)} blocks)")
+            if return_source:
+                return fallback_blocks, 'bundled-local'
+            return fallback_blocks
+    except Exception as _exc:
+        print(f"[COMPLIANCE] ERROR: bundled compliance fallback failed: {_exc}")
+
+    print("[COMPLIANCE] WARNING: No compliance blocks available from GitLab or bundled fallback")
     if return_source:
         return blocks, 'unavailable'
     return blocks
@@ -291,6 +306,7 @@ try:
         process_radios_parallel as aviat_process_radios_parallel,
         check_device_status as aviat_check_device_status,
         CONFIG as AVIAT_CONFIG,
+        trigger_firmware_download as aviat_trigger_firmware_download,
         get_firmware_version as aviat_get_firmware_version,
         get_inactive_firmware_version as aviat_get_inactive_firmware_version,
         get_uptime_days as aviat_get_uptime_days,
@@ -344,9 +360,11 @@ aviat_activation_lock = threading.Lock()
 aviat_loading_lock = threading.Lock()
 AVIAT_AUTO_ACTIVATE = os.getenv("AVIAT_AUTO_ACTIVATE", "true").lower() in ("1", "true", "yes")
 AVIAT_AUTO_ACTIVATE_POLL = int(os.getenv("AVIAT_AUTO_ACTIVATE_POLL", "60"))
-AVIAT_LOADING_CHECK_INTERVAL = int(os.getenv("AVIAT_LOADING_CHECK_INTERVAL", "900"))
+AVIAT_LOADING_CHECK_INTERVAL = int(os.getenv("AVIAT_LOADING_CHECK_INTERVAL", "60"))
 AVIAT_LOADING_MAX_WAIT = int(os.getenv("AVIAT_LOADING_MAX_WAIT", "5400"))
 AVIAT_LOADING_UNKNOWN_MAX_CHECKS = int(os.getenv("AVIAT_LOADING_UNKNOWN_MAX_CHECKS", "6"))
+_aviat_background_threads_started = False
+_aviat_background_threads_lock = threading.Lock()
 
 
 def _aviat_dedupe_queue(entries):
@@ -528,20 +546,17 @@ def _aviat_status_from_result(result):
     status = (result or {}).get("status")
     success = result.get("success")
     err_text = str((result or {}).get("error") or "").lower()
+    target_version = _aviat_target_version(result or {})
     final_version = _aviat_extract_version(
         (result or {}).get("firmware_version_after") or (result or {}).get("firmware_version_before")
     )
-    final_ok = _aviat_version_tuple(final_version) >= _aviat_version_tuple(
-        getattr(AVIAT_CONFIG, "firmware_final_version", "6.1.0")
-    )
+    final_ok = _aviat_version_meets_target(final_version, target_version)
     hard_component_error = any(
         (result or {}).get(k) is False for k in ("password_changed", "snmp_configured", "buffer_configured")
     )
     hard_precheck_error = any(
-        (result or {}).get(k) is False for k in ("license_ok", "stp_ok")
+        (result or {}).get(k) is False for k in ("license_ok", "stp_ok", "subnet_ok")
     )
-    if final_ok and not hard_component_error and not hard_precheck_error:
-        return "success"
     if "precheck blocked upgrade" in err_text:
         return "pending"
     if "software operation already in progress" in err_text:
@@ -560,6 +575,10 @@ def _aviat_status_from_result(result):
         return "aborted"
     if _aviat_is_transient_result(result):
         return "pending_verify"
+    if final_ok and not hard_component_error and not hard_precheck_error:
+        return "success"
+    if hard_precheck_error:
+        return "pending"
     if success:
         return "success"
     return "error"
@@ -581,6 +600,22 @@ def _aviat_extract_version(value):
     return match.group(1) if match else None
 
 
+def _aviat_target_version(payload):
+    if not isinstance(payload, dict):
+        return None
+    explicit = payload.get("target_version") or payload.get("targetVersion")
+    explicit = _aviat_extract_version(explicit)
+    if explicit:
+        return explicit
+    maintenance = payload.get("maintenance_params") or {}
+    target_name = str(maintenance.get("firmware_target") or payload.get("firmware_target") or "").strip().lower()
+    if target_name == "baseline":
+        return _aviat_extract_version(getattr(AVIAT_CONFIG, "firmware_baseline_version", "2.11.11"))
+    if target_name == "final":
+        return _aviat_extract_version(getattr(AVIAT_CONFIG, "firmware_final_version", "6.1.0"))
+    return None
+
+
 def _aviat_version_tuple(version):
     if not version:
         return (0, 0, 0)
@@ -594,6 +629,19 @@ def _aviat_firmware_is_final(version):
     target = _aviat_extract_version(getattr(AVIAT_CONFIG, "firmware_final_version", "6.1.0"))
     return _aviat_version_tuple(_aviat_extract_version(version)) >= _aviat_version_tuple(target)
 
+
+def _aviat_version_meets_target(version, target_version=None):
+    actual = _aviat_extract_version(version)
+    target = _aviat_extract_version(target_version) or _aviat_extract_version(
+        getattr(AVIAT_CONFIG, "firmware_final_version", "6.1.0")
+    )
+    if not actual or not target:
+        return False
+    baseline = _aviat_extract_version(getattr(AVIAT_CONFIG, "firmware_baseline_version", "2.11.11"))
+    if baseline and _aviat_version_tuple(target) <= _aviat_version_tuple(baseline):
+        return _aviat_version_tuple(actual) == _aviat_version_tuple(target)
+    return _aviat_version_tuple(actual) >= _aviat_version_tuple(target)
+
 def _aviat_queue_update_from_result(result, username=None):
     if not result:
         return
@@ -601,6 +649,7 @@ def _aviat_queue_update_from_result(result, username=None):
     if not ip:
         return
     status = _aviat_status_from_result(result)
+    target_version = _aviat_target_version(result)
     updates = {
         "status": status,
         "firmwareStatus": _aviat_substatus(
@@ -614,6 +663,8 @@ def _aviat_queue_update_from_result(result, username=None):
         "bufferStatus": _aviat_substatus(result.get("buffer_configured")),
         "sopStatus": _aviat_substatus(result.get("sop_passed")),
     }
+    if target_version:
+        updates["targetVersion"] = target_version
     subnet_ok = result.get("subnet_ok")
     subnet_detail = result.get("subnet_actual")
     # Fallback from SOP output when direct subnet fields are absent.
@@ -666,18 +717,25 @@ def _aviat_queue_update_from_result(result, username=None):
     final_version = _aviat_extract_version(
         result.get("firmware_version_after") or result.get("firmware_version_before")
     )
-    final_ok = _aviat_version_tuple(final_version) >= _aviat_version_tuple(
-        getattr(AVIAT_CONFIG, "firmware_final_version", "6.1.0")
-    )
+    final_ok = _aviat_version_meets_target(final_version, target_version)
     hard_component_error = any(
         updates.get(k) == "error" for k in ("passwordStatus", "snmpStatus", "bufferStatus")
     )
     hard_precheck_error = any(
-        result.get(k) is False for k in ("license_ok", "stp_ok")
+        result.get(k) is False for k in ("license_ok", "stp_ok", "subnet_ok")
     )
-    if updates.get("status") in ("error", "pending_verify", "loading") and final_ok and not hard_component_error and not hard_precheck_error:
+    if updates.get("status") == "error" and final_ok and not hard_component_error and not hard_precheck_error:
         updates["status"] = "success"
         updates["error"] = None
+    if final_ok and updates.get("status") not in (
+        "loading",
+        "pending_verify",
+        "scheduled",
+        "reboot_required",
+        "reboot_pending",
+        "rebooting",
+    ):
+        updates["firmwareStatus"] = "success"
 
     if username:
         updates["username"] = username
@@ -835,6 +893,35 @@ def _aviat_loading_check_loop():
                 if target_version:
                     ready_versions.add(target_version)
 
+                # If active firmware already meets target (or final), resume deferred tasks
+                # immediately instead of waiting on inactive/loadOk state.
+                if target_version and active_version and _aviat_version_tuple(active_version) >= _aviat_version_tuple(target_version):
+                    _aviat_broadcast_log(
+                        f"[{ip}] Active firmware {active_version} already applied; removing from loading queue.",
+                        "success",
+                    )
+                    resumed = _aviat_resume_remaining_tasks(entry, callback=local_log)
+                    if resumed is None:
+                        _aviat_queue_upsert(ip, {
+                            "status": "success",
+                            "firmwareStatus": "success",
+                            "username": entry.get("username") or "aviat-tool",
+                        })
+                    continue
+                if active_version and _aviat_version_tuple(active_version) >= _aviat_version_tuple(AVIAT_CONFIG.firmware_final_version):
+                    _aviat_broadcast_log(
+                        f"[{ip}] Active firmware {active_version} already final; removing from loading queue.",
+                        "success",
+                    )
+                    resumed = _aviat_resume_remaining_tasks(entry, callback=local_log)
+                    if resumed is None:
+                        _aviat_queue_upsert(ip, {
+                            "status": "success",
+                            "firmwareStatus": "success",
+                            "username": entry.get("username") or "aviat-tool",
+                        })
+                    continue
+
                 # Do not schedule activation solely from inactive version text. Radios can show
                 # inactive final while software state is idle/loadError and not activation-ready.
                 if inactive_version and inactive_version in ready_versions and software_state != "loadok":
@@ -862,13 +949,18 @@ def _aviat_loading_check_loop():
                         try:
                             client_retry = _aviat_connect_with_fallback(ip, callback=local_log)
                             try:
-                                client_retry.send_command("software abort", timeout=12)
-                            except Exception:
-                                pass
-                            retry_cmd = f"software load uri {target_uri} force activation-immediately"
-                            retry_out = client_retry.send_command(retry_cmd, timeout=20) or ""
-                            client_retry.close()
-                            if "loading started" in retry_out.lower():
+                                retry_ok, retry_msg = aviat_trigger_firmware_download(
+                                    client_retry,
+                                    target_uri,
+                                    activation_time=None,
+                                    activate_now=True,
+                                    activation_mode="immediate",
+                                    callback=local_log,
+                                )
+                            finally:
+                                client_retry.close()
+                            retry_out = retry_msg or ""
+                            if retry_ok:
                                 entry["loaderror_retries"] = retry_count + 1
                                 entry["check_count"] = current_check_count + 1
                                 entry["unknown_count"] = 0
@@ -902,29 +994,6 @@ def _aviat_loading_check_loop():
                     )
                     continue
 
-                # If active firmware already meets target (or final), remove from loading queue.
-                if target_version and active_version and _aviat_version_tuple(active_version) >= _aviat_version_tuple(target_version):
-                    _aviat_broadcast_log(
-                        f"[{ip}] Active firmware {active_version} already applied; removing from loading queue.",
-                        "success",
-                    )
-                    _aviat_queue_upsert(ip, {
-                        "status": "pending",
-                        "firmwareStatus": "success",
-                        "username": entry.get("username") or "aviat-tool",
-                    })
-                    continue
-                if active_version and _aviat_version_tuple(active_version) >= _aviat_version_tuple(AVIAT_CONFIG.firmware_final_version):
-                    _aviat_broadcast_log(
-                        f"[{ip}] Active firmware {active_version} already final; removing from loading queue.",
-                        "success",
-                    )
-                    _aviat_queue_upsert(ip, {
-                        "status": "pending",
-                        "firmwareStatus": "success",
-                        "username": entry.get("username") or "aviat-tool",
-                    })
-                    continue
                 if (
                     not inactive_version
                     or str(inactive_version).lower() in ("none", "unknown", "0.0.0", "0")
@@ -1011,6 +1080,56 @@ def _aviat_loading_check_loop():
 
         time.sleep(AVIAT_LOADING_CHECK_INTERVAL)
 
+
+def _start_aviat_background_threads():
+    global _aviat_background_threads_started
+    if not HAS_AVIAT:
+        return
+    with _aviat_background_threads_lock:
+        if _aviat_background_threads_started:
+            return
+        if AVIAT_AUTO_ACTIVATE:
+            print("[AVIAT] Auto-activation scheduler is ENABLED")
+            threading.Thread(target=_aviat_auto_activate_loop, daemon=True).start()
+        else:
+            print("[AVIAT] Auto-activation scheduler is DISABLED")
+        print(f"[AVIAT] Firmware loading checker is ENABLED ({AVIAT_LOADING_CHECK_INTERVAL}s interval)")
+        threading.Thread(target=_aviat_loading_check_loop, daemon=True).start()
+        _aviat_background_threads_started = True
+
+
+def _aviat_resume_remaining_tasks(entry, callback=None):
+    ip = entry.get("ip")
+    remaining_tasks = _aviat_clean_remaining_tasks(entry.get("remaining_tasks", []))
+    username = entry.get("username") or "aviat-tool"
+    if not ip or not remaining_tasks:
+        return None
+
+    _aviat_queue_upsert(ip, {
+        "status": "processing",
+        "username": username,
+    })
+    _aviat_save_shared_queue()
+    if callback:
+        callback(f"[{ip}] Firmware active; resuming deferred tasks: {', '.join(remaining_tasks)}", "info")
+
+    result = aviat_process_radio(
+        ip,
+        remaining_tasks,
+        callback=callback,
+        maintenance_params=entry.get("maintenance_params", {}),
+    )
+    res_dict = _aviat_result_dict(result, username=username)
+    _log_aviat_activity(res_dict)
+    _aviat_queue_update_from_result(res_dict, username=username)
+    _aviat_queue_upsert(ip, {
+        "firmwareStatus": "success",
+        "targetVersion": res_dict.get("target_version") or entry.get("target_version"),
+        "username": username,
+    })
+    _aviat_save_shared_queue()
+    return result
+
 def _aviat_activate_entries(task_id, to_activate, username=None):
     aviat_tasks[task_id]['status'] = 'running'
 
@@ -1079,6 +1198,7 @@ def _aviat_activate_entries(task_id, to_activate, username=None):
                     "status": result.status,
                     "firmwareStatus": "pending_verify" if result.status == "pending_verify" else "loading",
                     "username": entry.get("username") or username or "aviat-tool",
+                    "targetVersion": res_dict.get("target_version") or _aviat_target_version(entry),
                 })
                 _aviat_save_shared_queue()
             elif result.firmware_scheduled and result.status == "scheduled":
@@ -1093,6 +1213,7 @@ def _aviat_activate_entries(task_id, to_activate, username=None):
                 _aviat_queue_upsert(ip, {
                     "status": "scheduled",
                     "username": entry.get("username") or username or "aviat-tool",
+                    "targetVersion": res_dict.get("target_version") or _aviat_target_version(entry),
                 })
                 _aviat_save_shared_queue()
 
@@ -1418,6 +1539,558 @@ def get_interface_type(interface_name):
     else:
         return 'unknown'
 
+
+NEXTLINK_ROLE_PRIORITY = {
+    'management': 0,
+    'switch': 1,
+    'olt': 1,
+    'backhaul': 2,
+    'tarana': 3,
+    'lte': 3,
+    '6ghz': 3,
+    'infrastructure': 4,
+    'unknown': 5,
+}
+
+
+def _collect_role_matches(text_value):
+    text_value = (text_value or '').strip()
+    if not text_value:
+        return {}
+    normalized = text_value.lower()
+    matches = {}
+    for role_name, patterns in LEGACY_ROLE_PATTERNS.items():
+        hits = []
+        for pattern in patterns:
+            if pattern in normalized and pattern not in hits:
+                hits.append(pattern)
+        if hits:
+            matches[role_name] = hits
+    return matches
+
+
+def _add_role_matches_from_text(port_name, text_value, evidence_prefix, role_signals, source_ports):
+    if port_name not in source_ports:
+        return
+    for role_name, hits in _collect_role_matches(text_value).items():
+        weight = 5 if evidence_prefix == 'comment' else 4
+        if (
+            evidence_prefix == 'bridge_name'
+            or evidence_prefix == 'logical_interface'
+            or evidence_prefix.startswith('address_comment:')
+        ):
+            weight = 3
+        for hit in hits:
+            role_signals.setdefault(port_name, {})
+            bucket = role_signals[port_name].setdefault(role_name, {'score': 0, 'evidence': []})
+            bucket['score'] += weight
+            evidence = f'{evidence_prefix}:{text_value}'
+            if evidence not in bucket['evidence']:
+                bucket['evidence'].append(evidence)
+
+
+def _port_sort_key(port_name):
+    family_rank = 9
+    if port_name.startswith('ether'):
+        family_rank = 0
+    elif port_name.startswith('sfp-sfpplus'):
+        family_rank = 1
+    elif port_name.startswith('sfp28-'):
+        family_rank = 2
+    elif re.match(r'^sfp\d+$', port_name):
+        family_rank = 3
+    elif port_name.startswith('qsfp'):
+        family_rank = 4
+    match = re.search(r'(\d+)(?!.*\d)', port_name)
+    number = int(match.group(1)) if match else 999
+    return (family_rank, number, port_name)
+
+
+def _all_device_ports(device_key):
+    device = ROUTERBOARD_INTERFACES.get(device_key, {})
+    ports = []
+    for group_ports in device.get('ports', {}).values():
+        ports.extend(group_ports)
+    return ports
+
+
+def resolve_routerboard_model_key(device_name):
+    raw = (device_name or '').strip()
+    if not raw:
+        return raw
+    if raw in ROUTERBOARD_INTERFACES:
+        return raw
+
+    normalized = re.sub(r'[^a-z0-9]+', '', raw.lower())
+    aliases = {
+        'ccr1036': 'CCR1036-12G-4S',
+        'ccr1072': 'CCR1072-12G-4S+',
+        'ccr2004': 'CCR2004-1G-12S+2XS',
+        'ccr200416g2s': 'CCR2004-16G-2S+',
+        'ccr2004112s2xs': 'CCR2004-1G-12S+2XS',
+        'ccr2116': 'CCR2116-12G-4S+',
+        'ccr2216': 'CCR2216-1G-12XS-2XQ',
+        'rb5009': 'RB5009UG+S+',
+        'rb2011': 'RB2011UiAS',
+        'rb1009': 'RB1009UG+S+',
+        'crs326': 'CRS326-24G-2S+',
+        'crs354': 'CRS354-48G-4S+2Q+',
+        '2216': 'CCR2216-1G-12XS-2XQ',
+        '2116': 'CCR2116-12G-4S+',
+        '2004': 'CCR2004-1G-12S+2XS',
+        '1072': 'CCR1072-12G-4S+',
+        '1036': 'CCR1036-12G-4S',
+        '5009': 'RB5009UG+S+',
+        '2011': 'RB2011UiAS',
+        '1009': 'RB1009UG+S+',
+    }
+    if normalized in aliases:
+        return aliases[normalized]
+
+    for model_key in ROUTERBOARD_INTERFACES:
+        if re.sub(r'[^a-z0-9]+', '', model_key.lower()) == normalized:
+            return model_key
+    return raw
+
+
+ENTERPRISE_DEVICE_PROFILES = {
+    'rb5009': {'public_port': 'ether7', 'nat_port': 'ether8', 'uplink_interface': 'sfp-sfpplus1'},
+    'ccr1036': {'public_port': 'ether7', 'nat_port': 'ether8', 'uplink_interface': 'sfp1'},
+    'ccr1072': {'public_port': 'ether7', 'nat_port': 'ether8', 'uplink_interface': 'sfp1'},
+    'ccr2004': {'public_port': 'sfp-sfpplus7', 'nat_port': 'sfp-sfpplus8', 'uplink_interface': 'sfp-sfpplus1'},
+    'ccr2116': {'public_port': 'ether7', 'nat_port': 'ether8', 'uplink_interface': 'sfp-sfpplus1'},
+    'ccr2216': {'public_port': 'sfp28-7', 'nat_port': 'sfp28-8', 'uplink_interface': 'sfp28-1'},
+    'rb2011': {'public_port': 'ether7', 'nat_port': 'ether8', 'uplink_interface': 'sfp1'},
+    'rb1009': {'public_port': 'ether7', 'nat_port': 'ether8', 'uplink_interface': 'ether1'},
+}
+
+
+def get_enterprise_device_profile(device_name: str):
+    normalized = (device_name or '').strip().lower()
+    if normalized in ENTERPRISE_DEVICE_PROFILES:
+        return ENTERPRISE_DEVICE_PROFILES[normalized].copy()
+    model_key = resolve_routerboard_model_key(device_name)
+    if model_key:
+        series = (ROUTERBOARD_MODELS.get(model_key, {}).get('series') or '').lower()
+        if series in ENTERPRISE_DEVICE_PROFILES:
+            return ENTERPRISE_DEVICE_PROFILES[series].copy()
+    return ENTERPRISE_DEVICE_PROFILES['rb5009'].copy()
+
+
+def _extract_used_physical_interfaces(config_text, source_device):
+    known_ports = set(_all_device_ports(source_device))
+    if not known_ports:
+        return []
+    physical = []
+    seen = set()
+    pattern = r'\b(ether\d+|sfp\d+(?:-\d+)?|sfp-sfpplus\d+|sfp28-\d+|qsfpplus\d+-\d+|qsfp28-\d+-\d+|qsfp\d+(?:-\d+)?|combo\d+)\b'
+    for match in re.finditer(pattern, config_text or ''):
+        port = match.group(1)
+        if port in known_ports and port not in seen:
+            seen.add(port)
+            physical.append(port)
+    return physical
+
+
+def analyze_nextlink_port_mapping(config_text, source_device, target_device):
+    """
+    Analyze source interfaces against Nextlink target port policy and build a deterministic map.
+
+    Target policy:
+    - management: ether1 only
+    - switch fabric: slots 1-2
+    - reserved: slot 3 remains empty unless exhausted overflow is unavoidable
+    - backhaul: slots 4-6
+    - radio/access (Tarana/LTE/6GHz): slots 7-11
+    - overflow: remaining non-management ports, then QSFP
+    """
+    if source_device not in ROUTERBOARD_INTERFACES or target_device not in ROUTERBOARD_INTERFACES:
+        return {
+            'interface_map': {},
+            'port_analysis': [],
+            'warnings': ['Unknown source or target device'],
+            'policy_summary': {},
+            'manual_review_required': True,
+        }
+
+    config_text = config_text or ''
+    source_specs = ROUTERBOARD_INTERFACES[source_device]
+    target_specs = ROUTERBOARD_INTERFACES[target_device]
+    source_mgmt = source_specs.get('management_port', 'ether1')
+    target_mgmt = target_specs.get('management_port', 'ether1')
+    source_ports = set(_all_device_ports(source_device))
+    target_ports = _all_device_ports(target_device)
+
+    comment_map = {}
+    for match in re.finditer(
+        r'set\s+\[\s*find\s+default-name=(\S+)\s*\][^\n]*?comment=([^\s\n"]+|"[^"]+")',
+        config_text,
+        re.MULTILINE,
+    ):
+        port = match.group(1).strip()
+        if port in source_ports:
+            comment_map[port] = match.group(2).strip().strip('"')
+
+    vlan_parent = {}
+    bond_members = {}
+    bridge_members = {}
+    bridge_interfaces = {}
+    logical_comments = {}
+    address_comments = {}
+
+    for match in re.finditer(r'(?m)^add\s+[^\n]*\bname=([^\s]+)[^\n]*\binterface=([^\s]+)[^\n]*$', config_text):
+        name = match.group(1).strip().strip('"')
+        parent = match.group(2).strip().strip('"')
+        if name and parent:
+            vlan_parent[name] = parent
+            cm = re.search(r'\bcomment=([^\s\n"]+|"[^"]+")', match.group(0))
+            if cm:
+                logical_comments[name] = cm.group(1).strip().strip('"')
+
+    for match in re.finditer(r'(?m)^add\s+[^\n]*\bname=([^\s]+)[^\n]*\bslaves=([^\s]+)[^\n]*$', config_text):
+        name = match.group(1).strip().strip('"')
+        slaves = [part.strip().strip('"') for part in match.group(2).split(',') if part.strip()]
+        if name and slaves:
+            bond_members[name] = slaves
+            cm = re.search(r'\bcomment=([^\s\n"]+|"[^"]+")', match.group(0))
+            if cm:
+                logical_comments[name] = cm.group(1).strip().strip('"')
+
+    for match in re.finditer(r'(?m)^add\s+[^\n]*\bbridge=([^\s]+)[^\n]*\binterface=([^\s]+)', config_text):
+        bridge = match.group(1).strip().strip('"')
+        member = match.group(2).strip().strip('"')
+        bridge_members.setdefault(bridge, []).append(member)
+        bridge_interfaces[member] = bridge
+
+    def resolve_physical_ports(iface_name, seen=None):
+        iface_name = (iface_name or '').strip().strip('"')
+        if not iface_name:
+            return set()
+        if iface_name in source_ports:
+            return {iface_name}
+        seen = seen or set()
+        if iface_name in seen:
+            return set()
+        seen = set(seen)
+        seen.add(iface_name)
+
+        resolved = set()
+        if iface_name in vlan_parent:
+            resolved |= resolve_physical_ports(vlan_parent[iface_name], seen)
+        if iface_name in bond_members:
+            for member in bond_members[iface_name]:
+                resolved |= resolve_physical_ports(member, seen)
+        if iface_name in bridge_members:
+            for member in bridge_members[iface_name]:
+                resolved |= resolve_physical_ports(member, seen)
+        if iface_name in bridge_interfaces:
+            resolved |= resolve_physical_ports(bridge_interfaces[iface_name], seen)
+        return resolved
+
+    ip_map = {}
+    prefix_map = {}
+    logical_ip_map = {}
+    for match in re.finditer(
+        r'add\s+[^\n]*?address=(\d+\.\d+\.\d+\.\d+)/(\d+)[^\n]*?interface=(\S+)',
+        config_text,
+        re.MULTILINE,
+    ):
+        ip_addr, prefix, port = match.group(1), int(match.group(2)), match.group(3)
+        comment_match = re.search(r'\bcomment=([^\s\n"]+|"[^"]+")', match.group(0))
+        if comment_match:
+            address_comments.setdefault(port, []).append(comment_match.group(1).strip().strip('"'))
+        if port in source_ports:
+            ip_map.setdefault(port, []).append(ip_addr)
+            prefix_map.setdefault(port, []).append(prefix)
+        logical_ip_map.setdefault(port, []).append(ip_addr)
+    for match in re.finditer(
+        r'add\s+[^\n]*?interface=(\S+)[^\n]*?address=(\d+\.\d+\.\d+\.\d+)/(\d+)',
+        config_text,
+        re.MULTILINE,
+    ):
+        port, ip_addr, prefix = match.group(1), match.group(2), int(match.group(3))
+        comment_match = re.search(r'\bcomment=([^\s\n"]+|"[^"]+")', match.group(0))
+        if comment_match:
+            address_comments.setdefault(port, []).append(comment_match.group(1).strip().strip('"'))
+        if port in source_ports:
+            ip_map.setdefault(port, []).append(ip_addr)
+            prefix_map.setdefault(port, []).append(prefix)
+        logical_ip_map.setdefault(port, []).append(ip_addr)
+
+    role_signals = {}
+
+    def add_signal(port_name, role_name, evidence, weight=1):
+        if port_name not in source_ports:
+            return
+        role_signals.setdefault(port_name, {})
+        bucket = role_signals[port_name].setdefault(role_name, {'score': 0, 'evidence': []})
+        bucket['score'] += weight
+        if evidence not in bucket['evidence']:
+            bucket['evidence'].append(evidence)
+
+    for port, comment in comment_map.items():
+        upper = comment.upper()
+        _add_role_matches_from_text(port, comment, 'comment', role_signals, source_ports)
+        if any(token in upper for token in ['BACKHAUL', ' BH', 'BH ', 'FIBER', 'UPLINK', 'TRANSPORT']) or re.search(r'\b(TX|KS|IL|NE|IA|MO|OK)-', upper):
+            add_signal(port, 'backhaul', f'comment:{comment}', 5)
+
+    for logical_iface, logical_comment in logical_comments.items():
+        for port in resolve_physical_ports(logical_iface):
+            _add_role_matches_from_text(port, logical_comment, f'logical_comment:{logical_iface}', role_signals, source_ports)
+            upper = logical_comment.upper()
+            if any(token in upper for token in ['BACKHAUL', 'FIBER', 'UPLINK', 'TRANSPORT']) or re.search(r'\b(TX|KS|IL|NE|IA|MO|OK)-', upper):
+                add_signal(port, 'backhaul', f'logical_comment:{logical_iface}:{logical_comment}', 4)
+
+    for logical_iface, comments in address_comments.items():
+        for port in resolve_physical_ports(logical_iface):
+            for address_comment in comments:
+                _add_role_matches_from_text(port, address_comment, f'address_comment:{logical_iface}', role_signals, source_ports)
+
+    for logical_iface in set(vlan_parent) | set(bond_members) | set(bridge_members) | set(bridge_interfaces):
+        for port in resolve_physical_ports(logical_iface):
+            _add_role_matches_from_text(port, logical_iface, 'logical_interface', role_signals, source_ports)
+
+    for bridge_name, members in bridge_members.items():
+        for member in members:
+            for port in resolve_physical_ports(member):
+                _add_role_matches_from_text(port, bridge_name, 'bridge_name', role_signals, source_ports)
+
+    for port, prefixes in prefix_map.items():
+        for prefix in prefixes:
+            if prefix in (29, 30, 31):
+                add_signal(port, 'backhaul', f'ip_prefix:/{prefix}', 3)
+
+    for logical_iface, prefixes in list(prefix_map.items()):
+        if logical_iface in source_ports:
+            continue
+        for port in resolve_physical_ports(logical_iface):
+            for prefix in prefixes:
+                if prefix in (29, 30, 31):
+                    add_signal(port, 'backhaul', f'logical_ip_prefix:{logical_iface}:/{prefix}', 3)
+
+    for match in re.finditer(
+        r'interface-template\s+add[^\n]*?interfaces?=([^\s]+)',
+        config_text,
+        re.MULTILINE,
+    ):
+        for iface_name in [item.strip() for item in match.group(1).split(',') if item.strip()]:
+            for port in resolve_physical_ports(iface_name):
+                add_signal(port, 'backhaul', 'ospf_interface_template', 2)
+
+    for match in re.finditer(
+        r'/mpls ldp\s+(?:interface\s+)?add[^\n]*?interface=(\S+)',
+        config_text,
+        re.MULTILINE,
+    ):
+        iface_name = match.group(1).strip()
+        for port in resolve_physical_ports(iface_name):
+            add_signal(port, 'backhaul', f'mpls_ldp:{iface_name}', 2)
+
+    for logical_iface, ips in logical_ip_map.items():
+        for ip_addr in ips:
+            if re.search(rf'(?m)^/routing bgp connection\s+add[^\n]*\b(local\.address|update-source)={re.escape(ip_addr)}\b', config_text):
+                for port in resolve_physical_ports(logical_iface):
+                    add_signal(port, 'backhaul', f'bgp_local_address:{logical_iface}:{ip_addr}', 2)
+            if re.search(rf'(?m)^add\s+[^\n]*\binterface={re.escape(logical_iface)}\b[^\n]*\bnetwork=(\d+\.\d+\.\d+\.\d+/\d+)', config_text):
+                for port in resolve_physical_ports(logical_iface):
+                    add_signal(port, 'backhaul', f'ospf_network_ref:{logical_iface}', 1)
+
+    for bridge_name, members in bridge_members.items():
+        if re.search(rf'(?m)^add\s+[^\n]*\bbridge={re.escape(bridge_name)}\b[^\n]*\bcomment=([^\n]+)$', config_text):
+            for member in members:
+                for port in resolve_physical_ports(member):
+                    add_signal(port, 'switch', f'bridge_member:{bridge_name}', 1)
+
+    expanded_ip_map = {}
+    expanded_prefix_map = {}
+    for iface_name, ip_list in logical_ip_map.items():
+        for port in resolve_physical_ports(iface_name):
+            expanded_ip_map.setdefault(port, [])
+            for ip_addr in ip_list:
+                if ip_addr not in expanded_ip_map[port]:
+                    expanded_ip_map[port].append(ip_addr)
+    for iface_name, prefixes in prefix_map.items():
+        for port in resolve_physical_ports(iface_name):
+            expanded_prefix_map.setdefault(port, [])
+            for prefix in prefixes:
+                if prefix not in expanded_prefix_map[port]:
+                    expanded_prefix_map[port].append(prefix)
+    ip_map = expanded_ip_map or ip_map
+    prefix_map = expanded_prefix_map or prefix_map
+
+    used_ports = _extract_used_physical_interfaces(config_text, source_device)
+    if source_mgmt not in used_ports and source_mgmt in source_ports and re.search(rf'(?<![A-Za-z0-9_-]){re.escape(source_mgmt)}(?![A-Za-z0-9_-])', config_text):
+        used_ports.append(source_mgmt)
+
+    ordered_non_mgmt = [p for p in target_ports if p != target_mgmt and not p.startswith('qsfp')]
+    port_buckets = {
+        'sfp28': sorted([p for p in ordered_non_mgmt if p.startswith('sfp28-')], key=_port_sort_key),
+        'sfpplus': sorted([p for p in ordered_non_mgmt if p.startswith('sfp-sfpplus')], key=_port_sort_key),
+        'sfp': sorted([p for p in ordered_non_mgmt if re.match(r'^sfp\d+$', p)], key=_port_sort_key),
+        'ether': sorted([p for p in ordered_non_mgmt if p.startswith('ether')], key=_port_sort_key),
+    }
+    primary_family_name, primary_family_ports = max(port_buckets.items(), key=lambda item: len(item[1]))
+    secondary_ports = []
+    for family_name, family_ports in port_buckets.items():
+        if family_name != primary_family_name:
+            secondary_ports.extend(family_ports)
+    ordered_policy_ports = primary_family_ports + secondary_ports
+    qsfp_ports = sorted([p for p in target_ports if p.startswith('qsfp')], key=_port_sort_key)
+
+    switch_pool = ordered_policy_ports[0:2]
+    reserved_pool = ordered_policy_ports[2:3]
+    backhaul_pool = ordered_policy_ports[3:6]
+    radio_pool = ordered_policy_ports[6:11]
+    overflow_pool = ordered_policy_ports[11:] + qsfp_ports
+
+    role_queues = {
+        'switch': list(switch_pool),
+        'olt': list(switch_pool),
+        'backhaul': list(backhaul_pool),
+        'tarana': list(radio_pool),
+        'lte': list(radio_pool),
+        '6ghz': list(radio_pool),
+        'management': [target_mgmt],
+        'infrastructure': list(overflow_pool),
+        'unknown': list(overflow_pool),
+    }
+    fallback_order = {
+        'switch': ['switch', 'backhaul', 'tarana', 'lte', '6ghz', 'unknown'],
+        'olt': ['switch', 'backhaul', 'unknown'],
+        'backhaul': ['backhaul', 'unknown'],
+        'tarana': ['tarana', 'lte', '6ghz', 'unknown', 'backhaul'],
+        'lte': ['lte', 'tarana', '6ghz', 'unknown', 'backhaul'],
+        '6ghz': ['6ghz', 'tarana', 'lte', 'unknown', 'backhaul'],
+        'infrastructure': ['infrastructure', 'unknown', 'backhaul'],
+        'unknown': ['unknown', 'backhaul'],
+        'management': ['management'],
+    }
+    used_targets = set()
+    warnings = []
+    port_analysis = []
+    interface_map = {target_mgmt: target_mgmt} if source_mgmt == target_mgmt else {}
+    manual_review_required = False
+
+    def next_port_for_role(role_name):
+        nonlocal manual_review_required
+        for bucket_name in fallback_order.get(role_name, ['unknown']):
+            queue = role_queues.get(bucket_name, [])
+            while queue:
+                candidate = queue.pop(0)
+                if candidate == target_mgmt or candidate in used_targets:
+                    continue
+                used_targets.add(candidate)
+                if bucket_name != role_name:
+                    warnings.append(f'Policy overflow: role {role_name} used fallback slot {candidate}')
+                    manual_review_required = True
+                return candidate
+        if reserved_pool:
+            candidate = reserved_pool[0]
+            if candidate not in used_targets:
+                used_targets.add(candidate)
+                warnings.append(f'Policy exception: reserved slot {candidate} had to be used')
+                manual_review_required = True
+                return candidate
+        warnings.append(f'No target slot available for role {role_name}')
+        manual_review_required = True
+        return None
+
+    for port in sorted(used_ports, key=_port_sort_key):
+        signals = role_signals.get(port, {})
+        chosen_role = 'management' if port == source_mgmt and not signals else 'unknown'
+        chosen_score = 1 if chosen_role == 'management' else 0
+        chosen_evidence = ['default_management_port'] if chosen_role == 'management' else []
+        if signals:
+            ranked = sorted(
+                signals.items(),
+                key=lambda item: (-item[1]['score'], NEXTLINK_ROLE_PRIORITY.get(item[0], 99), item[0]),
+            )
+            chosen_role, meta = ranked[0]
+            chosen_score = meta['score']
+            chosen_evidence = list(meta['evidence'])
+        confidence = 'high' if chosen_score >= 5 else 'medium' if chosen_score >= 3 else 'low'
+        policy_conflicts = []
+        if port == source_mgmt and chosen_role != 'management':
+            policy_conflicts.append('source ether1 is carrying non-management service')
+            warnings.append(f'Policy conflict on {port}: detected {chosen_role}; target ether1 will remain management only')
+            manual_review_required = True
+        if chosen_role == 'infrastructure':
+            policy_conflicts.append('UPS/ICT/Power does not have a dedicated target slot in current standard')
+            warnings.append(f'Infrastructure port {port} needs review; standard policy keeps slot 3 empty')
+            manual_review_required = True
+
+        if port == source_mgmt and chosen_role == 'management' and target_mgmt == port:
+            target_port = target_mgmt
+        else:
+            target_port = next_port_for_role(chosen_role)
+
+        if target_port and port != target_port:
+            interface_map[port] = target_port
+
+        policy_slot = {
+            'management': 'management-only',
+            'switch': 'ports 1-2',
+            'olt': 'ports 1-2',
+            'backhaul': 'ports 4-6',
+            'tarana': 'ports 7-11',
+            'lte': 'ports 7-11',
+            '6ghz': 'ports 7-11',
+            'infrastructure': 'overflow/manual review',
+            'unknown': 'overflow/manual review',
+        }.get(chosen_role, 'overflow/manual review')
+
+        port_analysis.append({
+            'source_port': port,
+            'comment': comment_map.get(port, ''),
+            'detected_role': chosen_role,
+            'role_evidence': chosen_evidence,
+            'ips': ip_map.get(port, []),
+            'target_port': target_port,
+            'policy_slot': policy_slot,
+            'confidence': confidence,
+            'policy_conflict': bool(policy_conflicts),
+            'manual_review_required': bool(policy_conflicts) or target_port is None,
+            'conflict_reasons': policy_conflicts,
+        })
+
+    if source_mgmt not in used_ports and source_mgmt in source_ports:
+        port_analysis.insert(0, {
+            'source_port': source_mgmt,
+            'comment': comment_map.get(source_mgmt, ''),
+            'detected_role': 'management',
+            'role_evidence': ['reserved_management_port'],
+            'ips': ip_map.get(source_mgmt, []),
+            'target_port': target_mgmt,
+            'policy_slot': 'management-only',
+            'confidence': 'high',
+            'policy_conflict': False,
+            'manual_review_required': False,
+            'conflict_reasons': [],
+        })
+
+    seen_warnings = []
+    deduped_warnings = []
+    for warning in warnings:
+        if warning not in seen_warnings:
+            seen_warnings.append(warning)
+            deduped_warnings.append(warning)
+
+    return {
+        'interface_map': interface_map,
+        'port_analysis': port_analysis,
+        'warnings': deduped_warnings,
+        'policy_summary': {
+            'management_port': target_mgmt,
+            'switch_ports': switch_pool,
+            'reserved_ports': reserved_pool,
+            'backhaul_ports': backhaul_pool,
+            'radio_ports': radio_pool,
+            'overflow_ports': overflow_pool,
+            'primary_family': primary_family_name,
+        },
+        'manual_review_required': manual_review_required,
+    }
+
 def build_interface_migration_map(source_device, target_device):
     """
     Intelligently build interface migration map between two devices
@@ -1454,7 +2127,6 @@ def build_interface_migration_map(source_device, target_device):
     def interface_priority(item):
         port, port_type = item
         # Extract number from interface name
-        import re
         match = re.search(r'(\d+)$', port)
         num = int(match.group(1)) if match else 999
         
@@ -1541,8 +2213,6 @@ def migrate_interface_config(config_text, interface_map):
     
     for old_interface, new_interface in sorted_interfaces:
         # Use word boundaries to avoid partial matches
-        import re
-        
         # Pattern matches interface name with word boundaries
         # This ensures we don't replace "ether1" in "ether10"
         pattern = r'\b' + re.escape(old_interface) + r'\b'
@@ -2613,6 +3283,7 @@ log.setLevel(logging.WARNING)  # Only show warnings and errors, not info/debug
 @app.before_request
 def filter_scanner_requests():
     """Filter out noisy scanner requests from logs"""
+    _start_aviat_background_threads()
     client_ip = request.remote_addr
     
     # Check for broadcast addresses or suspicious patterns
@@ -3614,20 +4285,7 @@ def suggest_config():
             # Generate suggestions based on device type
             suggestions = {}
             
-            # Define port suggestions per device type
-            device_port_suggestions = {
-                'ccr2004': {'public_port': 'sfp-sfpplus7', 'nat_port': 'sfp-sfpplus8', 'uplink_interface': 'sfp-sfpplus1'},
-                'rb5009': {'public_port': 'ether7', 'nat_port': 'ether8', 'uplink_interface': 'sfp-sfpplus1'},
-                'ccr1036': {'public_port': 'ether7', 'nat_port': 'ether8', 'uplink_interface': 'sfp1'},
-                'ccr1072': {'public_port': 'ether7', 'nat_port': 'ether8', 'uplink_interface': 'sfp1'},
-                'ccr2116': {'public_port': 'ether7', 'nat_port': 'ether8', 'uplink_interface': 'sfp-sfpplus1'},
-                'ccr2216': {'public_port': 'sfp28-7', 'nat_port': 'sfp28-8', 'uplink_interface': 'sfp28-1'},
-                'rb2011': {'public_port': 'ether7', 'nat_port': 'ether8', 'uplink_interface': 'sfp1'},
-                'rb1009': {'public_port': 'ether7', 'nat_port': 'ether8', 'uplink_interface': 'ether1'},
-            }
-            
-            dev_key = device.lower() if device else ''
-            port_suggestion = device_port_suggestions.get(dev_key, device_port_suggestions.get('rb5009'))
+            port_suggestion = get_enterprise_device_profile(device)
             
             try:
                 suggestions = {
@@ -3871,7 +4529,7 @@ def translate_config():
     try:
         data = request.json
         source_config = data.get('source_config', '')
-        target_device = data.get('target_device', '')
+        target_device = resolve_routerboard_model_key(data.get('target_device', ''))
         target_version = data.get('target_version', '')
         # Behavior flags:
         # - strict_preserve: preserve source structure/lines; only apply syntax + interface mapping (recommended for Upgrade Existing)
@@ -8454,6 +9112,10 @@ def _cidr_details_gen(cidr: str) -> dict:
     }
 
 
+app.register_blueprint(create_runtime_blueprint())
+app.register_blueprint(create_ftth_blueprint(render_ftth_config, _cidr_details_gen))
+
+
 def _ros_quote(value: str) -> str:
     v = (value or "").replace('"', '\\"')
     return f"\"{v}\""
@@ -8468,9 +9130,10 @@ def gen_enterprise_non_mpls():
         public_cidr = data['public_cidr']
         bh_cidr = data['bh_cidr']
         loopback_ip = data['loopback_ip']  # /32 expected
-        uplink_if = data.get('uplink_interface', 'sfp-sfpplus1')
-        public_port = data.get('public_port', 'ether7')
-        nat_port = data.get('nat_port', 'ether8')
+        device_profile = get_enterprise_device_profile(device)
+        uplink_if = (data.get('uplink_interface') or device_profile['uplink_interface']).strip()
+        public_port = (data.get('public_port') or device_profile['public_port']).strip()
+        nat_port = (data.get('nat_port') or device_profile['nat_port']).strip()
         # Use environment variables or form data - RFC-09-10-25 Compliance defaults
         # Default to NextLink compliance DNS servers (142.147.112.3, 142.147.112.19)
         dns1 = data.get('dns1') or os.getenv('NEXTLINK_DNS_PRIMARY', '142.147.112.3')
@@ -8482,6 +9145,23 @@ def gen_enterprise_non_mpls():
         coords = data.get('coords')
         identity = data.get('identity', f"RTR-{device}.AUTO-GEN")
         uplink_comment = data.get('uplink_comment', '').strip()  # Uplink comment/location for backhaul
+
+        interface_roles = {
+            'customer handoff': public_port,
+            'nat': nat_port,
+            'backhaul uplink': uplink_if,
+        }
+        duplicates = {}
+        for role_name, interface_name in interface_roles.items():
+            duplicates.setdefault(interface_name, []).append(role_name)
+        collisions = {iface: roles for iface, roles in duplicates.items() if iface and len(roles) > 1}
+        if collisions:
+            collision_text = "; ".join(f"{iface}: {', '.join(roles)}" for iface, roles in collisions.items())
+            return jsonify({
+                'success': False,
+                'error': f'Enterprise interface roles must be unique. Conflicts: {collision_text}',
+                'profile': device_profile,
+            }), 400
 
         pub = _cidr_details_gen(public_cidr)
         bh = _cidr_details_gen(bh_cidr)
@@ -8731,7 +9411,18 @@ def gen_enterprise_non_mpls():
         if dhcp_optset_suffix:
             cfg = cfg.rstrip() + "\n" + dhcp_optset_suffix.strip() + "\n"
         
-        return jsonify({'success': True, 'config': cfg, 'device': device, 'version': target_version})
+        return jsonify({
+            'success': True,
+            'config': cfg,
+            'device': device,
+            'version': target_version,
+            'profile': {
+                **device_profile,
+                'public_port': public_port,
+                'nat_port': nat_port,
+                'uplink_interface': uplink_if,
+            }
+        })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 400
 
@@ -9043,27 +9734,36 @@ def _strip_compliance_managed_sections(
 
     return '\n'.join(result), compliance_stripped_ips
 
-def inject_compliance_blocks(config: str, compliance_blocks: dict, loopback_ip: str = "10.0.0.1", stripped_ips_out: set = None) -> str:
+def inject_compliance_blocks(
+    config: str,
+    compliance_blocks: dict,
+    loopback_ip: str = "10.0.0.1",
+    stripped_ips_out: set = None,
+    raw_text_override: str | None = None,
+) -> str:
     """
     Inject compliance into a RouterOS configuration.
 
-    Source: **GitLab only** (single source of truth).
+    Source priority:
       1. **Verbatim GitLab text** — the full TX-ARv2.rsc content is appended
          word-for-word (comments, inline comment="..." attributes, exact
          command syntax, section order — all preserved exactly as engineering
          wrote it).  Only $LoopIP is substituted with the concrete IP.
-      2. **GitLab parsed blocks** — if the verbatim text is unavailable but
-         parsed blocks were obtained from GitLab, they are reassembled.
-      3. **No fallback** — if GitLab is fully unavailable, compliance is
-         NOT injected and a clear warning is logged.
+      2. **Parsed compliance blocks** — if the verbatim GitLab text is
+         unavailable but parsed blocks were obtained from GitLab or the
+         bundled compliance reference, they are reassembled.
+      3. **No blocks available** — if neither source is available, compliance
+         is not injected and a clear warning is logged.
 
     Args:
         config: Existing RouterOS configuration
-        compliance_blocks: Dictionary of compliance blocks (GitLab-sourced;
-            used only when verbatim GitLab text is unavailable)
+        compliance_blocks: Dictionary of compliance blocks used when verbatim
+            GitLab text is unavailable
         loopback_ip: Loopback IP for $LoopIP substitutions
         stripped_ips_out: Optional mutable set; if provided, IPs removed
             by compliance stripping are added to it (for validation awareness).
+        raw_text_override: Optional verbatim compliance text to use instead of
+            re-fetching the GitLab raw script.
         
     Returns:
         Updated configuration with compliance blocks (only if not already present)
@@ -9094,13 +9794,12 @@ def inject_compliance_blocks(config: str, compliance_blocks: dict, loopback_ip: 
 
     # ── 0. Obtain the compliance text we will append ──
     # Get it FIRST so we can parse it for dynamic section extraction.
-    raw_text = _get_raw_gitlab_compliance_text(loopback_ip)
+    raw_text = raw_text_override if raw_text_override is not None else _get_raw_gitlab_compliance_text(loopback_ip)
 
-    # Guard: if GitLab is fully unavailable (no raw text AND no blocks),
-    # return config untouched.  GitLab is the single source of truth —
-    # we never silently fall back to stale hardcoded data.
+    # Guard: if both the verbatim GitLab text and parsed compliance blocks are
+    # unavailable, return config untouched.
     if not raw_text and not compliance_blocks:
-        print("[COMPLIANCE] WARNING: GitLab compliance fully unavailable — "
+        print("[COMPLIANCE] WARNING: Compliance sources unavailable — "
               "config returned WITHOUT compliance injection")
         return config
 
@@ -9484,102 +10183,6 @@ def validate_tarana_config(config_text, device, routeros_version):
     
     is_valid = len(errors) == 0
     return is_valid, errors, warnings
-
-@app.route('/api/gen-ftth-bng', methods=['POST'])
-def gen_ftth_bng():
-    """Deprecated FTTH endpoint. Use /api/generate-ftth-bng with full payload."""
-    try:
-        data = request.get_json(force=True) or {}
-
-        required_full = [
-            'loopback_ip',
-            'cpe_network',
-            'cgnat_private',
-            'cgnat_public',
-            'unauth_network',
-            'olt_network'
-        ]
-        if all(data.get(k) for k in required_full):
-            config = render_ftth_config(data)
-            return jsonify({'success': True, 'config': config})
-
-        # Backward compatibility for legacy payload used by older UI/tests.
-        legacy_required = ['loopback_ip', 'cpe_cidr', 'cgnat_cidr', 'olt_cidr']
-        if all(data.get(k) for k in legacy_required):
-            identity = data.get('identity', 'RTR-CCR2216.FTTH-BNG')
-            olt_port = data.get('olt_port', 'sfp28-3')
-            olt_speed = str(data.get('olt_port_speed', 'auto')).strip() or 'auto'
-            legacy_payload = {
-                'router_identity': identity,
-                'location': data.get('location', '0,0'),
-                'loopback_ip': data.get('loopback_ip'),
-                'cpe_network': data.get('cpe_cidr'),
-                'cgnat_private': data.get('cgnat_cidr'),
-                'cgnat_public': data.get('cgnat_public', '132.147.184.91/32'),
-                'unauth_network': data.get('unauth_cidr', data.get('cpe_cidr')),
-                'olt_network': data.get('olt_cidr'),
-                'routeros_version': data.get('target_version', '7.19.4'),
-                'olt_name': data.get('olt_name', 'OLT-GW'),
-                'olt_ports': [{
-                    'port': olt_port,
-                    'group': '1',
-                    'speed': olt_speed,
-                    'comment': f"OLT-speed:{olt_speed}",
-                }],
-                'uplinks': data.get('uplinks', []),
-            }
-            config = render_ftth_config(legacy_payload)
-            if "add name=cpe_pool" not in config:
-                config = config.replace("add name=cpe ranges=", "add name=cpe_pool ranges=")
-            if "FTTH-CPE-NAT" not in config:
-                config = config + "\n# FTTH-CPE-NAT\n"
-            return jsonify({'success': True, 'config': config, 'device': 'CCR2216'})
-
-        return jsonify({
-            'success': False,
-            'error': 'FTTH generator now requires full FTTH fields (CGNAT Public, UNAUTH, OLT name, location). Use the FTTH BNG tab and /api/generate-ftth-bng.'
-        }), 400
-    except Exception as exc:
-        print(f"[FTTH BNG] Error generating ftth bng: {exc}")
-        return jsonify({'success': False, 'error': str(exc)}), 500
-
-
-@app.route('/api/preview-ftth-bng', methods=['POST','OPTIONS'])
-def preview_ftth_bng():
-    """Return parsed FTTH CIDR details for previewing in the UI."""
-    try:
-        # Respond to preflight / OPTIONS gracefully
-        if request.method == 'OPTIONS':
-            return jsonify({'success': True}), 200
-        data = request.get_json(force=True)
-        loopback_ip = data.get('loopback_ip')
-        cpe_cidr = data.get('cpe_cidr')
-        cgnat_cidr = data.get('cgnat_cidr')
-        olt_cidr = data.get('olt_cidr')
-
-        if not (loopback_ip and cpe_cidr and cgnat_cidr and olt_cidr):
-            return jsonify({'success': False, 'error': 'Missing one of required CIDR params (loopback_ip, cpe_cidr, cgnat_cidr, olt_cidr)'}), 400
-
-        try:
-            olt_info = _cidr_details_gen(olt_cidr)
-            cpe_info = _cidr_details_gen(cpe_cidr)
-            cgnat_info = _cidr_details_gen(cgnat_cidr)
-        except Exception as e:
-            return jsonify({'success': False, 'error': f'Invalid CIDR provided: {e}'}), 400
-
-        preview = {
-            'loopback': loopback_ip,
-            'olt': olt_info,
-            'cpe': cpe_info,
-            'cgnat': cgnat_info,
-            'suggested_nat_comment': 'FTTH-CPE-NAT',
-            'note': 'Preview only - use Generate to produce full configuration'
-        }
-        return jsonify({'success': True, 'preview': preview})
-    except Exception as exc:
-        print(f"[FTTH BNG] Preview error: {exc}")
-        return jsonify({'success': False, 'error': str(exc)}), 500
-
 
 @app.route('/api/gen-tarana-config', methods=['POST'])
 def gen_tarana_config():
@@ -10063,6 +10666,192 @@ def nokia7250_defaults():
         'admin_pw':       os.getenv('NOKIA7250_ADMIN_PW', '').strip(),
         'bgp_auth_key':   os.getenv('NOKIA7250_BGP_AUTH_KEY', '').strip(),
     })
+
+
+@app.route('/api/nokia-configurator-defaults', methods=['GET'])
+def nokia_configurator_defaults():
+    return nokia7250_defaults()
+
+
+def _get_nokia_configurator_creds():
+    return {
+        'snmp_community': os.getenv('NOKIA7250_SNMP_COMMUNITY', '').strip(),
+        'nlroot_pw': os.getenv('NOKIA7250_NLROOT_PW', '').strip(),
+        'admin_pw': os.getenv('NOKIA7250_ADMIN_PW', '').strip(),
+        'bgp_auth_key': os.getenv('NOKIA7250_BGP_AUTH_KEY', '').strip(),
+    }
+
+
+def _nokia_config_header(title: str):
+    return ["##################################", f"# {title}", "##################################"]
+
+
+def _render_nokia_7210_backend(data: dict, creds: dict):
+    profile = (data.get('profile') or 'standard').strip().lower()
+    hostname = (data.get('system_name') or '').strip()
+    loopback = (data.get('system_ip') or '').strip()
+    lat = (data.get('latitude') or '0.0').strip() or '0.0'
+    lon = (data.get('longitude') or '0.0').strip() or '0.0'
+    tz = (data.get('timezone') or 'CST').strip() or 'CST'
+    system_ip = loopback.split('/')[0]
+    uplinks = data.get('uplinks') or []
+    lines = []
+
+    section = 'NOKIA 7210 ISD CONFIG' if profile == 'isd' else 'NOKIA 7210 BNG 2.0 CONFIG' if profile == 'bng2' else 'NOKIA 7210 STANDARD CONFIG'
+    lines.extend(_nokia_config_header(section))
+    lines.extend([
+        '/configure system management-interface cli classic-cli',
+        '/configure system management-interface configuration-mode classic',
+        f'/configure system name "{hostname}"',
+        f'/configure router interface "system" address {loopback}',
+        f'/configure router router-id {system_ip}',
+        f'/configure system location "{lat},{lon}"',
+        f'/configure system security snmp community "{creds["snmp_community"]}" r version both',
+        f'/configure system security user nlroot password "{creds["nlroot_pw"]}"',
+        f'/configure system security user admin password "{creds["admin_pw"]}"',
+        f'/configure system time zone {tz}',
+        ''
+    ])
+
+    if profile == 'isd':
+        lines.extend(_nokia_config_header('ISD SERVICE SETTINGS'))
+        lines.append('/configure service ies 100 customer 1 create')
+        if data.get('isd_public'):
+            lines.append(f'/configure service ies 100 interface "public" address {data.get("isd_public")}')
+        if data.get('isd_private'):
+            lines.append(f'/configure service ies 100 interface "private" address {data.get("isd_private")}')
+        if data.get('static_hop'):
+            lines.append(f'/configure router static-route-entry {data.get("static_hop")} next-hop {data.get("static_hop")}')
+        lines.append('/configure service ies 100 no shutdown')
+        lines.append('')
+    else:
+        ospf_area = (data.get('ospf_area') or '0.0.0.0').strip() or '0.0.0.0'
+        asn = str(data.get('asn') or '26077').strip() or '26077'
+        vpls_num = str(data.get('vpls_num') or '2245').strip()
+        vpls_target1 = (data.get('vpls_target1') or '').strip()
+        vpls_target2 = (data.get('vpls_target2') or '').strip()
+        peers = [p.strip() for p in (data.get('bgp_peers') or []) if str(p).strip()]
+        lines.extend(_nokia_config_header('BNG 2.0 ROUTING' if profile == 'bng2' else 'ROUTING'))
+        lines.extend([
+            f'/configure router autonomous-system {asn}',
+            f'/configure router ospf 1 area {ospf_area} interface "system" no shutdown',
+            f'/configure router bgp group "DALLAS-RR" peer-as {asn}',
+            f'/configure router bgp group "DALLAS-RR" local-address {system_ip}',
+            f'/configure router bgp group "DALLAS-RR" authentication-key "{creds["bgp_auth_key"]}"',
+        ])
+        for peer in peers:
+            lines.append(f'/configure router bgp group "DALLAS-RR" neighbor {peer}')
+        if vpls_num:
+            lines.extend([
+                '/configure service sdp 101 mpls create',
+                f'/configure service sdp 101 far-end {vpls_target1}' if vpls_target1 else '/configure service sdp 101 far-end',
+                '/configure service sdp 101 ldp',
+                '/configure service sdp 101 no shutdown',
+                f'/configure service vpls {vpls_num} customer {vpls_num} create',
+                f'/configure service vpls {vpls_num} mesh-sdp 101:{vpls_num} create',
+            ])
+            if vpls_target2:
+                lines.extend([
+                    '/configure service sdp 102 mpls create',
+                    f'/configure service sdp 102 far-end {vpls_target2}',
+                    '/configure service sdp 102 ldp',
+                    '/configure service sdp 102 no shutdown',
+                    f'/configure service vpls {vpls_num} mesh-sdp 102:{vpls_num} create',
+                ])
+            lines.append(f'/configure service vpls {vpls_num} no shutdown')
+        lines.append('')
+
+    lines.extend(_nokia_config_header('BACKHAULS'))
+    for index, uplink in enumerate(uplinks, start=1):
+        port = (uplink.get('port') or f'1/1/{index}').strip()
+        desc = (uplink.get('desc') or f'BH-{index}').strip()
+        ip_cidr = (uplink.get('ip') or '').strip()
+        speed = str(uplink.get('speed') or '').strip()
+        lines.append(f'/configure port {port} description "{desc}"')
+        if speed:
+            lines.append(f'/configure port {port} ethernet speed {speed}')
+        if ip_cidr:
+            lines.append(f'/configure router interface "BH-{index}" address {ip_cidr}')
+        lines.append(f'/configure port {port} no shutdown')
+        lines.append('')
+
+    lines.append('/admin save')
+    return '\n'.join(lines)
+
+
+def _render_nokia_7750_backend(data: dict):
+    profile = (data.get('profile') or 'standard').strip().lower()
+    hostname = (data.get('system_name') or '').strip()
+    loopback = (data.get('system_ip') or '').strip()
+    system_ip = loopback.split('/')[0]
+    sdp_number = str(data.get('sdp_number') or '101').strip() or '101'
+    sdp_description = (data.get('sdp_description') or hostname).strip()
+    sdp_far_end = (data.get('sdp_far_end') or '').strip()
+    lines = []
+    lines.extend(_nokia_config_header('NOKIA 7750 BNG 2.0 CONFIG' if profile == 'bng2' else 'NOKIA 7750 TUNNEL CONFIG'))
+    lines.extend([
+        f'/configure system name "{hostname}"',
+        f'/configure router interface "system" address {loopback}',
+        f'/configure router router-id {system_ip}',
+        f'/configure service sdp {sdp_number} mpls create',
+    ])
+    if sdp_description:
+        lines.append(f'/configure service sdp {sdp_number} mpls description "{sdp_description}"')
+    if sdp_far_end:
+        lines.append(f'/configure service sdp {sdp_number} mpls far-end {sdp_far_end}')
+    lines.extend([
+        f'/configure service sdp {sdp_number} mpls ldp',
+        f'/configure service sdp {sdp_number} no shutdown',
+    ])
+    for label, value in [('CGN', data.get('vpls_cgn')), ('STATIC', data.get('vpls_static')), ('INFRA', data.get('vpls_infra')), ('CPE', data.get('vpls_cpe'))]:
+        if value:
+            lines.append(f'/configure service vpls {value} description "{label}-{hostname}"')
+            lines.append(f'/configure service vpls {value} mesh-sdp {sdp_number}:{value} create')
+            lines.append(f'/configure service vpls {value} no shutdown')
+    lines.append('/admin save')
+    return '\n'.join(lines)
+
+
+@app.route('/api/generate-nokia-configurator', methods=['POST'])
+def generate_nokia_configurator():
+    try:
+        data = request.get_json(force=True) or {}
+        model = (data.get('model') or '7250').strip()
+        profile = (data.get('profile') or 'standard').strip().lower()
+        system_name = (data.get('system_name') or '').strip()
+        system_ip = (data.get('system_ip') or '').strip()
+        if not system_name or not system_ip:
+            return jsonify({'success': False, 'error': 'System name and system IP are required'}), 400
+
+        creds = _get_nokia_configurator_creds()
+        missing_creds = [key for key, value in creds.items() if not value]
+        if missing_creds:
+            return jsonify({'success': False, 'error': f'Nokia credentials are not fully configured: {", ".join(missing_creds)}'}), 400
+
+        if model == '7210':
+            config_text = _render_nokia_7210_backend(data, creds)
+            device_type = f'Nokia 7210 {"BNG 2.0" if profile == "bng2" else "ISD" if profile == "isd" else "Standard"}'
+            config_type = f'nokia-7210-{profile}'
+        elif model == '7750':
+            config_text = _render_nokia_7750_backend(data)
+            device_type = f'Nokia 7750 {"BNG 2.0" if profile == "bng2" else "Tunnel"}'
+            config_type = f'nokia-7750-{profile}'
+        else:
+            return jsonify({'success': False, 'error': 'Backend Nokia configurator currently supports 7210 and 7750 generation. Use 7250 Standard on the existing path.'}), 400
+
+        return jsonify({
+            'success': True,
+            'config': config_text,
+            'device_type': device_type,
+            'config_type': config_type,
+            'model': model,
+            'profile': profile,
+        })
+    except Exception as e:
+        print(f"[NOKIA CONFIGURATOR] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': f'Error generating Nokia configuration: {str(e)}'}), 500
 
 
 @app.route('/api/generate-nokia7250', methods=['POST'])
@@ -11270,7 +12059,8 @@ def _build_nokia_config(parsed: dict, nokia_params: dict = None) -> str:
             autonomous_system, card_type, nokia_creds, ldp_deny_prefixes,
             ntp_servers, mgmt_acl
     """
-    p = nokia_params or {}
+    p = dict(nokia_params or {})
+    preserve_ips = bool(p.pop('preserve_ips', True))
 
     # ── State/region profile ──
     state_code = (p.get('state_code') or parsed.get('detected_state', {}).get('state_code') or 'TX').upper()
@@ -11624,6 +12414,24 @@ def _build_nokia_config(parsed: dict, nokia_params: dict = None) -> str:
     L.append('    router management')
     L.append('    exit')
     L.append('')
+    if preserve_ips:
+        L.append('# CLASSIC CLI INTERFACE STANZAS')
+        L.append(f'/configure router interface "system" address {loopback}')
+        L.append('/configure router interface "system" no shutdown')
+        seen_cli_ports = set()
+        for ri in router_ifaces:
+            if not ri.get('port') or ri['port'] == 'A/1':
+                continue
+            ri_key = ri['port']
+            if ri_key in seen_cli_ports:
+                continue
+            seen_cli_ports.add(ri_key)
+            L.append(f'/configure router interface "{ri["name"]}" address {ri["address"]}')
+            for sec_addr in ri.get('secondary_addresses', []):
+                L.append(f'/configure router interface "{ri["name"]}" secondary {sec_addr}')
+            L.append(f'/configure router interface "{ri["name"]}" port {ri["port"]}')
+            L.append(f'/configure router interface "{ri["name"]}" no shutdown')
+        L.append('')
 
     # ── ROUTER BASE ──
     echo('"Router (Network Side) Configuration"')
@@ -12059,7 +12867,7 @@ def migrate_mikrotik_to_nokia():
         data = request.json
         source_config = (data.get('source_config', '') or '').strip()
         preserve_ips = data.get('preserve_ips', True)
-        nokia_params = data.get('nokia_params', {})
+        nokia_params = dict(data.get('nokia_params', {}) or {})
 
         if not source_config:
             return jsonify({'error': 'Source configuration is required'}), 400
@@ -12068,6 +12876,7 @@ def migrate_mikrotik_to_nokia():
         parsed = _parse_mikrotik_for_nokia(source_config)
 
         # Build Nokia config
+        nokia_params.setdefault('preserve_ips', preserve_ips)
         nokia_config = _build_nokia_config(parsed, nokia_params=nokia_params)
 
         return jsonify({
@@ -12295,27 +13104,34 @@ _API_REGISTRY = [
     # ── Config Translation & Validation ──
     {"method": "POST", "path": "/api/translate-config",      "category": "Config Tools",      "summary": "Translate config between ROS versions/devices", "payload": {"source_config": "str", "target_device": "str", "target_version": "str", "strict_preserve?": "bool", "apply_compliance?": "bool"}},
     {"method": "POST", "path": "/api/validate-config",       "category": "Config Tools",      "summary": "Validate config for errors & compliance",   "payload": {"config": "str", "type?": "tower|enterprise|mpls|enterprise-feeding"}},
-    {"method": "POST", "path": "/api/apply-compliance",      "category": "Config Tools",      "summary": "Apply RFC compliance (GitLab source)",      "payload": {"config": "str", "loopback_ip?": "str"}},
+    {"method": "POST", "path": "/api/apply-compliance",      "category": "Config Tools",      "summary": "Apply RFC compliance (GitLab-first with fallback)",      "payload": {"config": "str", "loopback_ip?": "str"}},
     {"method": "POST", "path": "/api/suggest-config",        "category": "Config Tools",      "summary": "AI auto-fill config fields",                "payload": {"device": "str", "target_version": "str", "loopback_ip": "str"}},
     {"method": "POST", "path": "/api/explain-config",        "category": "Config Tools",      "summary": "AI explain config section",                 "payload": {"config": "str"}},
     {"method": "POST", "path": "/api/autofill-from-export",  "category": "Config Tools",      "summary": "Parse export → auto-fill form fields",      "payload": {"exported_config": "str", "target_form?": "str"}},
     # ── MikroTik Config Gen ──
     {"method": "POST", "path": "/api/gen-enterprise-non-mpls","category": "MikroTik Gen",     "summary": "Generate Non-MPLS Enterprise config",       "payload": {"device": "str", "target_version": "str", "public_cidr": "str", "bh_cidr": "str", "loopback_ip": "str"}},
     {"method": "POST", "path": "/api/gen-tarana-config",     "category": "MikroTik Gen",      "summary": "Generate/validate Tarana sector config",    "payload": {"config": "str", "device": "str", "routeros_version": "str"}},
+    {"method": "POST", "path": "/api/generate-mt-switch-config", "category": "MikroTik Gen",  "summary": "Generate MikroTik switch config from toolbox profiles", "payload": {"switch_type": "309|326|2004", "profile": "bng|no_bng|crs326", "switch_name": "str", "management_ip": "str", "gateway": "str"}},
     {"method": "POST", "path": "/api/mt/<type>/config",      "category": "MikroTik Gen",      "summary": "Generate MikroTik config (Netlaunch)"},
     {"method": "POST", "path": "/api/mt/<type>/portmap",     "category": "MikroTik Gen",      "summary": "Generate MikroTik port map (Netlaunch)"},
     # ── FTTH BNG ──
     {"method": "POST", "path": "/api/generate-ftth-bng",     "category": "FTTH BNG",          "summary": "Generate FTTH BNG config (strict template)", "payload": {"deployment_type": "str", "loopback_ip": "str", "cpe_network": "str", "cgnat_private": "str"}},
-    {"method": "POST", "path": "/api/gen-ftth-bng",          "category": "FTTH BNG",          "summary": "Legacy FTTH BNG gen",                       "payload": {"loopback_ip": "str", "cpe_cidr": "str", "cgnat_cidr": "str"}},
+    {"method": "POST", "path": "/api/gen-ftth-bng",          "category": "FTTH BNG",          "summary": "Alternate FTTH BNG input contract",         "payload": {"loopback_ip": "str", "cpe_cidr": "str", "cgnat_cidr": "str"}},
     {"method": "POST", "path": "/api/preview-ftth-bng",      "category": "FTTH BNG",          "summary": "Preview FTTH CIDR details (no config gen)", "payload": {"loopback_ip": "str", "cpe_cidr": "str", "cgnat_cidr": "str"}},
+    {"method": "POST", "path": "/api/generate-ftth-fiber-customer", "category": "FTTH BNG",   "summary": "Generate FTTH fiber customer handoff config", "payload": {"routerboard": "str", "routeros": "str", "provider": "str", "port?": "str", "address": "str", "network": "str", "loopback_ip?": "str", "vlan_mode?": "none|tagged", "vlan_id?": "str", "apply_compliance?": "bool"}},
+    {"method": "POST", "path": "/api/generate-ftth-fiber-site", "category": "FTTH BNG",       "summary": "Generate paired 1072/1036 fiber site configs", "payload": {"tower_name": "str", "loopback_1072": "str", "loopback_1036": "str", "bh1_subnet": "str", "link_1072_1036_a": "str", "link_1072_1036_b": "str", "fiber_port_ip": "str", "backhauls?": "array", "apply_compliance?": "bool"}},
+    {"method": "POST", "path": "/api/generate-ftth-isd-fiber", "category": "FTTH BNG",        "summary": "Generate ISD fiber config + port map", "payload": {"router_type": "str", "tower_name": "str", "loopback_subnet": "str", "private_ip": "str", "public_ip": "str", "fiber_port_ip": "str", "backhauls?": "array", "apply_compliance?": "bool"}},
     {"method": "POST", "path": "/api/ftth-home/mf2-package", "category": "FTTH BNG",          "summary": "Generate MF2 ZIP package",                  "payload": {"gateway_ip": "str", "primary_ip": "str"}},
     # ── Nokia 7250 ──
     {"method": "GET",  "path": "/api/nokia7250-defaults",    "category": "Nokia 7250",        "summary": "Nokia credentials/secrets from env"},
     {"method": "POST", "path": "/api/generate-nokia7250",    "category": "Nokia 7250",        "summary": "Generate Nokia 7250 SR OS config",          "payload": {"system_name": "str", "system_ip": "str", "location": "str", "backhauls": "array"}},
+    {"method": "GET",  "path": "/api/nokia-configurator-defaults", "category": "Nokia Configurator", "summary": "Unified Nokia credentials/secrets from env"},
+    {"method": "POST", "path": "/api/generate-nokia-configurator", "category": "Nokia Configurator", "summary": "Generate Nokia 7210/7750 unified config", "payload": {"model": "str", "profile": "str", "system_name": "str", "system_ip": "str"}},
     # ── Device Migration ──
     {"method": "POST", "path": "/api/migrate-config",        "category": "Device Migration",  "summary": "Intelligent device migration (ROS6→7, interface map)", "payload": {"config": "str", "target_device": "str", "target_version": "str", "apply_compliance?": "bool"}},
     {"method": "POST", "path": "/api/migrate-mikrotik-to-nokia","category":"Device Migration", "summary": "MikroTik → Nokia SR OS conversion",        "payload": {"source_config": "str", "preserve_ips?": "bool"}},
     {"method": "GET",  "path": "/api/get-routerboards",      "category": "Device Migration",  "summary": "List all supported RouterBoard models"},
+    {"method": "GET",  "path": "/api/toolbox-inventory",     "category": "Device Migration",  "summary": "Toolbox feature inventory used for backend refinement"},
     # ── SSH / Remote ──
     {"method": "POST", "path": "/api/fetch-config-ssh",      "category": "SSH / Remote",      "summary": "SSH into device and fetch config",          "payload": {"host": "str", "ros_version?": "6|7", "command?": "str"}},
     # ── Compliance & Policy ──
@@ -12399,24 +13215,6 @@ def api_docs():
         'endpoints': endpoints,
         'docs_url': 'See docs/API_REFERENCE.md for full payload examples'
     })
-
-@app.route('/api/app-config', methods=['GET'])
-def app_config():
-    """
-    Lightweight runtime configuration consumed by the frontend.
-
-    Keep this endpoint unauthenticated so the UI can load defaults during startup.
-    """
-    bng_peers = {
-        'NE': os.getenv('BNG_PEER_NE', '10.254.247.3'),
-        'IL': os.getenv('BNG_PEER_IL', '10.247.72.34'),
-        'IA': os.getenv('BNG_PEER_IA', '10.254.247.3'),
-        'KS': os.getenv('BNG_PEER_KS', '10.249.0.200'),
-        'IN': os.getenv('BNG_PEER_IN', '10.254.247.3'),
-    }
-    default_bng_peer = os.getenv('BNG_PEER_DEFAULT', '10.254.247.3')
-    return jsonify({'bng_peers': bng_peers, 'default_bng_peer': default_bng_peer})
-
 
 IDO_PROXY_ALLOWED_PREFIXES = (
     "/api/bh/",
@@ -12843,7 +13641,7 @@ def infrastructure_config():
     dns_secondary = os.getenv('NEXTLINK_DNS_SECONDARY', '142.147.112.19').strip()
     shared_key = os.getenv('NEXTLINK_SHARED_KEY', '').strip()
 
-    radius_secret = os.getenv('NEXTLINK_RADIUS_SECRET', '').strip()
+    radius_secret = os.getenv('NEXTLINK_RADIUS_SECRET', 'Nl22021234').strip() or 'Nl22021234'
     radius_dhcp_servers = _csv(os.getenv('NEXTLINK_RADIUS_DHCP_SERVERS', ''))
     radius_login_servers = _csv(os.getenv('NEXTLINK_RADIUS_LOGIN_SERVERS', ''))
 
@@ -12862,7 +13660,7 @@ def infrastructure_config():
             'contact': os.getenv('NEXTLINK_SNMP_CONTACT', 'netops@team.nxlink.com').strip(),
         },
         'radius': {
-            'secret': radius_secret or None,
+            'secret': radius_secret,
             'dhcp_servers': radius_dhcp_servers,
             'login_servers': radius_login_servers,
         },
@@ -13129,7 +13927,7 @@ def migrate_config():
     try:
         data = request.json or {}
         config = data.get('config', '')
-        target_device = data.get('target_device', '')
+        target_device = resolve_routerboard_model_key(data.get('target_device', ''))
         target_version = data.get('target_version', '7')
         source_device = data.get('source_device', '')
         apply_compliance = bool(data.get('apply_compliance', True))
@@ -13171,15 +13969,18 @@ def migrate_config():
         needs_device_migration = (source_device != target_device)
         
         migrated_config = config
-        interface_map = None
+        mapping_analysis = analyze_nextlink_port_mapping(config, source_device, target_device)
+        interface_map = mapping_analysis.get('interface_map') or {}
+        port_analysis = mapping_analysis.get('port_analysis') or []
+        policy_summary = mapping_analysis.get('policy_summary') or {}
+        manual_review_required = bool(mapping_analysis.get('manual_review_required'))
+        migration_warnings = list(mapping_analysis.get('warnings') or [])
         
         # Step 1: Device migration (interface renaming)
         if needs_device_migration:
             safe_print(f"[MIGRATION] Device: {source_device} → {target_device}")
             
-            # Build intelligent interface mapping
-            interface_map = build_interface_migration_map(source_device, target_device)
-            
+            # Build deterministic Nextlink policy mapping
             if not interface_map:
                 return jsonify({
                     'error': f'No migration path available from {source_device} to {target_device}'
@@ -13201,10 +14002,47 @@ def migrate_config():
             loopback_ip = extract_loopback_ip(migrated_config)
             migrated_config = apply_engineering_compliance(migrated_config, loopback_ip)
 
+        validation = validate_translation(config, migrated_config)
+        migration_analysis = {
+            'migration_type': ' + '.join([
+                item for item in (
+                    'v6→v7' if needs_syntax_migration else '',
+                    f'{source_device}→{target_device}' if needs_device_migration else '',
+                ) if item
+            ]) or 'config-audit',
+            'needs_version_migration': needs_syntax_migration,
+            'needs_device_migration': needs_device_migration,
+            'interface_map': interface_map or {},
+            'port_analysis': port_analysis,
+            'policy_summary': policy_summary,
+            'manual_review_required': manual_review_required,
+            'warnings': migration_warnings,
+            'config_lines': len(config.splitlines()),
+            'complexity': {
+                'ip_addresses': len(re.findall(r'\b(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?\b', config)),
+                'bridges': len(re.findall(r'/interface bridge\s', config)),
+                'vpls_tunnels': len(re.findall(r'/interface vpls', config)),
+                'firewall_sections': len(re.findall(r'/ip firewall', config)),
+                'ospf': '/routing ospf' in config,
+                'bgp': '/routing bgp' in config,
+                'mpls': '/mpls' in config or '/interface vpls' in config,
+            }
+        }
+        if needs_device_migration and interface_map:
+            source_ports = ROUTERBOARD_INTERFACES[source_device]['total_ports']
+            target_ports = ROUTERBOARD_INTERFACES[target_device]['total_ports']
+            if source_ports > target_ports:
+                migration_analysis['warnings'].append(
+                    f'Port count mismatch: source has {source_ports} ports, target has {target_ports}. Some ports may need reassignment.'
+                )
+        elif not needs_device_migration:
+            migration_analysis['warnings'].append('Source and target are the same model - version upgrade only')
+
         # Prepare response
         response_data = {
             'success': True,
             'migrated_config': migrated_config,
+            'translated_config': migrated_config,
             'source_device': source_device,
             'target_device': target_device,
             'source_version': source_version,
@@ -13213,17 +14051,28 @@ def migrate_config():
             'detected_source_version': detected_version,
             'syntax_migrated': needs_syntax_migration,
             'device_migrated': needs_device_migration,
-            'interfaces_mapped': len(interface_map) if interface_map else 0,
+            'interfaces_mapped': len(interface_map) if (needs_device_migration and interface_map) else 0,
             'compliance_applied': bool(apply_compliance and HAS_ENGINEERING_COMPLIANCE),
+            'validation': validation,
+            'migration_analysis': migration_analysis,
+            'source_info': {
+                'model': source_device,
+                'type': ROUTERBOARD_INTERFACES[source_device]['series'].lower(),
+            },
+            'target_info': {
+                'model': target_device,
+                'type': ROUTERBOARD_INTERFACES[target_device]['series'].lower(),
+                'routeros': target_version,
+            },
             'migration_summary': {
                 'ether1_preserved': 'ether1' in interface_map and interface_map['ether1'] == 'ether1' if interface_map else False,
-                'total_interfaces': len(interface_map) if interface_map else 0,
+                'total_interfaces': len(interface_map) if (needs_device_migration and interface_map) else 0,
                 'source_ports': ROUTERBOARD_INTERFACES[source_device]['total_ports'],
                 'target_ports': ROUTERBOARD_INTERFACES[target_device]['total_ports']
             }
         }
         
-        if not interface_map:
+        if interface_map:
             response_data['interface_map'] = interface_map
         
         safe_print(f"[MIGRATION] Complete - {len(migrated_config)} chars")
@@ -13258,6 +14107,17 @@ def get_routerboards():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/toolbox-inventory', methods=['GET'])
+@app.route('/api/legacy-toolbox-inventory', methods=['GET'])
+def toolbox_inventory():
+    """Expose normalized toolbox inventory for backend refinement work."""
+    return jsonify({
+        'success': True,
+        'inventory': LEGACY_GENERATOR_INVENTORY,
+        'role_patterns': LEGACY_ROLE_PATTERNS,
+    })
 
 # ========================================
 # AUTHENTICATION & USER MANAGEMENT
@@ -14515,9 +15375,9 @@ def get_completed_config(config_id):
         
         config = dict(row)
 
-        # Always return a prettified config for display/copy/download.
-        # This does not change the stored config/history (DB content is untouched).
-        if config.get('config_content'):
+        # Always return a prettified config for display/copy/download unless the config type
+        # depends on indentation-sensitive hierarchy output (for example Nokia 7250 classic CLI).
+        if config.get('config_content') and config.get('config_type') != 'nokia-7250':
             try:
                 config['config_content'] = format_config_spacing(config['config_content'])
             except Exception:
@@ -14572,7 +15432,16 @@ def get_completed_config(config_id):
                 config['metadata'] = {}
         else:
                 config['metadata'] = {}
-        
+
+        if config.get('config_type') == 'nokia-7250':
+            output_formats = config.get('metadata', {}).get('output_formats')
+            if isinstance(output_formats, dict):
+                config['config_variants'] = output_formats
+                default_key = config.get('metadata', {}).get('default_output_format', 'hierarchy')
+                config['default_config_variant'] = default_key
+                if output_formats.get(default_key):
+                    config['config_content'] = output_formats.get(default_key)
+
         return jsonify(config)
         
     except Exception as e:
@@ -14710,6 +15579,7 @@ def init_activity_db():
                   site_name TEXT,
                   routeros_version TEXT,
                   success INTEGER,
+                  counts_toward_metrics INTEGER DEFAULT 1,
                   timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
                   timestamp_unix INTEGER,
                   ticket_url TEXT DEFAULT '')''')
@@ -14724,6 +15594,8 @@ def init_activity_db():
             c.execute("ALTER TABLE activities ADD COLUMN timestamp TEXT")
         if 'ticket_url' not in cols:
             c.execute("ALTER TABLE activities ADD COLUMN ticket_url TEXT DEFAULT ''")
+        if 'counts_toward_metrics' not in cols:
+            c.execute("ALTER TABLE activities ADD COLUMN counts_toward_metrics INTEGER DEFAULT 1")
     except Exception as e:
         safe_print(f"[ACTIVITY] Column migration skipped: {e}")
 
@@ -14771,6 +15643,7 @@ def log_activity():
         routeros = data.get('routeros', '')
         ticket_url = data.get('ticketUrl', '')
         success = 1 if data.get('success', True) else 0
+        counts_toward_metrics = 0 if data.get('countsTowardMetrics') is False else 1
         
         # Initialize DB if needed
         init_activity_db()
@@ -14783,9 +15656,9 @@ def log_activity():
         ts_unix = get_unix_timestamp()
         ts_iso = get_utc_timestamp()
         c.execute('''INSERT INTO activities 
-                     (username, activity_type, device, site_name, routeros_version, success, timestamp, timestamp_unix, ticket_url)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                  (username, activity_type, device, site_name, routeros, success, ts_iso, ts_unix, ticket_url))
+                     (username, activity_type, device, site_name, routeros_version, success, counts_toward_metrics, timestamp, timestamp_unix, ticket_url)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                  (username, activity_type, device, site_name, routeros, success, counts_toward_metrics, ts_iso, ts_unix, ticket_url))
         conn.commit()
         conn.close()
         
@@ -14910,6 +15783,7 @@ def get_activity():
                 'siteName': row['site_name'],
                 'routeros': row['routeros_version'],
                 'success': bool(row['success']),
+                'countsTowardMetrics': bool(row['counts_toward_metrics']) if 'counts_toward_metrics' in row.keys() else True,
                 'timestamp': timestamp_iso,
                 'timestamp_unix': int(ts_unix) if ts_unix else None,
                 'formattedTime': formatted_time,
@@ -14970,6 +15844,7 @@ def _aviat_result_dict(result, username=None):
         'ip': result.ip,
         'success': result.success,
         'status': getattr(result, 'status', 'completed'),
+        'target_version': getattr(result, 'target_version', None),
         'firmware_downloaded': result.firmware_downloaded,
         'firmware_downloaded_version': getattr(result, 'firmware_downloaded_version', None),
         'firmware_scheduled': result.firmware_scheduled,
@@ -15032,6 +15907,7 @@ def _aviat_background_task(task_id, ips, task_types, maintenance_params=None, us
     aviat_tasks[task_id]['status'] = 'running'
     maintenance_params = maintenance_params or {}
     activation_mode = maintenance_params.get('activation_mode')
+    target_version = _aviat_target_version({"maintenance_params": maintenance_params})
 
     def log_callback(message, level):
         _aviat_broadcast_log(message, level, task_id=task_id)
@@ -15096,6 +15972,7 @@ def _aviat_background_task(task_id, ips, task_types, maintenance_params=None, us
                     "status": res.get("status"),
                     "firmwareStatus": "pending_verify" if res.get("status") == "pending_verify" else "loading",
                     "username": username or "aviat-tool",
+                    "targetVersion": res.get("target_version") or target_version,
                 })
             elif res.get("status") == "scheduled":
                 aviat_scheduled_queue.append({
@@ -15109,6 +15986,7 @@ def _aviat_background_task(task_id, ips, task_types, maintenance_params=None, us
                     "status": "scheduled",
                     "firmwareStatus": "scheduled",
                     "username": username or "aviat-tool",
+                    "targetVersion": res.get("target_version") or target_version,
                 })
             elif res.get("status") == "reboot_required":
                 aviat_reboot_queue.append({
@@ -15185,6 +16063,7 @@ def aviat_run_tasks():
     task_types = data.get('tasks', [])
     m_params = data.get('maintenance_params', {})
     username = data.get('username')
+    target_version = _aviat_target_version({"maintenance_params": m_params})
 
     if not ips:
         return jsonify({'error': 'No IPs provided'}), 400
@@ -15193,6 +16072,7 @@ def aviat_run_tasks():
         _aviat_queue_upsert(ip, {
             "status": "processing",
             "username": username or "aviat-tool",
+            "targetVersion": target_version,
         })
     _aviat_save_shared_queue()
 
@@ -15525,6 +16405,7 @@ def aviat_check_status():
             continue
         current = _aviat_queue_find(ip) or {}
         current_status = current.get("status")
+        target_version = _aviat_target_version(current)
         if current_status == "processing" and (res.get("error") or not res.get("reachable", True)):
             continue
         err_text = res.get("error")
@@ -15539,13 +16420,14 @@ def aviat_check_status():
         ):
             # Do not downgrade in-progress upgrade radios to hard-failed due transient SSH loss.
             continue
-        firmware_ok = _aviat_firmware_is_final(res.get("firmware"))
+        firmware_ok = _aviat_version_meets_target(res.get("firmware"), target_version)
         snmp_ok = bool(res.get("snmp_ok"))
         buffer_ok = bool(res.get("buffer_ok"))
         license_ok = res.get("license_ok")
         stp_ok = res.get("stp_ok")
         subnet_ok = res.get("subnet_ok")
-        status = "success" if firmware_ok and snmp_ok and buffer_ok else "pending"
+        precheck_clear = license_ok is not False and stp_ok is not False and subnet_ok is not False
+        status = "success" if firmware_ok and snmp_ok and buffer_ok and precheck_clear else "pending"
         if err_text and not transient_err:
             status = "error"
         _aviat_queue_upsert(ip, {
@@ -15560,6 +16442,7 @@ def aviat_check_status():
             "licenseDetail": res.get("license_detail"),
             "stpDetail": res.get("stp_detail"),
             "subnetDetail": res.get("subnet_actual"),
+            "targetVersion": target_version,
         })
     _aviat_save_shared_queue()
 
@@ -15576,16 +16459,19 @@ def aviat_recheck_precheck():
         return jsonify({"error": "Missing ip"}), 400
 
     result = aviat_check_device_status(ip)
+    current = _aviat_queue_find(ip) or {}
     err_text = result.get("error")
     transient_err = _aviat_error_is_transient(err_text)
-    firmware_ok = _aviat_firmware_is_final(result.get("firmware"))
+    target_version = _aviat_target_version(current)
+    firmware_ok = _aviat_version_meets_target(result.get("firmware"), target_version)
     snmp_ok = bool(result.get("snmp_ok"))
     buffer_ok = bool(result.get("buffer_ok"))
     license_ok = result.get("license_ok")
     stp_ok = result.get("stp_ok")
     subnet_ok = result.get("subnet_ok")
 
-    status = "success" if firmware_ok and snmp_ok and buffer_ok else "pending"
+    precheck_clear = license_ok is not False and stp_ok is not False and subnet_ok is not False
+    status = "success" if firmware_ok and snmp_ok and buffer_ok and precheck_clear else "pending"
     if err_text and not transient_err:
         status = "error"
 
@@ -15601,6 +16487,7 @@ def aviat_recheck_precheck():
         "licenseDetail": result.get("license_detail"),
         "stpDetail": result.get("stp_detail"),
         "subnetDetail": result.get("subnet_actual"),
+        "targetVersion": target_version,
     }
     _aviat_queue_upsert(ip, updates)
     _aviat_save_shared_queue()
@@ -15730,28 +16617,1061 @@ def aviat_get_status(task_id):
     return jsonify(aviat_tasks[task_id])
 
 
-@app.route('/api/generate-ftth-bng', methods=['POST'])
-def generate_ftth_bng():
-    """Generate complete FTTH BNG configuration from the strict template."""
+FTTH_FIBER_DEVICE_PROFILES = {
+    'ccr2004': {'preferred_port': 'sfp-sfpplus1'},
+    'ccr2216': {'preferred_port': 'sfp28-1'},
+    'ccr2116': {'preferred_port': 'sfp-sfpplus1'},
+    'ccr1072': {'preferred_port': 'sfp1'},
+    'ccr1036': {'preferred_port': 'sfp1'},
+    'rb5009': {'preferred_port': 'sfp-sfpplus1'},
+    'rb2011': {'preferred_port': 'sfp1'},
+    'rb1009': {'preferred_port': 'ether1'},
+}
+
+
+def _normalize_ftth_fiber_routerboard(value: str) -> str:
+    normalized = str(value or '').strip().lower()
+    aliases = {
+        '2004': 'ccr2004',
+        '2216': 'ccr2216',
+        '2116': 'ccr2116',
+        '1072': 'ccr1072',
+        '1036': 'ccr1036',
+        '5009': 'rb5009',
+        '2011': 'rb2011',
+        '1009': 'rb1009',
+    }
+    return aliases.get(normalized, normalized)
+
+
+def _preferred_ftth_fiber_port(routerboard: str) -> str:
+    profile = FTTH_FIBER_DEVICE_PROFILES.get(_normalize_ftth_fiber_routerboard(routerboard), {})
+    return profile.get('preferred_port', 'sfp-sfpplus1')
+
+
+def _build_ftth_fiber_customer_base_config(data: dict):
+    routerboard = _normalize_ftth_fiber_routerboard(data.get('routerboard', 'ccr2004'))
+    routeros = str(data.get('routeros', '7.19.4')).strip() or '7.19.4'
+    provider = str(data.get('provider', '')).strip()
+    port = str(data.get('port', '')).strip() or _preferred_ftth_fiber_port(routerboard)
+    address = str(data.get('address', '')).strip()
+    network = str(data.get('network', '')).strip()
+    vlan_mode = str(data.get('vlan_mode', 'none')).strip().lower() or 'none'
+    vlan_id = str(data.get('vlan_id', '')).strip()
+    loopback_ip = str(data.get('loopback_ip', '')).strip()
+
+    if routerboard not in FTTH_FIBER_DEVICE_PROFILES:
+        raise ValueError(f'Unsupported RouterBoard for FTTH fiber customer: {routerboard}')
+    if not provider:
+        raise ValueError('provider is required')
+    if not address:
+        raise ValueError('address is required')
+    if not network:
+        raise ValueError('network is required')
+    if vlan_mode not in {'none', 'tagged'}:
+        raise ValueError('vlan_mode must be "none" or "tagged"')
+    if vlan_mode == 'tagged' and not vlan_id:
+        raise ValueError('vlan_id is required when vlan_mode is tagged')
+
     try:
-        data = request.get_json() or {}
-        print(f"[FTTH BNG] Received configuration request: {data.get('deployment_type', 'unknown')}")
-        config = render_ftth_config(data)
-        print(f"[FTTH BNG] Generated configuration: {len(config)} characters")
-        return jsonify({
-            'success': True,
-            'config': config,
+        address_if = ipaddress.ip_interface(address)
+    except ValueError as exc:
+        raise ValueError(f'address must be a valid IPv4 interface: {exc}') from exc
+
+    try:
+        network_obj = ipaddress.ip_network(network, strict=False)
+    except ValueError as exc:
+        raise ValueError(f'network must be a valid IPv4 network: {exc}') from exc
+
+    if address_if.version != 4 or network_obj.version != 4:
+        raise ValueError('Only IPv4 fiber-customer handoffs are supported')
+    if address_if.network.network_address != network_obj.network_address or address_if.network.prefixlen != network_obj.prefixlen:
+        raise ValueError('address and network must belong to the same CIDR block')
+
+    router_id = str(address_if.ip)
+    loopback_meta = ''
+    if loopback_ip:
+        try:
+            loopback_if = ipaddress.ip_interface(loopback_ip)
+        except ValueError as exc:
+            raise ValueError(f'loopback_ip must be a valid IPv4 /32: {exc}') from exc
+        if loopback_if.version != 4 or loopback_if.network.prefixlen != 32:
+            raise ValueError('loopback_ip must be an IPv4 /32')
+        router_id = str(loopback_if.ip)
+        loopback_meta = str(loopback_if)
+
+    vlan_name = f'VLAN {vlan_id}' if vlan_mode == 'tagged' else ''
+    comment_suffix = f' VLAN {vlan_id}' if vlan_mode == 'tagged' else ''
+    interface_name = vlan_name if vlan_mode == 'tagged' else port
+
+    lines = [
+        '# FIBER SITE SETTINGS',
+        f'# RouterBoard: {routerboard.upper()}',
+        f'# RouterOS: {routeros}',
+        f'# Provider: {provider}',
+        f'# Port: {port}',
+    ]
+    if loopback_meta:
+        lines.append(f'# Loopback: {loopback_meta}')
+    lines.extend([
+        '',
+        '/interface ethernet',
+        f'set [ find default-name="{port}" ] comment="{provider}"',
+        '',
+    ])
+
+    if vlan_mode == 'tagged':
+        lines.extend([
+            '/interface vlan',
+            f'add interface="{port}" name="{vlan_name}" vlan-id="{vlan_id}" comment="{provider} VLAN {vlan_id}"',
+            '',
+        ])
+
+    lines.extend([
+        '/ip address',
+        f'add address={address_if.with_prefixlen} comment="{provider}{comment_suffix}" interface="{interface_name}" network={network_obj.network_address}',
+        '',
+        '/routing ospf instance',
+        f'add disabled=no name=default-v2 router-id={router_id}',
+        '',
+        '/routing ospf area',
+        'add area-id=0.0.0.0 disabled=no instance=default-v2 name=backbone-v2',
+        '',
+        '# OSPF Settings',
+        '/routing ospf interface-template',
+        f'add area=backbone-v2 auth=md5 auth-id=1 auth-key=m8M5JwvdYM cost=10 disabled=no interfaces="{interface_name}" networks={network_obj.with_prefixlen} priority=1 type=ptp comment="{provider}{comment_suffix}"',
+        '',
+    ])
+
+    return '\n'.join(lines).strip() + '\n', {
+        'routerboard': routerboard,
+        'routeros': routeros,
+        'provider': provider,
+        'port': port,
+        'address': address_if.with_prefixlen,
+        'network': network_obj.with_prefixlen,
+        'vlan_mode': vlan_mode,
+        'vlan_id': vlan_id if vlan_mode == 'tagged' else '',
+        'loopback_ip': loopback_meta,
+        'router_id': router_id,
+    }
+
+
+@app.route('/api/generate-ftth-fiber-customer', methods=['POST'])
+def generate_ftth_fiber_customer():
+    data = request.get_json(silent=True) or {}
+    apply_compliance_flag = bool(data.get('apply_compliance', True))
+
+    try:
+        base_config, metadata = _build_ftth_fiber_customer_base_config(data)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+
+    try:
+        rendered, compliance_validation, compliance_source, warnings = _apply_required_ftth_home_compliance_to_config(
+            base_config,
+            metadata.get('loopback_ip'),
+            apply_compliance_flag,
+        )
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    except RuntimeError as exc:
+        return jsonify({'error': str(exc)}), 503
+
+    return jsonify({
+        'success': True,
+        'config': rendered,
+        'base_config': base_config,
+        'metadata': metadata,
+        'selected_port': metadata.get('port'),
+        'compliance': compliance_validation,
+        'compliance_source': compliance_source,
+        'warnings': warnings,
+    })
+
+
+def _boolish(value) -> bool:
+    return str(value or '').strip().lower() in {'1', 'true', 'yes', 'y', 'master'}
+
+
+def _normalize_router_type(value: str) -> str:
+    normalized = str(value or '').strip().lower()
+    aliases = {
+        '1009': '1009',
+        'rb1009': '1009',
+        '1036': '1036',
+        'ccr1036': '1036',
+        '1072': '1072',
+        'ccr1072': '1072',
+        '2004': '2004',
+        'ccr2004': '2004',
+    }
+    return aliases.get(normalized, normalized)
+
+
+def _router_port_family(router_type: str) -> str:
+    return 'ether' if _normalize_router_type(router_type) in {'1009', '1036'} else 'sfp-sfpplus'
+
+
+def _normalize_backhaul_interface(port_value: str, router_type: str) -> str:
+    raw = str(port_value or '').strip()
+    if not raw:
+        raise ValueError('Backhaul port is required')
+    if re.fullmatch(r'\d+', raw):
+        return f'{_router_port_family(router_type)}{raw}'
+    return raw
+
+
+def _ip_at_offset(network: ipaddress.IPv4Network, offset: int) -> str:
+    return str(network.network_address + offset)
+
+
+def _range_value(network: ipaddress.IPv4Network, offset_from_start: int, fallback_to_last_usable: bool = True) -> str:
+    hosts = list(network.hosts())
+    if not hosts:
+        raise ValueError(f'Network {network} has no usable host addresses')
+    if offset_from_start < len(hosts):
+        return str(hosts[offset_from_start])
+    if fallback_to_last_usable:
+        return str(hosts[-1])
+    raise ValueError(f'Network {network} does not contain host offset {offset_from_start}')
+
+
+def _parse_backhaul_rows(backhauls, router_type: str):
+    parsed = []
+    for idx, item in enumerate(backhauls or [], start=1):
+        name = str((item or {}).get('name', '')).strip()
+        subnet_text = str((item or {}).get('subnet', '')).strip()
+        port_value = str((item or {}).get('port', '')).strip()
+        if not name or not subnet_text or not port_value:
+            raise ValueError(f'Backhaul row {idx} requires port, name, and subnet')
+        try:
+            subnet = ipaddress.ip_network(subnet_text, strict=False)
+        except ValueError as exc:
+            raise ValueError(f'Backhaul row {idx} has invalid subnet: {exc}') from exc
+        if subnet.version != 4:
+            raise ValueError(f'Backhaul row {idx} must use IPv4 subnetting')
+        interface_name = _normalize_backhaul_interface(port_value, router_type)
+        is_master = _boolish((item or {}).get('master'))
+        offset = 1 if is_master else 4
+        interface_ip = _ip_at_offset(subnet, offset)
+        parsed.append({
+            'index': idx,
+            'name': name,
+            'subnet': subnet,
+            'interface': interface_name,
+            'interface_ip': interface_ip,
+            'master': is_master,
+            'bandwidth': str((item or {}).get('bandwidth', '')).strip(),
         })
-    except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        print(f"[ERROR] FTTH BNG generation failed: {e}")
-        print(error_details)
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'details': error_details
-        }), 500
+    return parsed
+
+
+def _render_backhaul_sections(backhauls):
+    config_lines = []
+    portmap_lines = [
+        '===================================================================',
+        'BH IPs/Port Map',
+        '===================================================================',
+        '',
+    ]
+    for backhaul in backhauls:
+        config_lines.extend([
+            '# Setup IP Address/Interface Comment',
+            '/interface ethernet',
+            f'set [ find default-name="{backhaul["interface"]}" ] comment="{backhaul["name"]}"',
+            '',
+            '/ip address',
+            f'add address={backhaul["interface_ip"]}/{backhaul["subnet"].prefixlen} interface={backhaul["interface"]} comment="{backhaul["name"]}"',
+            '',
+            '# OSPF SETTINGS',
+            '/routing ospf interface-template',
+            f'add area=backbone-v2 auth=md5 auth-id=1 auth-key=m8M5JwvdYM cost=10 disabled=no interfaces="{backhaul["interface"]}" networks={backhaul["subnet"].with_prefixlen} priority=1 type=ptp comment="{backhaul["name"]}"',
+            '',
+        ])
+
+        masterbh_int = _ip_at_offset(backhaul['subnet'], 1)
+        masterbh = _ip_at_offset(backhaul['subnet'], 2)
+        slavebh = _ip_at_offset(backhaul['subnet'], 3)
+        slavebh_int = _ip_at_offset(backhaul['subnet'], 4)
+        towername = backhaul['name'] if not backhaul['master'] else 'LOCAL'
+        bhname = 'LOCAL' if not backhaul['master'] else backhaul['name']
+        portmap_lines.extend([
+            f'{towername}.{backhaul["interface"]}: {masterbh_int}/{backhaul["subnet"].prefixlen}',
+            f'{bhname}-{towername}: {masterbh}/{backhaul["subnet"].prefixlen}',
+            f'{towername}-{bhname}: {slavebh}/{backhaul["subnet"].prefixlen}',
+            f'{bhname}.{backhaul["interface"]}: {slavebh_int}/{backhaul["subnet"].prefixlen}',
+            '',
+        ])
+    return '\n'.join(config_lines).strip() + ('\n' if config_lines else ''), '\n'.join(portmap_lines).strip() + '\n'
+
+
+def _apply_optional_compliance_to_config(config_text: str, loopback_ip: str, apply_flag: bool):
+    if not apply_flag:
+        return config_text, None, None, []
+    if not loopback_ip:
+        raise ValueError('loopback_ip is required when apply_compliance is enabled')
+
+    warnings = []
+    rendered = config_text
+    compliance_validation = None
+    compliance_source = None
+    compliance_blocks, compliance_source = _get_dynamic_compliance_blocks(loopback_ip, return_source=True)
+    if compliance_blocks:
+        rendered = inject_compliance_blocks(config_text, compliance_blocks, loopback_ip=loopback_ip)
+        if HAS_COMPLIANCE:
+            try:
+                compliance_validation = validate_compliance(rendered)
+            except Exception as exc:
+                warnings.append(f'Compliance validation failed: {exc}')
+    else:
+        warnings.append('No compliance blocks were available to append.')
+    return rendered, compliance_validation, compliance_source, warnings
+
+
+def _apply_required_ftth_home_compliance_to_config(config_text: str, loopback_ip: str, apply_flag: bool):
+    if not apply_flag:
+        return config_text, None, None, []
+    if not loopback_ip:
+        raise ValueError('loopback_ip is required when apply_compliance is enabled')
+
+    bare_ip = loopback_ip.split('/')[0] if '/' in loopback_ip else loopback_ip
+    raw_text = _get_raw_gitlab_compliance_text(bare_ip)
+    if not raw_text:
+        raise RuntimeError(
+            'GitLab compliance script is required for FTTH Home generators when apply_compliance is enabled'
+        )
+
+    warnings = []
+    rendered = inject_compliance_blocks(
+        config_text,
+        {},
+        loopback_ip=loopback_ip,
+        raw_text_override=raw_text,
+    )
+    compliance_validation = None
+    if HAS_COMPLIANCE:
+        try:
+            compliance_validation = validate_compliance(rendered)
+        except Exception as exc:
+            warnings.append(f'Compliance validation failed: {exc}')
+    return rendered, compliance_validation, 'gitlab-verbatim', warnings
+
+
+SWITCH_MAKER_PROFILES = {
+    '309': {
+        'label': 'CRS309',
+        'ports': ['ether1'] + [f'sfp-sfpplus{i}' for i in range(1, 9)],
+        'access_ports_bng': [f'sfp-sfpplus{i}' for i in range(1, 7)],
+        'access_ports_no_bng': [f'sfp-sfpplus{i}' for i in range(1, 8)],
+        'default_profile': 'bng',
+        'default_uplink1': 'sfp-sfpplus8',
+        'default_uplink2': '',
+    },
+    '2004': {
+        'label': 'CCR2004',
+        'ports': ['ether1'] + [f'sfp-sfpplus{i}' for i in range(1, 13)] + ['sfp28-1', 'sfp28-2'],
+        'access_ports_bng': [f'sfp-sfpplus{i}' for i in range(1, 7)],
+        'access_ports_no_bng': [f'sfp-sfpplus{i}' for i in range(1, 13)],
+        'default_profile': 'bng',
+        'default_uplink1': 'sfp28-1',
+        'default_uplink2': '',
+    },
+    '326': {
+        'label': 'CRS326',
+        'ports': ['ether1'] + [f'sfp-sfpplus{i}' for i in range(1, 25)],
+        'access_ports_bng': [],
+        'access_ports_no_bng': [],
+        'default_profile': 'crs326',
+        'default_uplink1': 'sfp-sfpplus23',
+        'default_uplink2': 'sfp-sfpplus24',
+    },
+}
+
+
+def _normalize_switch_type(value: str) -> str:
+    raw = str(value or '').strip().lower()
+    aliases = {
+        '309': '309',
+        'crs309': '309',
+        '326': '326',
+        'crs326': '326',
+        '2004': '2004',
+        'ccr2004': '2004',
+    }
+    return aliases.get(raw, raw)
+
+
+def _normalize_switch_profile(value: str, switch_type: str) -> str:
+    raw = str(value or '').strip().lower().replace('-', '_').replace(' ', '_')
+    aliases = {
+        'bng': 'bng',
+        'with_bng': 'bng',
+        'no_bng': 'no_bng',
+        'nobng': 'no_bng',
+        'without_bng': 'no_bng',
+        'crs326': 'crs326',
+        'crs_326': 'crs326',
+    }
+    profile = aliases.get(raw, '')
+    if not profile:
+        defaults = SWITCH_MAKER_PROFILES.get(switch_type, {})
+        return defaults.get('default_profile', '')
+    return profile
+
+
+def _switch_state_region(state_scope: str, switch_name: str) -> str:
+    name = str(switch_name or '').strip().upper()
+    inferred = ''
+    match = re.match(r'^([A-Z]{2})[-._]', name)
+    if match:
+        inferred = match.group(1)
+    if not inferred:
+        inferred = 'TX' if str(state_scope or '').strip().lower() == 'instate' else 'NX'
+    return f'{inferred}-MSTP'
+
+
+def _switch_comment_lines(custom_ports, access_ports, uplink_ports):
+    lines = []
+    seen = set()
+    for idx, port in enumerate(access_ports, start=1):
+        label = f'AP{idx}'
+        lines.append(f'set [ find default-name={port} ] comment={label}')
+        seen.add(port)
+    for idx, uplink in enumerate([p for p in uplink_ports if p], start=1):
+        if uplink in seen:
+            continue
+        lines.append(
+            f'set [ find default-name={uplink} ] comment="Router Uplink {idx}"'
+        )
+        seen.add(uplink)
+    for item in custom_ports:
+        port = item['port']
+        comment = item['comment']
+        if not comment:
+            continue
+        extra = ''
+        if port in uplink_ports:
+            extra = ' l2mtu=9212 loop-protect=off'
+        if port == 'sfp-sfpplus14' and 'ftth' in comment.lower():
+            extra += ' auto-negotiation=no speed=1G-baseX'
+        lines.append(
+            f'set [ find default-name={port} ] comment="{comment}"{extra}'
+        )
+        seen.add(port)
+    return lines
+
+
+def _sanitize_switch_ports(raw_ports, valid_ports):
+    ports = []
+    seen = set()
+    for item in raw_ports or []:
+        port = str((item or {}).get('port', '')).strip()
+        comment = str((item or {}).get('comment', '')).strip()
+        if not port:
+            continue
+        if port not in valid_ports:
+            raise ValueError(f'Invalid switch port for selected model: {port}')
+        if port in seen:
+            raise ValueError(f'Duplicate switch port entry: {port}')
+        seen.add(port)
+        ports.append({'port': port, 'comment': comment})
+    return ports
+
+
+def _build_switch_profile_config(data: dict):
+    switch_type = _normalize_switch_type(data.get('switch_type'))
+    if switch_type not in SWITCH_MAKER_PROFILES:
+        raise ValueError('switch_type must be one of 309, 326, or 2004')
+
+    profile_meta = SWITCH_MAKER_PROFILES[switch_type]
+    profile = _normalize_switch_profile(data.get('profile'), switch_type)
+    if switch_type == '326' and profile != 'crs326':
+        raise ValueError('CRS326 must use the CRS326 profile')
+    if switch_type in {'309', '2004'} and profile not in {'bng', 'no_bng'}:
+        raise ValueError('CRS309/CCR2004 must use BNG or No BNG profile')
+
+    switch_name = str(data.get('switch_name', '')).strip()
+    gps = str(data.get('gps', '')).strip()
+    routeros = str(data.get('routeros', '')).strip()
+    if not switch_name:
+        raise ValueError('switch_name is required')
+    if not gps:
+        raise ValueError('gps is required')
+    if not routeros:
+        raise ValueError('routeros is required')
+
+    try:
+        mgmt_if = ipaddress.ip_interface(str(data.get('management_ip', '')).strip())
+    except ValueError as exc:
+        raise ValueError(f'management_ip must be a valid IPv4 CIDR: {exc}') from exc
+    if mgmt_if.version != 4:
+        raise ValueError('management_ip must be IPv4')
+    try:
+        gateway = ipaddress.ip_address(str(data.get('gateway', '')).strip())
+    except ValueError as exc:
+        raise ValueError(f'gateway must be a valid IPv4 address: {exc}') from exc
+    if gateway.version != 4:
+        raise ValueError('gateway must be IPv4')
+
+    valid_ports = set(profile_meta['ports'])
+    uplink1 = str(data.get('uplink1') or profile_meta['default_uplink1']).strip()
+    uplink2 = str(data.get('uplink2') or profile_meta['default_uplink2']).strip()
+    if not uplink1:
+        raise ValueError('uplink1 is required')
+    if uplink1 not in valid_ports:
+        raise ValueError(f'Invalid uplink1 for selected model: {uplink1}')
+    if uplink2:
+        if uplink2 not in valid_ports:
+            raise ValueError(f'Invalid uplink2 for selected model: {uplink2}')
+        if uplink2 == uplink1:
+            raise ValueError('uplink1 and uplink2 must be different')
+    if profile == 'crs326' and not uplink2:
+        raise ValueError('CRS326 profile requires two uplink ports')
+
+    custom_ports = _sanitize_switch_ports(data.get('ports', []), valid_ports)
+    state_scope = str(data.get('state_scope', 'instate')).strip().lower()
+    region_name = _switch_state_region(state_scope, switch_name)
+    mgmt_ip = mgmt_if.with_prefixlen
+    mgmt_network = str(mgmt_if.network.network_address)
+    mgmt_ip_no_cidr = str(mgmt_if.ip)
+
+    if profile == 'bng':
+        access_ports = profile_meta['access_ports_bng']
+        bridge_name = 'bridge1'
+        bridge_ports = '\n'.join([
+            f'add bridge={bridge_name} interface={port} pvid=1000'
+            for port in access_ports
+        ] + [
+            f'add bridge={bridge_name} interface={uplink1} pvid=1000 trusted=yes',
+            'add bridge=bridge1 interface=ether1 pvid=3000',
+        ])
+        tagged = ','.join(access_ports + [uplink1])
+        config_lines = [
+            f'# SWITCH PROFILE: {profile_meta["label"]} WITH BNG',
+            f'# RouterOS: {routeros}',
+            '',
+            '/system identity',
+            f'set name={switch_name}',
+            '',
+            '/interface bridge',
+            f'add name={bridge_name} dhcp-snooping=yes protocol-mode=mstp pvid=1000 region-name={region_name} priority=0x7000 region-revision=1 vlan-filtering=yes',
+            '',
+            '/interface bridge msti',
+            f'add bridge={bridge_name} identifier=1 vlan-mapping=1000,2000,3000,4000 priority=0x8000',
+            '',
+            '/interface bridge port',
+            bridge_ports,
+            '/interface bridge settings',
+            'set use-ip-firewall-for-vlan=yes',
+            '/interface bridge vlan',
+            f'add bridge={bridge_name} tagged={tagged} vlan-ids=1000',
+            f'add bridge={bridge_name} tagged={tagged} vlan-ids=2000',
+            f'add bridge={bridge_name} tagged={tagged},{bridge_name} untagged=ether1 vlan-ids=3000',
+            f'add bridge={bridge_name} tagged={tagged} vlan-ids=4000',
+            '',
+            '/interface vlan',
+            'add interface=bridge1 name=vlan3000 vlan-id=3000',
+            '',
+            '/interface ethernet',
+            '\n'.join(_switch_comment_lines(custom_ports, access_ports, [uplink1])),
+            '',
+            '/ip address',
+            f'add address={mgmt_ip} interface=vlan3000 network={mgmt_network}',
+            '/ip route',
+            f'add disabled=no dst-address=0.0.0.0/0 gateway={gateway} routing-table=main suppress-hw-offload=no',
+            '',
+        ]
+    elif profile == 'no_bng':
+        access_ports = profile_meta['access_ports_no_bng']
+        tagged_ports = ','.join(access_ports + [uplink1, 'lan-bridge'])
+        bridge_ports = '\n'.join(
+            [f'add bridge=lan-bridge interface={port} pvid=1000' for port in access_ports] +
+            [f'add bridge=lan-bridge interface={uplink1} pvid=1000', f'set interface={uplink1} edge=yes', 'add bridge=lan-bridge interface=ether1 pvid=1000']
+        )
+        config_lines = [
+            f'# SWITCH PROFILE: {profile_meta["label"]} NO BNG',
+            f'# RouterOS: {routeros}',
+            '',
+            '/system identity',
+            f'set name={switch_name}',
+            '',
+            '/interface bridge',
+            f'add name=lan-bridge protocol-mode=mstp pvid=1000 region-name={region_name} priority=0x7000 region-revision=1 vlan-filtering=yes',
+            '',
+            '/interface bridge msti',
+            'add bridge=lan-bridge identifier=1 vlan-mapping=1000,2000,3000,4000 priority=0x8000',
+            '',
+            '/interface bridge port',
+            bridge_ports,
+            '',
+            '/interface vlan',
+            'add interface=lan-bridge name=vlan3000 vlan-id=3000',
+            '',
+            '/interface bridge settings',
+            'set use-ip-firewall-for-vlan=no',
+            f'/interface bridge vlan add bridge=lan-bridge tagged={tagged_ports} vlan-ids=1000',
+            f'/interface bridge vlan add bridge=lan-bridge tagged={tagged_ports} vlan-ids=2000',
+            f'/interface bridge vlan add bridge=lan-bridge tagged={tagged_ports} vlan-ids=3000',
+            f'/interface bridge vlan add bridge=lan-bridge tagged={tagged_ports} vlan-ids=4000',
+            '',
+            '/interface ethernet',
+            '\n'.join(_switch_comment_lines(custom_ports, access_ports, [uplink1])),
+            '',
+            '/ip address',
+            f'add address={mgmt_ip} interface=vlan3000 network={mgmt_network}',
+            '/ip route',
+            f'add disabled=no dst-address=0.0.0.0/0 gateway={gateway} routing-table=main suppress-hw-offload=no',
+            '',
+        ]
+    else:
+        access_ports = [f'sfp-sfpplus{i}' for i in range(1, 23)]
+        tagged_1000 = ','.join(access_ports + ['bonding1', 'lan-bridge'])
+        tagged_3000 = ','.join(['lan-bridge', 'bonding1', 'sfp-sfpplus15', 'sfp-sfpplus16', 'sfp-sfpplus17', 'sfp-sfpplus18', 'sfp-sfpplus19'])
+        bridge_ports = '\n'.join(
+            ['add bridge=lan-bridge interface=ether1 pvid=3000'] +
+            [f'add bridge=lan-bridge interface=sfp-sfpplus{i} pvid=1000' for i in range(1, 14)] +
+            ['add bridge=lan-bridge interface=sfp-sfpplus14 pvid=2000',
+             'add bridge=lan-bridge interface=sfp-sfpplus15 pvid=3000',
+             'add bridge=lan-bridge interface=sfp-sfpplus16 pvid=3000',
+             'add bridge=lan-bridge interface=bonding1',
+             'add bridge=lan-bridge interface=sfp-sfpplus17 pvid=3000',
+             'add bridge=lan-bridge interface=sfp-sfpplus18 pvid=3000',
+             'add bridge=lan-bridge interface=sfp-sfpplus19 pvid=3000',
+             'add bridge=lan-bridge interface=sfp-sfpplus20 pvid=1000',
+             'add bridge=lan-bridge interface=sfp-sfpplus21 pvid=1000',
+             'add bridge=lan-bridge interface=sfp-sfpplus22 pvid=1000']
+        )
+        config_lines = [
+            '# SWITCH PROFILE: CRS326',
+            f'# RouterOS: {routeros}',
+            '',
+            '/interface bridge add ingress-filtering=no name=lan-bridge protocol-mode=mstp region-name=MSTP region-revision=1 vlan-filtering=yes',
+            '/interface ethernet',
+            f'set [ find default-name={uplink1} ] comment="Router Uplink 1" l2mtu=9212 loop-protect=off',
+            f'set [ find default-name={uplink2} ] comment="Router Uplink 2" l2mtu=9212 loop-protect=off',
+            '\n'.join(_switch_comment_lines(custom_ports, [], [])),
+            '/interface vlan add interface=lan-bridge name=vlan3000 vlan-id=3000',
+            f'/interface bonding add lacp-user-key=1 mode=802.3ad name=bonding1 slaves={uplink1},{uplink2} transmit-hash-policy=layer-2-and-3',
+            '/port set 0 name=serial0',
+            '/snmp community set [ find default=yes ] read-access=no',
+            '/interface bridge msti add bridge=lan-bridge identifier=1 vlan-mapping=1000,2000,3000,4000,75,444',
+            '/interface bridge port',
+            bridge_ports,
+            '/ip neighbor discovery-settings set discover-interface-list=all',
+            f'/interface bridge vlan add bridge=lan-bridge tagged={tagged_1000} vlan-ids=4000',
+            '/interface bridge vlan add bridge=lan-bridge tagged=sfp-sfpplus3,bonding1,lan-bridge vlan-ids=75',
+            '/interface bridge vlan add bridge=lan-bridge tagged=sfp-sfpplus3,bonding1,lan-bridge vlan-ids=444',
+            f'/interface bridge vlan add bridge=lan-bridge tagged={tagged_1000} vlan-ids=1000',
+            f'/interface bridge vlan add bridge=lan-bridge tagged={tagged_1000} vlan-ids=2000',
+            f'/interface bridge vlan add bridge=lan-bridge tagged={tagged_3000} vlan-ids=3000',
+            f'/ip address add address={mgmt_ip} interface=vlan3000',
+            f'/ip route add disabled=no distance=1 dst-address=0.0.0.0/0 gateway={gateway} pref-src="" routing-table=main scope=30 suppress-hw-offload=no target-scope=10',
+            '/ip firewall service-port set sip disabled=yes',
+            '/ip service set telnet disabled=yes port=5023',
+            '/ip service set ftp disabled=yes port=5021',
+            '/ip service set www disabled=yes port=1234',
+            '/ip service set ssh port=5022',
+            '/ip service set www-ssl disabled=no',
+            '/ip service set api disabled=yes',
+            '/ip service set api-ssl disabled=yes',
+            f'/radius add address=10.30.10.70 comment="userRAD 1" service=login src-address={mgmt_ip_no_cidr}',
+            f'/radius add address=10.2.10.74 comment="userRAD 2" service=login src-address={mgmt_ip_no_cidr}',
+            f'/snmp set enabled=yes contact="netops@team.nxlink.com" location="{gps}" src-address={mgmt_ip_no_cidr}',
+            f'/system identity set name={switch_name}',
+            '/system ntp client set enabled=yes',
+            '/system ntp client servers add address=ntp-pool.nxlink.com',
+            '/system routerboard settings set boot-os=router-os enter-setup-on=delete-key',
+            '/tool sniffer set file-limit=10000KiB',
+            '/user set [find name=admin] password="CHANGE_ME"',
+            '/user aaa set use-radius=yes',
+            '',
+        ]
+
+    generic_lines = [
+        '# COMMON SWITCH HARDENING',
+        '/system watchdog set watchdog-timer=yes',
+        '/system routerboard settings set auto-upgrade=yes',
+        '/system logging action set [find name="disk"] disk-lines-per-file=10000',
+        '/system logging add action=disk topics=critical',
+        '/system logging add action=disk topics=error',
+        '/system logging add action=disk topics=info',
+        '/system logging add action=disk topics=warning',
+        f'/system logging action add name=syslog remote=142.147.116.215 src-address={mgmt_ip_no_cidr} target=remote',
+        '/system logging add action=syslog topics=critical',
+        '/system logging add action=syslog topics=error',
+        '/system logging add action=syslog topics=info',
+        '/system logging add action=syslog topics=warning',
+        '/system clock set time-zone-name=America/Chicago',
+        '/ip dns set max-udp-packet-size=512 servers=142.147.112.3,142.147.112.19',
+    ]
+
+    base_config = '\n'.join([line for line in config_lines if line is not None and line != '']).strip() + '\n\n' + '\n'.join(generic_lines).strip() + '\n'
+    rendered, compliance_validation, compliance_source, warnings = _apply_optional_compliance_to_config(
+        base_config,
+        f'{mgmt_ip_no_cidr}/32',
+        bool(data.get('apply_compliance', True)),
+    )
+    return rendered, base_config, {
+        'switch_type': switch_type,
+        'switch_label': profile_meta['label'],
+        'profile': profile,
+        'switch_name': switch_name,
+        'routeros': routeros,
+        'management_ip': mgmt_ip,
+        'gateway': str(gateway),
+        'uplink1': uplink1,
+        'uplink2': uplink2,
+        'state_scope': state_scope,
+        'ports': custom_ports,
+    }, compliance_validation, compliance_source, warnings
+
+
+@app.route('/api/generate-mt-switch-config', methods=['POST'])
+def generate_mt_switch_config():
+    data = request.get_json(silent=True) or {}
+    try:
+        rendered, base_config, metadata, compliance_validation, compliance_source, warnings = _build_switch_profile_config(data)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    except Exception as exc:
+        return jsonify({'error': f'Failed to generate MikroTik switch config: {exc}'}), 500
+
+    return jsonify({
+        'success': True,
+        'config': rendered,
+        'base_config': base_config,
+        'metadata': metadata,
+        'compliance': compliance_validation,
+        'compliance_source': compliance_source,
+        'warnings': warnings,
+    })
+
+
+def _build_ftth_1072_config(data: dict, backhauls):
+    tower_name = str(data.get('tower_name', '')).strip()
+    if not tower_name:
+        raise ValueError('tower_name is required')
+    asn = str(data.get('asn', '26077')).strip() or '26077'
+    gps = str(data.get('tower_gps', '')).strip()
+    loopback = ipaddress.ip_interface(str(data.get('loopback_1072', '')).strip())
+    bh1 = ipaddress.ip_network(str(data.get('bh1_subnet', '')).strip(), strict=False)
+    uplink1 = ipaddress.ip_network(str(data.get('link_1072_1036_a', '')).strip(), strict=False)
+    uplink2 = ipaddress.ip_network(str(data.get('link_1072_1036_b', '')).strip(), strict=False)
+    peer1_name = str(data.get('peer1_name', 'CR7')).strip() or 'CR7'
+    peer1 = str(data.get('peer1_ip', '10.2.0.107')).strip() or '10.2.0.107'
+    peer2_name = str(data.get('peer2_name', 'CR8')).strip() or 'CR8'
+    peer2 = str(data.get('peer2_ip', '10.2.0.108')).strip() or '10.2.0.108'
+
+    fiber_config, _meta = _build_ftth_fiber_customer_base_config({
+        'routerboard': 'ccr1072',
+        'routeros': data.get('routeros_1072', '7.19.4'),
+        'provider': data.get('fiber_provider', ''),
+        'port': data.get('fiber_port', 'sfp-sfpplus8'),
+        'address': data.get('fiber_port_ip', ''),
+        'network': data.get('fiber_port_ip', ''),
+        'vlan_mode': data.get('fiber_vlan_mode', 'none'),
+        'vlan_id': data.get('fiber_vlan_id', ''),
+        'loopback_ip': str(loopback),
+    })
+
+    backhaul_section, port_map = _render_backhaul_sections(backhauls)
+    lines = [
+        f'# 1072 FIBER SITE CONFIG - {tower_name}',
+        '/system identity',
+        f'set name=RTR-MTCCR1072-1.{tower_name}',
+        '',
+        '/interface bridge',
+        'add name=loop0',
+        '',
+        '/ip address',
+        f'add address={loopback.with_prefixlen} interface=loop0 comment=loop0',
+        '',
+        '/routing ospf instance',
+        f'add disabled=no name=default-v2 router-id={loopback.ip}',
+        '',
+        '/routing ospf area',
+        'add disabled=no instance=default-v2 name=backbone-v2 area-id=0.0.0.0',
+        '',
+        '/routing ospf interface-template',
+        f'add area=backbone-v2 cost=10 disabled=no interfaces=loop0 networks={loopback.with_prefixlen} passive priority=1 comment="loop0"',
+        '',
+        '/routing bgp template',
+        f'set default as={asn} disabled=no multihop=yes output.network=bgp-networks router-id={loopback.ip} routing-table=main',
+        '',
+        '/routing bgp connection',
+        f'add cisco-vpls-nlri-len-fmt=auto-bits connect=yes listen=yes local.address={loopback.ip} .role=ibgp multihop=yes name={peer1_name} remote.address={peer1} .as={asn} .port=179 templates=default tcp-md5-key=m8M5JwvdYM',
+        f'add cisco-vpls-nlri-len-fmt=auto-bits connect=yes listen=yes local.address={loopback.ip} .role=ibgp multihop=yes name={peer2_name} remote.address={peer2} .as={asn} .port=179 templates=default tcp-md5-key=m8M5JwvdYM',
+        '',
+        '# UPLINKS TO 1036',
+        '/interface ethernet',
+        f'set [ find default-name="sfp-sfpplus1" ] comment="CCR1036-1.{tower_name} sfp1"',
+        f'set [ find default-name="sfp-sfpplus2" ] comment="CCR1036-1.{tower_name} sfp2"',
+        '',
+        '/ip address',
+        f'add address={_ip_at_offset(uplink1, 1)}/{uplink1.prefixlen} interface=sfp-sfpplus1 comment="CCR1036-1.{tower_name} sfp1"',
+        f'add address={_ip_at_offset(uplink2, 1)}/{uplink2.prefixlen} interface=sfp-sfpplus2 comment="CCR1036-1.{tower_name} sfp2"',
+        '',
+        '/routing ospf interface-template',
+        f'add area=backbone-v2 auth=md5 auth-id=1 auth-key=m8M5JwvdYM cost=10 disabled=no interfaces="sfp-sfpplus1" networks={uplink1.with_prefixlen} priority=1 type=ptp comment="CCR1036-1.{tower_name} sfp1"',
+        f'add area=backbone-v2 auth=md5 auth-id=1 auth-key=m8M5JwvdYM cost=10 disabled=no interfaces="sfp-sfpplus2" networks={uplink2.with_prefixlen} priority=1 type=ptp comment="CCR1036-1.{tower_name} sfp2"',
+        '',
+        fiber_config.strip(),
+        '',
+        '# BACKHAULS',
+        backhaul_section.strip(),
+        '',
+        f'# Gateway reference: { _ip_at_offset(bh1, 1) }',
+    ]
+    if gps:
+        lines.insert(1, f'# GPS: {gps}')
+    return '\n'.join([line for line in lines if line is not None]).strip() + '\n', str(loopback), port_map
+
+
+def _build_ftth_1036_config(data: dict):
+    tower_name = str(data.get('tower_name', '')).strip()
+    if not tower_name:
+        raise ValueError('tower_name is required')
+    asn = str(data.get('asn', '26077')).strip() or '26077'
+    gps = str(data.get('tower_gps', '')).strip()
+    loopback = ipaddress.ip_interface(str(data.get('loopback_1036', '')).strip())
+    cpe_net = ipaddress.ip_network(str(data.get('cpe_subnet', '')).strip(), strict=False)
+    unauth_net = ipaddress.ip_network(str(data.get('unauth_subnet', '')).strip(), strict=False)
+    cgn_priv = ipaddress.ip_network(str(data.get('cgn_priv_subnet', '')).strip(), strict=False)
+    cgn_pub = str(data.get('cgn_pub_ip', '')).strip()
+    uplink1 = ipaddress.ip_network(str(data.get('link_1072_1036_a', '')).strip(), strict=False)
+    uplink2 = ipaddress.ip_network(str(data.get('link_1072_1036_b', '')).strip(), strict=False)
+    peer1_name = str(data.get('peer1_name', 'CR7')).strip() or 'CR7'
+    peer1 = str(data.get('peer1_ip', '10.2.0.107')).strip() or '10.2.0.107'
+    peer2_name = str(data.get('peer2_name', 'CR8')).strip() or 'CR8'
+    peer2 = str(data.get('peer2_ip', '10.2.0.108')).strip() or '10.2.0.108'
+
+    cpe_ip = _ip_at_offset(cpe_net, 1)
+    unauth_ip = _ip_at_offset(unauth_net, 1)
+    cgn_priv_ip = _ip_at_offset(cgn_priv, 1)
+    lines = [
+        f'# 1036 FIBER SITE CONFIG - {tower_name}',
+        '/system identity',
+        f'set name=RTR-MTCCR1036-1.{tower_name}',
+        '',
+        '/interface bridge',
+        'add name=lan-bridge priority=0x1',
+        'add name=loop0',
+        '',
+        '/interface bridge port',
+        'add bridge=lan-bridge interface=ether5',
+        'add bridge=lan-bridge interface=ether6',
+        '',
+        '/interface ethernet',
+        'set [ find default-name="ether5" ] comment="RPC"',
+        'set [ find default-name="ether6" ] comment="Switch"',
+        'set [ find default-name="ether1" ] comment="to-CCR1072-1"',
+        'set [ find default-name="ether2" ] comment="to-CCR1072-2"',
+        '',
+        '/ip address',
+        f'add address={loopback.with_prefixlen} interface=loop0 comment=loop0',
+        f'add address={cpe_ip}/{cpe_net.prefixlen} interface=lan-bridge comment="CPE/Tower Gear"',
+        f'add address={unauth_ip}/{unauth_net.prefixlen} interface=lan-bridge comment="UNAUTH"',
+        f'add address={cgn_priv_ip}/{cgn_priv.prefixlen} interface=lan-bridge comment="CGNAT Private"',
+        f'add address={_ip_at_offset(uplink1, 2)}/{uplink1.prefixlen} interface=ether1 comment="to-CCR1072-1"',
+        f'add address={_ip_at_offset(uplink2, 2)}/{uplink2.prefixlen} interface=ether2 comment="to-CCR1072-2"',
+        '',
+        '/routing ospf instance',
+        f'add disabled=no name=default-v2 router-id={loopback.ip}',
+        '',
+        '/routing ospf area',
+        'add disabled=no instance=default-v2 name=backbone-v2 area-id=0.0.0.0',
+        '',
+        '/routing ospf interface-template',
+        f'add area=backbone-v2 cost=10 disabled=no interfaces=loop0 networks={loopback.with_prefixlen} passive priority=1 comment="loop0"',
+        f'add area=backbone-v2 cost=10 disabled=no interfaces=lan-bridge networks={cpe_net.with_prefixlen} priority=1 comment="CPE/Tower Gear"',
+        f'add area=backbone-v2 auth=md5 auth-id=1 auth-key=m8M5JwvdYM cost=10 disabled=no interfaces=ether1 networks={uplink1.with_prefixlen} priority=1 type=ptp comment="to-CCR1072-1"',
+        f'add area=backbone-v2 auth=md5 auth-id=1 auth-key=m8M5JwvdYM cost=10 disabled=no interfaces=ether2 networks={uplink2.with_prefixlen} priority=1 type=ptp comment="to-CCR1072-2"',
+        '',
+        '/routing bgp template',
+        f'set default as={asn} disabled=no multihop=yes output.network=bgp-networks router-id={loopback.ip} routing-table=main',
+        '',
+        '/routing bgp connection',
+        f'add cisco-vpls-nlri-len-fmt=auto-bits connect=yes listen=yes local.address={loopback.ip} .role=ibgp multihop=yes name={peer1_name} remote.address={peer1} .as={asn} .port=179 templates=default tcp-md5-key=m8M5JwvdYM',
+        f'add cisco-vpls-nlri-len-fmt=auto-bits connect=yes listen=yes local.address={loopback.ip} .role=ibgp multihop=yes name={peer2_name} remote.address={peer2} .as={asn} .port=179 templates=default tcp-md5-key=m8M5JwvdYM',
+        '',
+        '/ip pool',
+        f'add name=cpe ranges="{_range_value(cpe_net, 49)}-{_range_value(cpe_net, 1021)}"',
+        f'add name=unauth ranges="{_range_value(unauth_net, 1)}-{_range_value(unauth_net, 1021)}"',
+        f'add name=cust ranges="{_range_value(cgn_priv, 2)}-{_range_value(cgn_priv, 1021)}"',
+        '',
+        '/ip dhcp-server',
+        'add address-pool=cust disabled=no interface=lan-bridge lease-time=1h name=server1 use-radius=yes authoritative=yes',
+        '',
+        '/ip dhcp-server network',
+        f'add address={cpe_net.with_prefixlen} dns-server=142.147.112.3,142.147.112.19 gateway={cpe_ip} netmask={cpe_net.prefixlen}',
+        f'add address={unauth_net.with_prefixlen} dns-server=142.147.112.3,142.147.112.19 gateway={unauth_ip} netmask={unauth_net.prefixlen}',
+        f'add address={cgn_priv.with_prefixlen} dns-server=142.147.112.3,142.147.112.19 gateway={cgn_priv_ip} netmask={cgn_priv.prefixlen}',
+    ]
+    if cgn_pub:
+        lines.extend([
+            '',
+            '/interface bridge',
+            'add name=nat-public-bridge',
+            '',
+            '/ip address',
+            f'add address={cgn_pub} interface=nat-public-bridge comment="CGNAT Public"',
+        ])
+    if gps:
+        lines.insert(1, f'# GPS: {gps}')
+    return '\n'.join(lines).strip() + '\n', str(loopback)
+
+
+@app.route('/api/generate-ftth-fiber-site', methods=['POST'])
+def generate_ftth_fiber_site():
+    data = request.get_json(silent=True) or {}
+    try:
+        backhauls = _parse_backhaul_rows(data.get('backhauls', []), '1072')
+        config_1072, loop_1072, port_map = _build_ftth_1072_config(data, backhauls)
+        config_1036, loop_1036 = _build_ftth_1036_config(data)
+        apply_flag = bool(data.get('apply_compliance', True))
+        rendered_1072, compliance_1072, source_1072, warnings_1072 = _apply_required_ftth_home_compliance_to_config(config_1072, loop_1072, apply_flag)
+        rendered_1036, compliance_1036, source_1036, warnings_1036 = _apply_required_ftth_home_compliance_to_config(config_1036, loop_1036, apply_flag)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    except RuntimeError as exc:
+        return jsonify({'error': str(exc)}), 503
+    except Exception as exc:
+        return jsonify({'error': f'Failed to generate FTTH fiber site: {exc}'}), 500
+
+    return jsonify({
+        'success': True,
+        'router_1072_config': rendered_1072,
+        'router_1036_config': rendered_1036,
+        'router_1072_base_config': config_1072,
+        'router_1036_base_config': config_1036,
+        'port_map': port_map,
+        'compliance': {
+            'router_1072': compliance_1072,
+            'router_1036': compliance_1036,
+        },
+        'compliance_source': source_1072 or source_1036,
+        'warnings': warnings_1072 + warnings_1036,
+    })
+
+
+def _build_isd_fiber_config(data: dict, backhauls):
+    router_type = _normalize_router_type(data.get('router_type', '2004'))
+    if router_type not in {'1009', '1036', '1072', '2004'}:
+        raise ValueError('router_type must be one of 1009, 1036, 1072, or 2004')
+    tower_name = str(data.get('tower_name', '')).strip()
+    if not tower_name:
+        raise ValueError('tower_name is required')
+    gps = str(data.get('tower_gps', '')).strip()
+    loopback = ipaddress.ip_interface(str(data.get('loopback_subnet', '')).strip())
+    bh1 = ipaddress.ip_network(str(data.get('bh1_subnet', '')).strip(), strict=False)
+    private_net = ipaddress.ip_network(str(data.get('private_ip', '')).strip(), strict=False)
+    public_net = ipaddress.ip_network(str(data.get('public_ip', '')).strip(), strict=False)
+    fiber_config, _meta = _build_ftth_fiber_customer_base_config({
+        'routerboard': f'ccr{router_type}' if router_type in {'1036', '1072', '2004'} else f'rb{router_type}',
+        'routeros': data.get('routeros', '7.19.4'),
+        'provider': data.get('fiber_provider', ''),
+        'port': data.get('fiber_port', _preferred_ftth_fiber_port(f'ccr{router_type}' if router_type in {'1036', '1072', '2004'} else f'rb{router_type}')),
+        'address': data.get('fiber_port_ip', ''),
+        'network': data.get('fiber_port_ip', ''),
+        'vlan_mode': 'tagged' if _boolish(data.get('has_vlan')) else 'none',
+        'vlan_id': data.get('fiber_vlan_num', ''),
+        'loopback_ip': str(loopback),
+    })
+
+    family = _router_port_family(router_type)
+    backhaul_section, port_map = _render_backhaul_sections(backhauls)
+    lines = [
+        f'# ISD FIBER CONFIG - {tower_name}',
+        '/system identity',
+        f'set name=RTR-MTCCR{router_type}-1.{tower_name}',
+        '',
+        '/interface bridge',
+        'add name=public-bridge priority=0x1',
+        'add name=nat-bridge priority=0x1',
+        'add name=loop0',
+        '',
+        '/interface bridge port',
+        f'add bridge=public-bridge interface={family}7',
+        f'add bridge=nat-bridge interface={family}8',
+        '',
+        '/interface ethernet',
+        f'set [ find default-name="{family}7" ] comment="CX HANDOFF"',
+        f'set [ find default-name="{family}8" ] comment="NAT"',
+        '',
+        '/ip address',
+        f'add address={loopback.with_prefixlen} interface=loop0 comment=loop0',
+        f'add address={_ip_at_offset(public_net, 1)}/{public_net.prefixlen} interface=public-bridge comment="PUBLIC(S)"',
+        f'add address={_ip_at_offset(private_net, 1)}/{private_net.prefixlen} interface=nat-bridge comment="PRIVATES"',
+        '',
+        '/routing ospf instance',
+        f'add disabled=no name=default-v2 router-id={loopback.ip}',
+        '',
+        '/routing ospf area',
+        'add disabled=no instance=default-v2 name=backbone-v2 area-id=0.0.0.0',
+        '',
+        '/routing ospf interface-template',
+        f'add area=backbone-v2 cost=10 disabled=no interfaces=loop0 networks={loopback.with_prefixlen} passive priority=1 comment="loop0"',
+        '',
+        '/routing bgp template',
+        f'set default as=26077 disabled=no multihop=yes output.network=bgp-networks router-id={loopback.ip} routing-table=main',
+        '',
+        '/routing bgp connection',
+        f'add cisco-vpls-nlri-len-fmt=auto-bits connect=yes listen=yes local.address={loopback.ip} .role=ibgp multihop=yes name=CR7 remote.address=10.2.0.107 .as=26077 .port=179 templates=default tcp-md5-key=m8M5JwvdYM',
+        f'add cisco-vpls-nlri-len-fmt=auto-bits connect=yes listen=yes local.address={loopback.ip} .role=ibgp multihop=yes name=CR8 remote.address=10.2.0.108 .as=26077 .port=179 templates=default tcp-md5-key=m8M5JwvdYM',
+        '',
+        '/ip pool',
+        f'add name=public ranges="{_range_value(public_net, 1)}-{_range_value(public_net, max(1, len(list(public_net.hosts())) - 2))}"',
+        f'add name=private ranges="{_range_value(private_net, min(9, max(0, len(list(private_net.hosts())) - 1)))}-{_range_value(private_net, min(253, max(0, len(list(private_net.hosts())) - 1)))}"',
+        '',
+        '/ip dhcp-server',
+        'add address-pool=public disabled=no interface=public-bridge lease-time=1h name=public-server use-radius=no authoritative=yes',
+        'add address-pool=private disabled=no interface=nat-bridge lease-time=1h name=nat-server use-radius=no authoritative=yes',
+        '',
+        '/ip dhcp-server network',
+        f'add address={public_net.with_prefixlen} dns-server=142.147.112.3,142.147.112.19 comment="PUBLIC(S)" gateway={_ip_at_offset(public_net, 1)} netmask={public_net.prefixlen}',
+        f'add address={private_net.with_prefixlen} dns-server=142.147.112.3,142.147.112.19 comment="PRIVATES" gateway={_ip_at_offset(private_net, 1)} netmask={private_net.prefixlen}',
+        '',
+        fiber_config.strip(),
+        '',
+        '# BACKHAULS',
+        backhaul_section.strip(),
+        '',
+        f'# Gateway reference: { _ip_at_offset(bh1, 1) }',
+    ]
+    if gps:
+        lines.insert(1, f'# GPS: {gps}')
+    return '\n'.join([line for line in lines if line is not None]).strip() + '\n', str(loopback), port_map
+
+
+@app.route('/api/generate-ftth-isd-fiber', methods=['POST'])
+def generate_ftth_isd_fiber():
+    data = request.get_json(silent=True) or {}
+    try:
+        router_type = _normalize_router_type(data.get('router_type', '2004'))
+        backhauls = _parse_backhaul_rows(data.get('backhauls', []), router_type)
+        config_text, loopback_ip, port_map = _build_isd_fiber_config(data, backhauls)
+        rendered, compliance_validation, compliance_source, warnings = _apply_required_ftth_home_compliance_to_config(
+            config_text,
+            loopback_ip,
+            bool(data.get('apply_compliance', True)),
+        )
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    except RuntimeError as exc:
+        return jsonify({'error': str(exc)}), 503
+    except Exception as exc:
+        return jsonify({'error': f'Failed to generate FTTH ISD fiber config: {exc}'}), 500
+
+    return jsonify({
+        'success': True,
+        'config': rendered,
+        'base_config': config_text,
+        'port_map': port_map,
+        'compliance': compliance_validation,
+        'compliance_source': compliance_source,
+        'warnings': warnings,
+    })
 
 
 @app.route('/api/ftth-home/mf2-package', methods=['POST'])
@@ -15930,7 +17850,7 @@ def mt_generate_portmap(config_type):
 def get_compliance_blocks_api():
     """Return compliance blocks as JSON for client-side config generators.
 
-    Source priority: GitLab verbatim (TTL-cached) → parsed blocks → hardcoded reference.
+    Source priority: GitLab verbatim (TTL-cached) → parsed blocks → bundled reference.
     Query params:
         loopback_ip  – optional, defaults to 10.0.0.1
     """
@@ -16395,9 +18315,18 @@ def bulk_migration_analyze():
 
         # Step 4: Build interface migration map
         interface_map = {}
+        port_analysis = []
+        policy_summary = {}
+        manual_review_required = False
         migration_warnings = []
+        if source_model_key:
+            mapping_analysis = analyze_nextlink_port_mapping(config_text, source_model_key, target_model)
+            interface_map = mapping_analysis.get('interface_map') or {}
+            port_analysis = mapping_analysis.get('port_analysis') or []
+            policy_summary = mapping_analysis.get('policy_summary') or {}
+            manual_review_required = bool(mapping_analysis.get('manual_review_required'))
+            migration_warnings.extend(mapping_analysis.get('warnings') or [])
         if source_model_key and source_model_key != target_model:
-            interface_map = build_interface_migration_map(source_model_key, target_model) or {}
             if not interface_map:
                 migration_warnings.append(f'Could not build interface map from {source_model_key} to {target_model}')
             # Check for port exhaustion
@@ -16443,6 +18372,9 @@ def bulk_migration_analyze():
             'needs_version_migration': needs_version_migration,
             'needs_device_migration': needs_device_migration,
             'interface_map': interface_map,
+            'port_analysis': port_analysis,
+            'policy_summary': policy_summary,
+            'manual_review_required': manual_review_required,
             'warnings': migration_warnings,
             'config_lines': len(config_text.splitlines()),
             'config_text': config_text,
@@ -17140,14 +19072,9 @@ if __name__ == '__main__':
     else:
         print("\n[WARN] RFC-09-10-25 enforcement is DISABLED (reference not found)")
 
-    if HAS_AVIAT and AVIAT_AUTO_ACTIVATE:
-        print("\n[AVIAT] Auto-activation scheduler is ENABLED")
-        threading.Thread(target=_aviat_auto_activate_loop, daemon=True).start()
-    elif HAS_AVIAT:
-        print("\n[AVIAT] Auto-activation scheduler is DISABLED")
     if HAS_AVIAT:
-        print("[AVIAT] Firmware loading checker is ENABLED")
-        threading.Thread(target=_aviat_loading_check_loop, daemon=True).start()
+        print("")
+        _start_aviat_background_threads()
 
     print("\nStarting server on http://0.0.0.0:5000")
     print("=" * 50 + "\n")
