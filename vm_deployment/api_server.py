@@ -9734,7 +9734,13 @@ def _strip_compliance_managed_sections(
 
     return '\n'.join(result), compliance_stripped_ips
 
-def inject_compliance_blocks(config: str, compliance_blocks: dict, loopback_ip: str = "10.0.0.1", stripped_ips_out: set = None) -> str:
+def inject_compliance_blocks(
+    config: str,
+    compliance_blocks: dict,
+    loopback_ip: str = "10.0.0.1",
+    stripped_ips_out: set = None,
+    raw_text_override: str | None = None,
+) -> str:
     """
     Inject compliance into a RouterOS configuration.
 
@@ -9756,6 +9762,8 @@ def inject_compliance_blocks(config: str, compliance_blocks: dict, loopback_ip: 
         loopback_ip: Loopback IP for $LoopIP substitutions
         stripped_ips_out: Optional mutable set; if provided, IPs removed
             by compliance stripping are added to it (for validation awareness).
+        raw_text_override: Optional verbatim compliance text to use instead of
+            re-fetching the GitLab raw script.
         
     Returns:
         Updated configuration with compliance blocks (only if not already present)
@@ -9786,7 +9794,7 @@ def inject_compliance_blocks(config: str, compliance_blocks: dict, loopback_ip: 
 
     # ── 0. Obtain the compliance text we will append ──
     # Get it FIRST so we can parse it for dynamic section extraction.
-    raw_text = _get_raw_gitlab_compliance_text(loopback_ip)
+    raw_text = raw_text_override if raw_text_override is not None else _get_raw_gitlab_compliance_text(loopback_ip)
 
     # Guard: if both the verbatim GitLab text and parsed compliance blocks are
     # unavailable, return config untouched.
@@ -16759,28 +16767,16 @@ def generate_ftth_fiber_customer():
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
 
-    rendered = base_config
-    compliance_validation = None
-    compliance_source = None
-    warnings = []
-
-    if apply_compliance_flag:
-        loopback_ip = metadata.get('loopback_ip')
-        if not loopback_ip:
-            return jsonify({'error': 'loopback_ip is required when apply_compliance is enabled'}), 400
-        try:
-            compliance_blocks, compliance_source = _get_dynamic_compliance_blocks(loopback_ip, return_source=True)
-            if compliance_blocks:
-                rendered = inject_compliance_blocks(base_config, compliance_blocks, loopback_ip=loopback_ip)
-                if HAS_COMPLIANCE:
-                    try:
-                        compliance_validation = validate_compliance(rendered)
-                    except Exception as exc:
-                        warnings.append(f'Compliance validation failed: {exc}')
-            else:
-                warnings.append('No compliance blocks were available to append.')
-        except Exception as exc:
-            return jsonify({'error': f'Failed to apply compliance: {exc}'}), 500
+    try:
+        rendered, compliance_validation, compliance_source, warnings = _apply_required_ftth_home_compliance_to_config(
+            base_config,
+            metadata.get('loopback_ip'),
+            apply_compliance_flag,
+        )
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    except RuntimeError as exc:
+        return jsonify({'error': str(exc)}), 503
 
     return jsonify({
         'success': True,
@@ -16931,6 +16927,35 @@ def _apply_optional_compliance_to_config(config_text: str, loopback_ip: str, app
     else:
         warnings.append('No compliance blocks were available to append.')
     return rendered, compliance_validation, compliance_source, warnings
+
+
+def _apply_required_ftth_home_compliance_to_config(config_text: str, loopback_ip: str, apply_flag: bool):
+    if not apply_flag:
+        return config_text, None, None, []
+    if not loopback_ip:
+        raise ValueError('loopback_ip is required when apply_compliance is enabled')
+
+    bare_ip = loopback_ip.split('/')[0] if '/' in loopback_ip else loopback_ip
+    raw_text = _get_raw_gitlab_compliance_text(bare_ip)
+    if not raw_text:
+        raise RuntimeError(
+            'GitLab compliance script is required for FTTH Home generators when apply_compliance is enabled'
+        )
+
+    warnings = []
+    rendered = inject_compliance_blocks(
+        config_text,
+        {},
+        loopback_ip=loopback_ip,
+        raw_text_override=raw_text,
+    )
+    compliance_validation = None
+    if HAS_COMPLIANCE:
+        try:
+            compliance_validation = validate_compliance(rendered)
+        except Exception as exc:
+            warnings.append(f'Compliance validation failed: {exc}')
+    return rendered, compliance_validation, 'gitlab-verbatim', warnings
 
 
 SWITCH_MAKER_PROFILES = {
@@ -17505,10 +17530,12 @@ def generate_ftth_fiber_site():
         config_1072, loop_1072, port_map = _build_ftth_1072_config(data, backhauls)
         config_1036, loop_1036 = _build_ftth_1036_config(data)
         apply_flag = bool(data.get('apply_compliance', True))
-        rendered_1072, compliance_1072, source_1072, warnings_1072 = _apply_optional_compliance_to_config(config_1072, loop_1072, apply_flag)
-        rendered_1036, compliance_1036, source_1036, warnings_1036 = _apply_optional_compliance_to_config(config_1036, loop_1036, apply_flag)
+        rendered_1072, compliance_1072, source_1072, warnings_1072 = _apply_required_ftth_home_compliance_to_config(config_1072, loop_1072, apply_flag)
+        rendered_1036, compliance_1036, source_1036, warnings_1036 = _apply_required_ftth_home_compliance_to_config(config_1036, loop_1036, apply_flag)
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
+    except RuntimeError as exc:
+        return jsonify({'error': str(exc)}), 503
     except Exception as exc:
         return jsonify({'error': f'Failed to generate FTTH fiber site: {exc}'}), 500
 
@@ -17624,13 +17651,15 @@ def generate_ftth_isd_fiber():
         router_type = _normalize_router_type(data.get('router_type', '2004'))
         backhauls = _parse_backhaul_rows(data.get('backhauls', []), router_type)
         config_text, loopback_ip, port_map = _build_isd_fiber_config(data, backhauls)
-        rendered, compliance_validation, compliance_source, warnings = _apply_optional_compliance_to_config(
+        rendered, compliance_validation, compliance_source, warnings = _apply_required_ftth_home_compliance_to_config(
             config_text,
             loopback_ip,
             bool(data.get('apply_compliance', True)),
         )
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
+    except RuntimeError as exc:
+        return jsonify({'error': str(exc)}), 503
     except Exception as exc:
         return jsonify({'error': f'Failed to generate FTTH ISD fiber config: {exc}'}), 500
 

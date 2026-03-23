@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 repo_root = Path(__file__).resolve().parents[1]
@@ -18,6 +19,26 @@ import api_server  # noqa: WPS433
 app = api_server.app
 app.config["TESTING"] = True
 client = app.test_client()
+BACKEND_MODULE = sys.modules.get("_noc_configmaker_vm_api_server", api_server)
+
+MOCK_GITLAB_COMPLIANCE = (
+    "/ip dns\n"
+    "set allow-remote-requests=yes servers=142.147.112.3,142.147.112.19\n"
+    "/ip firewall address-list\n"
+    "add address=142.147.112.3 list=managerIP\n"
+    "/system ntp client\n"
+    "set enabled=yes\n"
+)
+
+
+@contextmanager
+def _mock_gitlab_compliance(raw_text: str | None):
+    original = BACKEND_MODULE._get_raw_gitlab_compliance_text
+    BACKEND_MODULE._get_raw_gitlab_compliance_text = lambda loopback_ip='10.0.0.1': raw_text
+    try:
+        yield
+    finally:
+        BACKEND_MODULE._get_raw_gitlab_compliance_text = original
 
 
 def test_preview_ftth_bng_basic():
@@ -53,12 +74,13 @@ def test_generate_ftth_fiber_customer_with_compliance():
         "apply_compliance": True,
     }
 
-    r = client.post("/api/generate-ftth-fiber-customer", data=json.dumps(payload), content_type="application/json")
+    with _mock_gitlab_compliance(MOCK_GITLAB_COMPLIANCE):
+        r = client.post("/api/generate-ftth-fiber-customer", data=json.dumps(payload), content_type="application/json")
     assert r.status_code == 200
     data = r.get_json() or {}
     assert data.get("success") is True
     assert data.get("selected_port") == "sfp-sfpplus1"
-    assert data.get("compliance_source") in {"gitlab", "bundled-local"}
+    assert data.get("compliance_source") == "gitlab-verbatim"
     text = data.get("config", "")
     assert '/routing ospf area' in text
     assert 'comment="ATT VLAN 300"' in text
@@ -81,6 +103,26 @@ def test_generate_ftth_fiber_customer_requires_loopback_when_compliance_enabled(
     assert r.status_code == 400
     data = r.get_json() or {}
     assert "loopback_ip" in (data.get("error") or "")
+
+
+def test_generate_ftth_fiber_customer_requires_gitlab_compliance_when_enabled():
+    payload = {
+        "routerboard": "ccr2004",
+        "routeros": "7.19.4",
+        "provider": "ATT",
+        "port": "sfp-sfpplus1",
+        "address": "10.42.10.2/30",
+        "network": "10.42.10.0/30",
+        "loopback_ip": "10.26.0.7/32",
+        "vlan_mode": "none",
+        "apply_compliance": True,
+    }
+
+    with _mock_gitlab_compliance(None):
+        r = client.post("/api/generate-ftth-fiber-customer", data=json.dumps(payload), content_type="application/json")
+    assert r.status_code == 503
+    data = r.get_json() or {}
+    assert "GitLab compliance script is required" in (data.get("error") or "")
 
 
 def test_generate_ftth_fiber_site_bundle():
@@ -112,14 +154,15 @@ def test_generate_ftth_fiber_site_bundle():
             {"port": "3", "name": "BH-TO-SITE-A", "subnet": "10.25.10.16/29", "master": "yes", "bandwidth": "1G"}
         ],
     }
-    r = client.post("/api/generate-ftth-fiber-site", data=json.dumps(payload), content_type="application/json")
+    with _mock_gitlab_compliance(MOCK_GITLAB_COMPLIANCE):
+        r = client.post("/api/generate-ftth-fiber-site", data=json.dumps(payload), content_type="application/json")
     assert r.status_code == 200
     body = r.get_json() or {}
     assert body.get("success") is True
     assert "RTR-MTCCR1072-1.TX-MARLIN-W-FC-2" in body.get("router_1072_config", "")
     assert "RTR-MTCCR1036-1.TX-MARLIN-W-FC-2" in body.get("router_1036_config", "")
     assert "BH-TO-SITE-A" in body.get("port_map", "")
-    assert body.get("compliance_source") in {"gitlab", "bundled-local"}
+    assert body.get("compliance_source") == "gitlab-verbatim"
 
 
 def test_generate_ftth_isd_fiber_bundle():
@@ -142,13 +185,14 @@ def test_generate_ftth_isd_fiber_bundle():
             {"port": "4", "name": "BH-TO-SITE-B", "subnet": "10.25.10.24/29", "master": "no", "bandwidth": "1G"}
         ],
     }
-    r = client.post("/api/generate-ftth-isd-fiber", data=json.dumps(payload), content_type="application/json")
+    with _mock_gitlab_compliance(MOCK_GITLAB_COMPLIANCE):
+        r = client.post("/api/generate-ftth-isd-fiber", data=json.dumps(payload), content_type="application/json")
     assert r.status_code == 200
     body = r.get_json() or {}
     assert body.get("success") is True
     assert "RTR-MTCCR2004-1.TX-MARLIN-W-FC-2" in body.get("config", "")
     assert "BH-TO-SITE-B" in body.get("port_map", "")
-    assert body.get("compliance_source") in {"gitlab", "bundled-local"}
+    assert body.get("compliance_source") == "gitlab-verbatim"
 
 
 if __name__ == "__main__":

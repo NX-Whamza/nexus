@@ -24387,30 +24387,106 @@ Ready for translation!`);
                 };
             }
 
-            window.getFtthFiberPreferredPort = function (deviceKey) {
-                const profile = typeof getEnterpriseDeviceProfile === 'function' ? getEnterpriseDeviceProfile(deviceKey) : null;
-                if (profile?.uplinkPort) return profile.uplinkPort;
-                const ports = getDevicePortOptions(deviceKey);
-                return ports.find((port) => port.startsWith('sfp') || port.startsWith('combo')) || ports[0] || 'sfp-sfpplus1';
-            };
+        window.getFtthFiberPreferredPort = function (deviceKey) {
+            const profile = typeof getEnterpriseDeviceProfile === 'function' ? getEnterpriseDeviceProfile(deviceKey) : null;
+            if (profile?.uplinkPort) return profile.uplinkPort;
+            const ports = getDevicePortOptions(deviceKey);
+            return ports.find((port) => port.startsWith('sfp') || port.startsWith('combo')) || ports[0] || 'sfp-sfpplus1';
+        };
 
-            window.updateFtthFiberPortOptions = function () {
-                const device = (document.getElementById('ftthFiberRouterboard')?.value || 'ccr2004').trim();
-                const portSelect = document.getElementById('ftthFiberPort');
-                const hint = document.getElementById('ftthFiberPortHint');
-                if (!portSelect) return;
-                const ports = getDevicePortOptions(device);
-                portSelect.innerHTML = '';
-                ports.forEach((portName) => {
-                    const option = document.createElement('option');
-                    option.value = portName;
-                    option.textContent = portName;
-                    portSelect.appendChild(option);
-                });
-                const preferred = window.getFtthFiberPreferredPort(device);
-                if (ports.includes(preferred)) portSelect.value = preferred;
-                if (hint) hint.textContent = `Ports populate from ${device.toUpperCase()} and default to ${preferred}.`;
+        window.getFtthFiberDeviceKey = function (value) {
+            const raw = (value || '').trim().toLowerCase();
+            const aliases = {
+                '1009': 'rb1009',
+                '1036': 'ccr1036',
+                '1072': 'ccr1072',
+                '2004': 'ccr2004',
+                '2116': 'ccr2116',
+                '2216': 'ccr2216',
+                '5009': 'rb5009',
+                'rb1009': 'rb1009',
+                'rb5009': 'rb5009',
+                'ccr1036': 'ccr1036',
+                'ccr1072': 'ccr1072',
+                'ccr2004': 'ccr2004',
+                'ccr2116': 'ccr2116',
+                'ccr2216': 'ccr2216'
             };
+            return aliases[raw] || raw || 'ccr2004';
+        };
+
+        window.populateFtthPortSelect = function (selectEl, deviceKey, preferredPort) {
+            if (!selectEl) return [];
+            const ports = typeof getDevicePortOptions === 'function' ? getDevicePortOptions(deviceKey) : [];
+            const current = selectEl.value;
+            selectEl.innerHTML = '';
+            ports.forEach((portName) => {
+                const option = document.createElement('option');
+                option.value = portName;
+                option.textContent = portName;
+                selectEl.appendChild(option);
+            });
+            const preferred = preferredPort && ports.includes(preferredPort) ? preferredPort : '';
+            if (preferred) {
+                selectEl.value = preferred;
+            } else if (current && ports.includes(current)) {
+                selectEl.value = current;
+            } else if (ports.length) {
+                selectEl.value = ports[0];
+            }
+            return ports;
+        };
+
+        function pickFtthBackhaulPort(ports, usedPorts, currentValue) {
+            if (currentValue && ports.includes(currentValue)) return currentValue;
+            const available = ports.filter((port) => !usedPorts.has(port));
+            const ranked = (available.length ? available : ports).slice().sort((left, right) => {
+                const leftMatch = left.match(/(\d+)$/);
+                const rightMatch = right.match(/(\d+)$/);
+                const leftNum = leftMatch ? parseInt(leftMatch[1], 10) : 999;
+                const rightNum = rightMatch ? parseInt(rightMatch[1], 10) : 999;
+                const leftPenalty = leftNum < 3 ? 1000 : 0;
+                const rightPenalty = rightNum < 3 ? 1000 : 0;
+                return (leftNum + leftPenalty) - (rightNum + rightPenalty);
+            });
+            return ranked[0] || '';
+        }
+
+        window.refreshFtthFiberBackhaulPortOptions = function (containerId, routerType) {
+            const host = document.getElementById(containerId);
+            if (!host) return;
+            const deviceKey = window.getFtthFiberDeviceKey(routerType);
+            const rows = Array.from(host.querySelectorAll('.ftth-fiber-backhaul-row'));
+            const ports = typeof getDevicePortOptions === 'function' ? getDevicePortOptions(deviceKey) : [];
+            rows.forEach((row) => {
+                const select = row.querySelector('.ftth-fiber-bh-port');
+                if (!select) return;
+                const current = select.value;
+                const usedPorts = new Set(
+                    rows
+                        .map((otherRow) => otherRow === row ? '' : (otherRow.querySelector('.ftth-fiber-bh-port')?.value || ''))
+                        .filter(Boolean)
+                );
+                window.populateFtthPortSelect(select, deviceKey, pickFtthBackhaulPort(ports, usedPorts, current));
+            });
+        };
+
+        window.updateFtthFiberPortOptions = function () {
+            const device = window.getFtthFiberDeviceKey(document.getElementById('ftthFiberRouterboard')?.value || 'ccr2004');
+            const portSelect = document.getElementById('ftthFiberPort');
+            const hint = document.getElementById('ftthFiberPortHint');
+            if (!portSelect) return;
+            const ports = window.populateFtthPortSelect(portSelect, device, window.getFtthFiberPreferredPort(device));
+            const preferred = window.getFtthFiberPreferredPort(device);
+            if (hint) hint.textContent = `Ports populate from ${device.toUpperCase()} and default to ${preferred}.`;
+        };
+
+        window.updateFtthSiteFiberPortOptions = function () {
+            const select = document.getElementById('ftthSiteFiberPort');
+            if (!select) return;
+            window.populateFtthPortSelect(select, 'ccr1072', 'sfp-sfpplus8');
+            window.refreshFtthFiberBackhaulPortOptions('ftthSiteBackhauls', '1072');
+        };
 
             function getNokiaOutputMetadataBase(hostname, loopback, lat, lon, tz, extras) {
                 return Object.assign({
@@ -27222,6 +27298,10 @@ Ready for translation!`);
                 setStatus('VLAN ID is required when VLAN mode is tagged.', false);
                 return;
             }
+            if (!applyCompliance && !window.confirmFtthComplianceBypass('fiber customer config')) {
+                setStatus('Generation cancelled. Enable compliance to continue with the engineering script.', false);
+                return;
+            }
 
             try {
                 setStatus('Generating fiber customer configuration...', true);
@@ -27353,17 +27433,20 @@ Ready for translation!`);
             statusEl.style.border = ok ? '1px solid rgba(76,175,80,0.28)' : '1px solid rgba(244,67,54,0.28)';
         }
 
+        window.confirmFtthComplianceBypass = function (configLabel) {
+            return window.confirm(`Do you want to continue without applying the GitLab compliance script to this ${configLabel}?`);
+        };
+
         window.addFtthFiberBackhaulRow = function (containerId, routerType) {
             const host = document.getElementById(containerId);
             if (!host) return;
-            const family = ['1009', '1036'].includes(String(routerType || '').trim()) ? 'ether' : 'sfp-sfpplus';
             const row = document.createElement('div');
             row.className = 'ftth-fiber-backhaul-row';
             row.style.cssText = 'display:grid; grid-template-columns: 1fr 1.3fr 1.3fr 0.9fr 1fr auto; gap:10px; margin-bottom:10px; align-items:end;';
             row.innerHTML = `
                 <div>
                     <label>Port</label>
-                    <input type="text" class="ftth-fiber-bh-port" placeholder="${family}3">
+                    <select class="ftth-fiber-bh-port"></select>
                 </div>
                 <div>
                     <label>Name</label>
@@ -27387,10 +27470,19 @@ Ready for translation!`);
                 <button type="button" onclick="removeFtthFiberBackhaulRow(this)" style="background:#6c757d; color:#fff; padding:8px 10px; border:none; border-radius:4px; cursor:pointer;">Remove</button>
             `;
             host.appendChild(row);
+            window.refreshFtthFiberBackhaulPortOptions(containerId, routerType);
         };
 
         window.removeFtthFiberBackhaulRow = function (buttonEl) {
-            buttonEl?.closest('.ftth-fiber-backhaul-row')?.remove();
+            const row = buttonEl?.closest('.ftth-fiber-backhaul-row');
+            const host = row?.parentElement;
+            row?.remove();
+            if (host?.id) {
+                const routerType = host.id === 'ftthSiteBackhauls'
+                    ? '1072'
+                    : (document.getElementById('ftthIsdRouterType')?.value || '2004');
+                window.refreshFtthFiberBackhaulPortOptions(host.id, routerType);
+            }
         };
 
         function collectFtthFiberBackhauls(containerId) {
@@ -27460,6 +27552,10 @@ Ready for translation!`);
                 apply_compliance: !!document.getElementById('ftthSiteApplyCompliance')?.checked,
                 backhauls: collectFtthFiberBackhauls('ftthSiteBackhauls')
             };
+            if (!payload.apply_compliance && !window.confirmFtthComplianceBypass('fiber site config')) {
+                setFtthFiberStatus('ftthSiteStatus', 'Generation cancelled. Enable compliance to continue with the engineering script.', false);
+                return;
+            }
             try {
                 setFtthFiberStatus('ftthSiteStatus', 'Generating 1072/1036 fiber site configs...', true);
                 const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : (window.AI_API_BASE || '/api');
@@ -27526,19 +27622,9 @@ Ready for translation!`);
             const routerType = (document.getElementById('ftthIsdRouterType')?.value || '2004').trim();
             const select = document.getElementById('ftthIsdFiberPort');
             if (!select) return;
-            const deviceKey = routerType === '1009' ? 'rb1009' : `ccr${routerType}`;
-            const ports = typeof getDevicePortOptions === 'function' ? getDevicePortOptions(deviceKey) : [];
-            select.innerHTML = '';
-            ports.forEach((portName) => {
-                const option = document.createElement('option');
-                option.value = portName;
-                option.textContent = portName;
-                select.appendChild(option);
-            });
-            if (ports.length) {
-                const preferred = window.getFtthFiberPreferredPort(deviceKey);
-                select.value = ports.includes(preferred) ? preferred : ports[0];
-            }
+            const deviceKey = window.getFtthFiberDeviceKey(routerType);
+            window.populateFtthPortSelect(select, deviceKey, window.getFtthFiberPreferredPort(deviceKey));
+            window.refreshFtthFiberBackhaulPortOptions('ftthIsdBackhauls', routerType);
         };
 
         window.generateFtthIsdFiberConfig = async function () {
@@ -27559,6 +27645,10 @@ Ready for translation!`);
                 apply_compliance: !!document.getElementById('ftthIsdApplyCompliance')?.checked,
                 backhauls: collectFtthFiberBackhauls('ftthIsdBackhauls')
             };
+            if (!payload.apply_compliance && !window.confirmFtthComplianceBypass('ISD fiber config')) {
+                setFtthFiberStatus('ftthIsdStatus', 'Generation cancelled. Enable compliance to continue with the engineering script.', false);
+                return;
+            }
             try {
                 setFtthFiberStatus('ftthIsdStatus', 'Generating ISD fiber config...', true);
                 const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : (window.AI_API_BASE || '/api');
@@ -27773,18 +27863,8 @@ Ready for translation!`);
                 ftthIsdType.dataset.bound = '1';
             }
             window.updateFtthFiberPortOptions();
+            if (typeof window.updateFtthSiteFiberPortOptions === 'function') window.updateFtthSiteFiberPortOptions();
             if (typeof window.updateFtthIsdFiberPortOptions === 'function') window.updateFtthIsdFiberPortOptions();
-            const siteFiberPort = document.getElementById('ftthSiteFiberPort');
-            if (siteFiberPort && !siteFiberPort.options.length) {
-                const ports = typeof getDevicePortOptions === 'function' ? getDevicePortOptions('ccr1072') : [];
-                ports.forEach((portName) => {
-                    const option = document.createElement('option');
-                    option.value = portName;
-                    option.textContent = portName;
-                    siteFiberPort.appendChild(option);
-                });
-                if (ports.includes('sfp-sfpplus8')) siteFiberPort.value = 'sfp-sfpplus8';
-            }
             if (!document.querySelector('#ftthSiteBackhauls .ftth-fiber-backhaul-row')) {
                 window.addFtthFiberBackhaulRow('ftthSiteBackhauls', '1072');
             }
@@ -27796,6 +27876,7 @@ Ready for translation!`);
             if (typeof initFtthHomeTabs === 'function') initFtthHomeTabs();
             if (typeof initCommandVaultTabs === 'function') initCommandVaultTabs();
             if (typeof window.updateFtthFiberPortOptions === 'function') window.updateFtthFiberPortOptions();
+            if (typeof window.updateFtthSiteFiberPortOptions === 'function') window.updateFtthSiteFiberPortOptions();
             if (typeof window.updateFtthIsdFiberPortOptions === 'function') window.updateFtthIsdFiberPortOptions();
         });
 
