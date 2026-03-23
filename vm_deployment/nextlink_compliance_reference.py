@@ -3,13 +3,10 @@ NextLink RFC-09-10-25 Compliance Reference
 This file contains compliance validation and the GitLab compliance loader interface.
 Based on RFC-09-10-25-Compliance Script Rollout
 
-GitLab is the SINGLE SOURCE OF TRUTH for all compliance data.
-get_all_compliance_blocks() fetches live compliance from the GitLab
-netforge/compliance repository.  There is NO hardcoded fallback —
-when GitLab is unavailable, an empty dict is returned with a clear warning.
-
-The COMPLIANCE_* constants below are DEPRECATED references only (retained
-for historical context).  They are NOT used as fallbacks.
+GitLab is the preferred source of truth for compliance data.
+When GitLab is unavailable, get_all_compliance_blocks() falls back to the
+local compliance reference blocks in this file so offline generation paths
+still emit a complete engineering baseline.
 """
 
 # GitLab dynamic compliance loader — single source of truth
@@ -112,7 +109,17 @@ COMPLIANCE_FIREWALL_ADDRESS_LISTS = {
         ('132.147.138.7', 'SNMP Monitor'),
         ('132.147.138.21', 'SNMP Monitor'),
         ('132.147.138.26', 'SNMP Monitor'),
-    ]
+    ],
+    'WALLED-GARDEN': [
+        ('142.147.112.3', 'USS Redirect'),
+        ('142.147.112.19', 'USS Redirect'),
+        ('107.178.15.27', 'USS Proxy'),
+        ('142.147.112.12', 'Portal Service'),
+        ('132.147.147.56', 'Portal Service'),
+        ('35.227.221.107', 'Portal Service'),
+        ('172.66.155.116', 'Portal Service'),
+        ('104.20.19.83', 'Portal Service'),
+    ],
 }
 
 def get_compliance_address_lists_block():
@@ -124,6 +131,8 @@ def get_compliance_address_lists_block():
     lines.append(":foreach i in=[/ip firewall address-list find list=managerIP] do={/ip firewall address-list remove $i}")
     lines.append(":foreach i in=[/ip firewall address-list find list=BGP-ALLOW] do={/ip firewall address-list remove $i}")
     lines.append(":foreach i in=[/ip firewall address-list find list=SNMP] do={/ip firewall address-list remove $i}")
+    lines.append("/ip firewall address-list rem [find list=WALLED-GARDEN]")
+    lines.append(":foreach i in=[/ip firewall address-list find list=WALLED-GARDEN] do={/ip firewall address-list remove $i}")
     lines.append("")
     # Add compliance lists with comments
     for list_name, entries in COMPLIANCE_FIREWALL_ADDRESS_LISTS.items():
@@ -306,20 +315,11 @@ set read policy="local,telnet,read,test,winbox,sniff,ssh,!ftp,!reboot,!write,!po
 # COMPLIANCE: DHCP OPTIONS
 # ========================================
 COMPLIANCE_DHCP_OPTIONS = """
-/ip dhcp-server option
-rem [find]
-
-/ip dhcp-server option
-add code=43 name=opt43 value=0x011768747470733a2f2f7573732e6e786c696e6b2e636f6d2f
-
-/ip dhcp-server option sets
-rem [find]
-
-/ip dhcp-server option sets
-add name=optset options=opt43
-
-/ip dhcp-server network
-set [find where address !~ "^10\\\\."] dhcp-option-set=optset
+/ip dhcp-server option rem [find]
+/ip dhcp-server option add code=43 name=opt43 value=0x011768747470733a2f2f7573732e6e786c696e6b2e636f6d2f
+/ip dhcp-server option sets rem [find]
+/ip dhcp-server option sets add name=optset options=opt43
+/ip dhcp-server network set [find where address !~ "^10\\\\."] dhcp-option-set=optset
 """
 
 # ========================================
@@ -355,8 +355,8 @@ def get_compliance_radius(loopback_ip):
 rem [find]
 
 /radius
-add address=142.147.112.2 secret="{radius_secret}" service=dhcp src-address={loop_ip_clean} timeout=5s
-add address=142.147.112.18 secret="{radius_secret}" service=dhcp src-address={loop_ip_clean} timeout=5s
+add address=142.147.112.2 require-message-auth=no secret="{radius_secret}" service=dhcp src-address={loop_ip_clean} timeout=5s
+add address=142.147.112.18 require-message-auth=no secret="{radius_secret}" service=dhcp src-address={loop_ip_clean} timeout=5s
 """
 
 # ========================================
@@ -492,22 +492,22 @@ def get_compliance_ldp_filters():
 # ========================================
 def get_all_compliance_blocks(loopback_ip=None):
     """
-    Get all compliance configuration blocks from GitLab (single source of truth).
+    Get all compliance configuration blocks.
 
-    Source: GitLab compliance repo (dynamic, TTL-cached).
-    No hardcoded fallback — when GitLab is unavailable, returns empty dict
-    with a clear warning so the failure is visible.
+    Source priority:
+      1. GitLab compliance repo (dynamic, TTL-cached)
+      2. Local compliance reference blocks in this module
 
     Args:
         loopback_ip: Loopback IP address (with or without /32) for syslog source and RADIUS source
 
     Returns:
-        Dictionary of compliance blocks (empty dict if GitLab unavailable)
+        Dictionary of compliance blocks
     """
     if not loopback_ip:
         loopback_ip = "10.0.0.1/32"  # Default fallback
 
-    # GitLab dynamic compliance — single source of truth
+    # GitLab dynamic compliance - preferred source
     if _HAS_GITLAB_NCR and _get_gitlab_loader is not None:
         try:
             gitlab_blocks = _get_gitlab_loader().get_compliance_blocks_from_script(
@@ -522,10 +522,34 @@ def get_all_compliance_blocks(loopback_ip=None):
     else:
         print("[COMPLIANCE-REF] WARNING: GitLab compliance module not available")
 
-    # No hardcoded fallback — GitLab is the single source of truth
-    print("[COMPLIANCE-REF] WARNING: No compliance blocks available — "
-          "GitLab is the only source (no hardcoded fallback)")
-    return {}
+    print("[COMPLIANCE-REF] WARNING: GitLab compliance unavailable - using local reference blocks")
+    return {
+        "variables": (
+            f':global LoopIP "{loopback_ip}"\n'
+            ":global curDate [/system clock get date]\n"
+            ":global curTime [/system clock get time]\n"
+            ':global CurDT ($curDate . " " . $curTime)'
+        ),
+        "ip_services": COMPLIANCE_IP_SERVICES.strip(),
+        "dns": COMPLIANCE_DNS.strip(),
+        "firewall_address_lists": get_compliance_address_lists_block().strip(),
+        "firewall_filter_input": COMPLIANCE_FIREWALL_FILTER_INPUT.strip(),
+        "firewall_raw": COMPLIANCE_FIREWALL_RAW.strip(),
+        "firewall_forward": COMPLIANCE_FIREWALL_FORWARD.strip(),
+        "firewall_nat": COMPLIANCE_FIREWALL_NAT.strip(),
+        "firewall_mangle": COMPLIANCE_FIREWALL_MANGLE.strip(),
+        "clock_ntp": COMPLIANCE_CLOCK_NTP.strip(),
+        "snmp": COMPLIANCE_SNMP.strip(),
+        "system_settings": COMPLIANCE_SYSTEM_SETTINGS.strip(),
+        "vpls_edge": COMPLIANCE_VPLS_EDGE.strip(),
+        "logging": get_compliance_logging(loopback_ip).strip(),
+        "user_aaa": COMPLIANCE_USER_AAA.strip(),
+        "user_groups": COMPLIANCE_USER_GROUPS.strip(),
+        "dhcp_options": COMPLIANCE_DHCP_OPTIONS.strip(),
+        "radius": get_compliance_radius(loopback_ip).strip(),
+        "ldp_filters": get_compliance_ldp_filters().strip(),
+        "sys_note": '/system note set note="COMPLIANCE SCRIPT LAST RUN ON $CurDT"',
+    }
 
 # ========================================
 # COMPLIANCE VALIDATION

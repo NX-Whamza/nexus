@@ -1469,38 +1469,6 @@
             display: block;
         }
 
-        .testing-banner {
-            background: #fff3cd;
-            color: #856404;
-            padding: 12px;
-            text-align: center;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            font-weight: bold;
-            font-size: 14px;
-        }
-
-        [data-theme="dark"] .testing-banner {
-            background: #856404;
-            color: #fff3cd;
-        }
-
-        .enterprise-testing-banner {
-            background: #d1ecf1;
-            color: #0c5460;
-            padding: 12px;
-            text-align: center;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            font-weight: bold;
-            font-size: 14px;
-        }
-
-        [data-theme="dark"] .enterprise-testing-banner {
-            background: #0c5460;
-            color: #d1ecf1;
-        }
-
         /* Dark mode contrast fixes for inline "Policy Compliance" banners
            These banners were authored with light backgrounds inline, which
            reduces contrast in dark mode. We override them here using
@@ -1933,36 +1901,37 @@
         .announcements-section {
             background: linear-gradient(135deg, #2a1a4a 0%, #1a1a2a 100%);
             border-radius: 12px;
-            padding: 30px;
-            margin-bottom: 30px;
+            padding: 18px 20px;
+            margin: 0 auto 24px;
+            max-width: 760px;
             border: 1px solid rgba(230, 126, 34, 0.3);
         }
 
         .announcements-title {
-            font-size: 28px;
+            font-size: 20px;
             font-weight: bold;
             color: #e67e22;
             text-align: center;
-            margin-bottom: 25px;
+            margin-bottom: 14px;
             text-transform: none;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.3px;
         }
 
         .announcements-title::after {
             content: '';
             display: block;
-            width: 60px;
-            height: 3px;
+            width: 42px;
+            height: 2px;
             background: #e67e22;
-            margin: 10px auto 0;
+            margin: 8px auto 0;
         }
 
         .announcement-card {
             background: rgba(255, 255, 255, 0.03);
             border: 1px solid rgba(230, 126, 34, 0.2);
             border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 15px;
+            padding: 14px 16px;
+            margin-bottom: 10px;
         }
 
         .announcement-card:last-child {
@@ -1971,14 +1940,15 @@
 
         .announcement-card h3 {
             color: white;
-            font-size: 18px;
-            margin-bottom: 15px;
+            font-size: 16px;
+            margin-bottom: 8px;
         }
 
         .announcement-card p {
             color: #ccc;
-            line-height: 1.6;
-            margin-bottom: 10px;
+            line-height: 1.45;
+            margin-bottom: 6px;
+            font-size: 13px;
         }
 
         .announcement-meta {
@@ -3815,11 +3785,9 @@
                     <div class="announcements-section">
                         <h2 class="announcements-title">Current Announcements</h2>
                         <div class="announcement-card" id="announcementsContainer">
-                            <h3>Welcome! <span class="beta-badge">Beta Testing</span></h3>
+                            <h3>Welcome!</h3>
                             <p>Welcome to NOC Operations Config Suite (Multi-Use Configuration Generator)!</p>
-                            <p>This tool is currently in <strong>Beta Testing</strong> stage, so there might be some
-                                bugs or improvements needed. We appreciate your feedback as we work to make this the
-                                best configuration tool possible.</p>
+                            <p>Use the generators, helpers, and operational tools from the tabs below.</p>
                         </div>
                     </div>
 
@@ -4174,12 +4142,6 @@
             <!-- TOWER CONFIG TAB -->
             <div class="content-pane" id="tower-pane">
                 <div class="container">
-                    <div
-                        style="background: #2196F3; color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #1565C0;">
-                        <strong>TESTING</strong>
-                        <p style="margin: 10px 0 0 0; font-size: 14px;">This feature is currently undergoing testing.
-                            Please review all generated configurations before deploying to production.</p>
-                    </div>
                     <h1> MikroTik Config Generator</h1>
                     <p style="text-align: center; color: var(--text-color); max-width: 900px; margin: 0 auto;">
                         This tool generates configuration files, along with corresponding port maps, for MikroTik routers.
@@ -5483,8 +5445,6 @@
             <!-- ENTERPRISE CONFIG TAB -->
             <div class="content-pane" id="enterprise-pane">
                 <div class="container">
-                    <div class="enterprise-testing-banner"> PRODUCTION READY - Non-MPLS Enterprise Configuration -
-                        Nextlink Policy Compliant</div>
                     <h1> Non-MPLS Enterprise Configuration Generator</h1>
                     <p style="text-align: center; color: var(--text-color);">Nextlink-compliant enterprise customer
                         configuration with standardized port assignments and simplified IP routing (no MPLS/BGP/OSPF).
@@ -5831,8 +5791,6 @@
             <!-- MPLS ENTERPRISE CONFIG TAB -->
             <div class="content-pane" id="enterprise-mpls-pane">
                 <div class="container">
-                    <div class="enterprise-testing-banner"> TESTING CONSISTENCY AND FUNCTIONALITY - MPLS Enterprise
-                        Config</div>
                     <h1> MPLS Enterprise Configuration Generator</h1>
                     <p style="text-align: center; color: var(--text-color);">Nextlink-compliant MPLS enterprise
                         configuration with OSPF, BGP, VPLS, and standardized port assignments.</p>
@@ -5983,8 +5941,6 @@
             <!-- 6GHz SWITCH CONFIG TAB -->
             <div class="content-pane" id="ccr2004-pane">
                 <div class="container">
-                    <div class="testing-banner"> PRODUCTION READY - 6GHz Switch Configuration - Nextlink Policy
-                        Compliant</div>
                     <h1> 6GHz Configuration Generator</h1>
                     <p style="text-align: center; color: var(--text-color);">Nextlink-compliant 6GHz switch
                         configuration with VLAN 3000/4000, standardized port assignments, bonding, and DHCP pools.</p>
@@ -6157,7 +6113,6 @@
             <!-- MIKROTIK SWITCH CONFIG MAKER TAB -->
             <div class="content-pane" id="switch-maker-pane">
                 <div class="container">
-                    <div class="testing-banner"> IN DEVELOPMENT - MikroTik Switch Config Maker - Testing Phase</div>
                     <h1> MikroTik Switch Config Maker</h1>
                     <p style="text-align: center; color: var(--text-color);">Complete switch configuration generator for
                         CRS309, CRS326, and CCR2004 switches with dynamic port management.</p>
@@ -6391,8 +6346,6 @@
             <!-- TARANA SECTORS TAB -->
             <div class="content-pane" id="tarana-pane">
                 <div class="container">
-                    <div class="testing-banner"> PRODUCTION READY - Tarana Sector Configuration - Nextlink Policy
-                        Compliant</div>
                     <h1> Tarana Sector Configuration Generator</h1>
                     <p style="text-align: center; color: var(--text-color);">Nextlink-compliant Tarana sector
                         configuration with standardized port assignments for ALPHA/BETA/GAMMA/DELTA sectors.</p>
@@ -6577,8 +6530,6 @@
             <!-- ENTERPRISE FEEDING SIDE TAB -->
             <div class="content-pane" id="enterprise-feeding-pane">
                 <div class="container">
-                    <div class="testing-banner"> TESTING CONSISTENCY AND FUNCTIONALITY - Enterprise Feeding Side
-                        Configuration</div>
                     <h1> Enterprise Feeding Side Configuration</h1>
                     <p style="text-align: center; color: var(--text-color);">Nextlink-compliant enterprise uplink
                         provisioning with standardized port assignments and commercial/enterprise configurations.</p>
@@ -7365,7 +7316,6 @@
                     </p>
                     <!-- Legacy FTTH ID hooks retained for compatibility tests/tools -->
                     <div style="display:none;" aria-hidden="true">
-                        <button id="ftthPreviewBtn" type="button"></button>
                         <button id="ftth_add_olt_port_btn" type="button"></button>
                         <button id="ftth_add_backhaul_btn" type="button"></button>
                         <button id="ftth_open_portconfigs_btn" type="button"></button>
@@ -7787,14 +7737,25 @@
                 style="display: none; background: #dc3545; color: white; padding: 15px; border-radius: 5px; margin: 20px 0;">
                 <!-- Error messages will be displayed here -->
             </div>
+            <div id="ftthPreview"
+                style="display: none; background: var(--container-bg); color: var(--text-color); padding: 15px; border-radius: 5px; margin: 20px 0; border: 1px solid var(--border-color);">
+            </div>
 
             <!-- Action Buttons -->
             <div class="button-group" style="margin-top: 30px;">
-                <button onclick="generateFtthBngConfig()"
+                <button id="ftthPreviewBtn" type="button"
+                    style="background: #1565C0; color: white; padding: 12px 30px; border: none; border-radius: 6px; cursor: pointer; font-size: 15px; font-weight: bold;">
+                     Preview CIDRs
+                </button>
+                <button id="ftthValidateBtn" type="button"
+                    style="background: #00897B; color: white; padding: 12px 30px; border: none; border-radius: 6px; cursor: pointer; font-size: 15px; font-weight: bold;">
+                     Validate Inputs
+                </button>
+                <button id="ftthGenerate" type="button"
                     style="background: #4CAF50; color: white; padding: 12px 30px; border: none; border-radius: 6px; cursor: pointer; font-size: 15px; font-weight: bold;">
                      Generate Configuration
                 </button>
-                <button onclick="resetFtthForm()"
+                <button id="ftthReset" type="button"
                     style="background: #6c757d; color: white; padding: 12px 30px; border: none; border-radius: 6px; cursor: pointer; font-size: 15px; font-weight: bold;">
                      Reset Form
                 </button>
@@ -25373,48 +25334,33 @@ Ready for translation!`);
 
             document.addEventListener('DOMContentLoaded', () => {
                 const previewBtn = document.getElementById('ftthPreviewBtn');
+                const validateBtn = document.getElementById('ftthValidateBtn');
                 const generateBtn = document.getElementById('ftthGenerate');
                 const resetBtn = document.getElementById('ftthReset');
 
                 previewBtn?.addEventListener('click', async () => { await doFtthPreview(); });
+                validateBtn?.addEventListener('click', () => {
+                    if (typeof window.validateFtthConfig === 'function') {
+                        window.validateFtthConfig({ showSuccessAlert: true });
+                    }
+                });
 
                 generateBtn?.addEventListener('click', async () => {
-                    if (generateBtn.disabled) {
-                        const errEl = document.getElementById('ftthError');
-                        errEl.textContent = 'Please run Preview and correct any errors before generating.';
-                        errEl.style.display = 'block';
-                        return;
-                    }
                     if (typeof window.generateFtthBngConfig === 'function') {
                         await window.generateFtthBngConfig();
                         return;
                     }
-                    const errEl = document.getElementById('ftthError');
-                    errEl.textContent = 'FTTH generator not available. Please reload the page.';
-                    errEl.style.display = 'block';
+                    const errEl = document.getElementById('ftthError') || document.getElementById('ftth_error');
+                    if (errEl) {
+                        errEl.textContent = 'FTTH generator not available. Please reload the page.';
+                        errEl.style.display = 'block';
+                    }
                 });
 
                 resetBtn?.addEventListener('click', () => {
-                    const sfx = _ftth_active_suffix();
-                    const ids = [
-                        `ftth_loopback_${sfx}`,
-                        `ftth_cpe_${sfx}`,
-                        `ftth_cgnat_private_${sfx}`,
-                        `ftth_cgnat_public_${sfx}`,
-                        `ftth_unauth_${sfx}`,
-                        `ftth_olt_network_${sfx}`,
-                        `ftth_olt_network2_${sfx}`,
-                        `ftth_identity_${sfx}`,
-                        `ftth_location_${sfx}`,
-                        `ftth_routeros_${sfx}`
-                    ];
-                    ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-                    const previewEl = document.getElementById('ftthPreview');
-                    const generateBtn = document.getElementById('ftthGenerate');
-                    const errEl = document.getElementById('ftthError') || document.getElementById('ftth_error');
-                    if (previewEl) { previewEl.style.display = 'none'; previewEl.textContent = ''; }
-                    if (generateBtn) generateBtn.disabled = true;
-                    if (errEl) errEl.style.display = 'none';
+                    if (typeof window.resetFtthForm === 'function') {
+                        window.resetFtthForm();
+                    }
                 });
 
                 // FTTH -> Port & Uplink helpers
@@ -25602,6 +25548,10 @@ Ready for translation!`);
         };
 
         function initCommandVaultTabs() {
+            const pane = document.getElementById('command-vault-pane');
+            if (!pane || pane.dataset.commandVaultInit === '1') return;
+            pane.dataset.commandVaultInit = '1';
+
             if (typeof window.showCommandVaultSubTab === 'function') {
                 window.showCommandVaultSubTab('nokia');
             }
@@ -25862,6 +25812,10 @@ Ready for translation!`);
 
         function initFtthHomeTabs() {
             moveFtthPaneIntoHome();
+            const pane = document.getElementById('ftth-home-pane');
+            if (!pane || pane.dataset.ftthHomeInit === '1') return;
+            pane.dataset.ftthHomeInit = '1';
+
             const dropdown = document.getElementById('ftthHomeDropdown');
             const toggle = document.getElementById('ftthHomeDropdownToggle');
             const items = document.querySelectorAll('#ftth-home-pane .ftth-home-dropdown-item');
@@ -26204,7 +26158,7 @@ Ready for translation!`);
                 portDiv.style.cssText = 'margin-bottom: 10px; padding: 15px; background: var(--input-bg); border-radius: 4px; border: 1px solid var(--border-color);';
                 const speedOptions = groupId === '100g'
                     ? '<option value="100G-baseCR4" selected>100G-baseCR4</option>'
-                    : '<option value="auto">Auto</option><option value="10G-baseSR-LR">10G-baseSR-LR</option><option value="10G-baseSR-LR">10G-baseSR-LR</option>';
+                    : '<option value="auto">Auto</option><option value="10G-baseSR-LR">10G-baseSR-LR</option><option value="25G-baseSR-LR">25G-baseSR-LR</option>';
                 const speedDisabled = groupId === '100g' ? 'disabled' : '';
                 portDiv.innerHTML = `
                     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; align-items: center;">
@@ -26260,7 +26214,8 @@ Ready for translation!`);
         }
 
         // Validate FTTH Configuration
-        window.validateFtthConfig = function () {
+        window.validateFtthConfig = function (options = {}) {
+            const { showSuccessAlert = true } = options;
             const suffix = getActiveStateSuffix();
             const isOutstate = suffix === 'out';
             const errorDiv = document.getElementById('ftth_error');
@@ -26355,13 +26310,19 @@ Ready for translation!`);
             }
 
             errorDiv.style.display = 'none';
-            alert('Validation passed! You can now generate the configuration.');
+            if (showSuccessAlert) {
+                alert('Validation passed! You can now generate the configuration.');
+            }
             return true;
         };
 
         // Generate FTTH BNG Configuration
         window.generateFtthBngConfig = async function () {
             console.log('[FTTH] Generate button clicked');
+
+            if (!window.validateFtthConfig || !window.validateFtthConfig({ showSuccessAlert: false })) {
+                return;
+            }
 
             const suffix = getActiveStateSuffix();
 
@@ -26667,6 +26628,11 @@ Ready for translation!`);
             // Hide output and error
             document.getElementById('ftth_output_section').style.display = 'none';
             document.getElementById('ftth_error').style.display = 'none';
+            const previewEl = document.getElementById('ftthPreview');
+            if (previewEl) {
+                previewEl.style.display = 'none';
+                previewEl.innerHTML = '';
+            }
 
             console.log('[FTTH] Form reset');
         };

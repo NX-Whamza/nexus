@@ -35,6 +35,11 @@ def test_ftth_modal_exists():
     assert 'id="ftth_preset_save"' in content, 'Missing preset save button id="ftth_preset_save" in NOC-configMaker.html'
     assert 'id="ftth_preset_delete"' in content, 'Missing preset delete button id="ftth_preset_delete" in NOC-configMaker.html'
     assert 'id="ftth_preset_name"' in content, 'Missing preset name input id="ftth_preset_name" in NOC-configMaker.html'
+    assert 'id="ftthValidateBtn"' in content, 'Missing Validate button id="ftthValidateBtn" in NOC-configMaker.html'
+    assert 'id="ftthGenerate"' in content, 'Missing Generate button id="ftthGenerate" in NOC-configMaker.html'
+    assert 'id="ftthReset"' in content, 'Missing Reset button id="ftthReset" in NOC-configMaker.html'
+    assert 'id="ftthPreview"' in content, 'Missing FTTH preview container id="ftthPreview" in NOC-configMaker.html'
+    assert '<option value="25G-baseSR-LR">25G-baseSR-LR</option>' in content, 'Missing 25G-baseSR-LR option for FTTH speed selectors in NOC-configMaker.html'
 
 
 

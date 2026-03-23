@@ -128,3 +128,23 @@ def test_ftth_outstate_state_profile_ia_maps_ospf_and_vpls_ids():
     assert "/routing ospf area" in config
     assert "area-id=0.0.0.42" in config
     assert "name=area42" in config
+
+
+def test_ftth_auto_speed_emits_auto_negotiation_yes_without_forced_speed():
+    payload = _ui_payload("outstate")
+    payload["uplinks"][0]["speed"] = "auto"
+    payload["uplinks"][0]["auto_negotiation"] = False
+    payload["olt_ports"][0]["speed"] = "auto"
+    payload["olt_ports"][1]["speed"] = "25G-baseSR-LR"
+
+    response = client.post("/api/generate-ftth-bng", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data.get("success") is True
+    config = data.get("config", "")
+
+    assert "set [ find default-name=sfp28-3 ] comment=NE-WESTERN-EA-1 l2mtu=9212 mtu=9198 auto-negotiation=yes" in config
+    assert "set [ find default-name=sfp28-3 ] comment=NE-WESTERN-EA-1 l2mtu=9212 mtu=9198 auto-negotiation=no" not in config
+    assert "set [ find default-name=sfp28-6 ] comment=\"NOKIA OLT\" auto-negotiation=yes" in config
+    assert "set [ find default-name=sfp28-6 ] comment=\"NOKIA OLT\" auto-negotiation=no" not in config
+    assert "set [ find default-name=sfp28-7 ] comment=\"NOKIA OLT\" auto-negotiation=no speed=25G-baseSR-LR" in config
