@@ -1,8 +1,12 @@
 import asyncio
 from fastapi import APIRouter, HTTPException
 import functools
-from ping3 import ping
 import concurrent.futures
+
+try:
+    from ping3 import ping
+except Exception:
+    ping = None
 
 DEFAULT_PING_COUNT = 4
 
@@ -12,7 +16,7 @@ app = APIRouter()
 def run_ping(address, ping_count):
     results = []
     for _ in range(ping_count):
-        p = ping(address, unit="ms")
+        p = ping(address, unit="ms") if ping else None
         results.append(p or None)
 
     valid_results = [x for x in results if isinstance(x, float)]

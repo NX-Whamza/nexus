@@ -704,6 +704,9 @@ class EPMPConfig:
     class DeviceModelError(Exception):
         pass
 
+    class ConfigurationInProgressError(Exception):
+        pass
+
     def __init__(self, logstream=None, use_default=False, **params):
         self.ip_address = params["ip_address"]
         self.readonly = use_default
@@ -962,6 +965,11 @@ class EPMPConfig:
                     "Device returned invalid response while logging in."
                 )
 
+            if login_body.get("msg") == "import_is_in_progress":
+                raise self.ConfigurationInProgressError(
+                    "Device configuration import is in progress."
+                )
+
             if (
                 login_body
                 and login_body.get("userRole") == "admin"
@@ -1104,10 +1112,22 @@ class EPMPConfig:
 
         self.logger.debug(f"Configuration response: {conf_req.content}")
 
-        try:
-            conf_resp = json.loads(conf_req.content)
-        except Exception as err:
-            raise self.ConfigurationError(f"Failed to send configuration: {err}")
+        body_text = conf_req.text if hasattr(conf_req, "text") else conf_req.content.decode(errors="replace")
+        if conf_req.status_code in range(200, 300) and not body_text.strip():
+            self.logger.info(
+                "Configuration import accepted with empty response; waiting for apply status."
+            )
+            conf_resp = {"success": 1}
+        else:
+            try:
+                conf_resp = json.loads(conf_req.content)
+            except Exception as err:
+                body_preview = body_text[:200]
+                raise self.ConfigurationError(
+                    f"Failed to send configuration: {err}. "
+                    f"status={conf_req.status_code}, content_type={conf_req.headers.get('content-type', '')}, "
+                    f"body={body_preview!r}"
+                )
 
         if (err := conf_resp.get("error")) or conf_resp.get("success") != 1:
             if err:
@@ -1239,18 +1259,26 @@ class EPMPConfig:
     def get_standard_config(self, stripped=False, json_conf=False):
         """Loads the base config for a device."""
 
+        standard_config_path = pathlib.PurePath(
+            pathlib.Path(CONF_TEMPLATE_PATH),
+            self.model_identifier,
+            "standard_config.json",
+        )
         if stripped or not ANTENNAS.get(self.model_identifier):
             # If a device does not have a changeable antenna, the config
             # is always called config.json
-            config_path = pathlib.PurePath(
-                pathlib.Path(CONF_TEMPLATE_PATH),
-                self.model_identifier,
-                "standard_config.json",
-            )
+            config_path = standard_config_path
         else:
             config_path = pathlib.PurePath(
                 pathlib.Path(CONF_TEMPLATE_PATH), self.model_identifier, self.antenna[1]
             )
+            if not pathlib.Path(config_path).exists():
+                self.logger.debug(
+                    "Antenna-specific config missing for %s (%s); falling back to standard_config.json",
+                    self.model_identifier,
+                    self.antenna[1],
+                )
+                config_path = standard_config_path
 
         self.logger.debug(f"Base config path: {config_path}")
 
@@ -1406,11 +1434,34 @@ class EPMPConfig:
 
             # For some devices, auth is lost after configuration, so
             # rebooting requires re-logging in.
-            self.logout(suppress_info_log=True)
-            self.init_session(suppress_info_log=True)
+            try:
+                self.logout(suppress_info_log=True)
+            except Exception:
+                pass
 
-            self.logger.info("\nConfiguration finished.")
-            self.reboot()
+            result = {
+                "configuration_sent": True,
+                "reboot_requested": False,
+                "reboot_required": False,
+                "pending_reboot": False,
+            }
+
+            try:
+                self.init_session(suppress_info_log=True)
+                self.logger.info("\nConfiguration finished.")
+                self.reboot()
+                result["reboot_requested"] = True
+            except self.ConfigurationInProgressError:
+                self.logger.info(
+                    "Configuration import is still in progress. A reboot is still required for changes to fully take effect."
+                )
+                result["reboot_required"] = True
+                result["pending_reboot"] = True
+                result["message"] = (
+                    "Configuration import is in progress on the AP. "
+                    "A reboot is still required for the changes to fully take effect."
+                )
+            return result
         except requests.RequestException as err:
             self.logger.debug(err)
             try:

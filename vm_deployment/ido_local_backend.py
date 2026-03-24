@@ -37,13 +37,30 @@ def _discover_backend_path() -> str:
     return ""
 
 
+def _discover_base_config_path() -> str:
+    candidates = [
+        (os.getenv("BASE_CONFIG_PATH") or "").strip(),
+        (os.getenv("NEXTLINK_BASE_CONFIG_PATH") or "").strip(),
+        str(Path(__file__).resolve().parent / "base_configs"),
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        p = Path(candidate)
+        if (p / "Cambium").is_dir():
+            return str(p)
+    return ""
+
+
 BACKEND_PATH = _discover_backend_path()
+BASE_CONFIG_ROOT = _discover_base_config_path()
 if BACKEND_PATH and BACKEND_PATH not in sys.path:
     sys.path.insert(0, BACKEND_PATH)
 
 if BACKEND_PATH:
-    os.environ.setdefault("BASE_CONFIG_PATH", BACKEND_PATH)
-    os.environ.setdefault("FIRMWARE_PATH", BACKEND_PATH)
+    if BASE_CONFIG_ROOT:
+        os.environ.setdefault("BASE_CONFIG_PATH", BASE_CONFIG_ROOT)
+        os.environ.setdefault("FIRMWARE_PATH", BASE_CONFIG_ROOT)
     # Field Config Studio device defaults for netlaunch modules.
     # Most modules use username "admin" and password from these env keys.
     _ssh_pw = (os.getenv("NEXTLINK_SSH_PASSWORD") or "").strip()
@@ -218,17 +235,29 @@ if not _LOADED.get("rpc"):
     def rpc_device_info_unavailable():
         raise HTTPException(status_code=501, detail="RPC module unavailable in local IDO backend")
 
+    @app.post("/api/rpc/configure")
+    def rpc_configure_unavailable():
+        raise HTTPException(status_code=501, detail="RPC configure module unavailable in local IDO backend")
+
 
 if not _LOADED.get("swt"):
     @app.get("/api/swt/device_info")
     def swt_device_info_unavailable():
         raise HTTPException(status_code=501, detail="Switch module unavailable in local IDO backend")
 
+    @app.post("/api/swt/configure")
+    def swt_configure_unavailable():
+        raise HTTPException(status_code=501, detail="Switch configure module unavailable in local IDO backend")
+
 
 if not _LOADED.get("ups"):
     @app.get("/api/ups/device_info")
     def ups_device_info_unavailable():
         _unavailable("UPS module unavailable in local IDO backend")
+
+    @app.post("/api/ups/configure")
+    def ups_configure_unavailable():
+        _unavailable("UPS configure module unavailable in local IDO backend")
 
 
 if not _LOADED.get("ping"):
@@ -255,6 +284,10 @@ if not _LOADED.get("ap"):
     @app.get("/api/ap/standard_config")
     def ap_standard_unavailable():
         _unavailable("AP standard-config module unavailable in local IDO backend")
+
+    @app.post("/api/ap/configure")
+    def ap_configure_unavailable():
+        _unavailable("AP configure module unavailable in local IDO backend")
 
 
 if not _LOADED.get("bh"):

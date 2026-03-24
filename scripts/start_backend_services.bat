@@ -48,9 +48,6 @@ echo [INFO] Using Python runner: %PY_CMD%
 
 REM ===== Step 1: Start Backend API =====
 echo [1/2] Starting Backend API...
-set "AI_PROVIDER=openai"
-set "ROS_TRAINING_DIR=%USERPROFILE%\Downloads\ros-migration-trainer-v3"
-set "BASE_CONFIG_PATH=%USERPROFILE%\Downloads\netlaunch-tools-main\netlaunch-tools-main"
 
 REM Check if backend is already running
 curl -s http://localhost:5000/api/health >nul 2>&1

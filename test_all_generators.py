@@ -1,18 +1,36 @@
 #!/usr/bin/env python3
 """
 Comprehensive config generator test suite.
-Tests ALL backend config generators against the VM to verify:
+Tests ALL backend config generators against the VM/local app to verify:
   1. Endpoint responds (no crashes)
-  2. Compliance blocks are injected from GitLab
+  2. Compliance blocks are injected from the active compliance source
   3. Output is consistent and complete
   4. Key compliance markers present
 """
-import requests
 import json
+import os
 import sys
 import re
+import requests
 
-VM = "http://192.168.11.118:8000"
+BASE_URL = (os.getenv("NOC_CONFIGMAKER_BASE_URL") or "").strip().rstrip("/")
+
+if BASE_URL:
+    CLIENT = requests
+
+    def build_url(path: str) -> str:
+        return f"{BASE_URL}{path}"
+else:
+    os.environ.setdefault("NOC_CONFIGMAKER_TESTS", "1")
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "vm_deployment"))
+    from fastapi.testclient import TestClient
+    from fastapi_server import app
+
+    CLIENT = TestClient(app)
+
+    def build_url(path: str) -> str:
+        return path
+
 PASS = 0
 FAIL = 0
 
@@ -67,13 +85,13 @@ print("=" * 70)
 print("TEST 1: GET /api/compliance/blocks?loopback_ip=10.5.0.1")
 print("=" * 70)
 try:
-    r = requests.get(f"{VM}/api/compliance/blocks",
+    r = CLIENT.get(build_url("/api/compliance/blocks"),
                      params={"loopback_ip": "10.5.0.1"}, timeout=15)
     check("Status 200", r.status_code == 200)
     data = r.json()
     check("success=true", data.get("success") is True)
     source = data.get("source", "unknown")
-    check(f"source=gitlab (got: {source})", source == "gitlab")
+    check(f"source supported (got: {source})", source in {"gitlab", "bundled-local"})
     blocks = data.get("blocks", {})
     check(f"Has blocks ({len(blocks)} keys)", len(blocks) > 5)
     # Check key blocks have real content
@@ -119,7 +137,7 @@ tower_payload = {
     "apply_compliance": True
 }
 try:
-    r = requests.post(f"{VM}/api/mt/tower/config", json=tower_payload, timeout=60)
+    r = CLIENT.post(build_url("/api/mt/tower/config"), json=tower_payload, timeout=60)
     check(f"Status 200 (got {r.status_code})", r.status_code == 200)
     if r.status_code == 200:
         result = r.json()
@@ -162,7 +180,7 @@ enterprise_payload = {
     "coords": "33.123,-97.654"
 }
 try:
-    r = requests.post(f"{VM}/api/gen-enterprise-non-mpls", json=enterprise_payload, timeout=30)
+    r = CLIENT.post(build_url("/api/gen-enterprise-non-mpls"), json=enterprise_payload, timeout=30)
     check(f"Status 200 (got {r.status_code})", r.status_code == 200)
     if r.status_code == 200:
         data = r.json()
@@ -216,7 +234,7 @@ bng2_payload = {
     "apply_compliance": True
 }
 try:
-    r = requests.post(f"{VM}/api/mt/bng2/config", json=bng2_payload, timeout=60)
+    r = CLIENT.post(build_url("/api/mt/bng2/config"), json=bng2_payload, timeout=60)
     check(f"Status 200 (got {r.status_code})", r.status_code == 200)
     if r.status_code == 200:
         result = r.json()
@@ -255,7 +273,7 @@ ftth_payload = {
     "deployment_type": "instate"
 }
 try:
-    r = requests.post(f"{VM}/api/generate-ftth-bng", json=ftth_payload, timeout=30)
+    r = CLIENT.post(build_url("/api/generate-ftth-bng"), json=ftth_payload, timeout=30)
     check(f"Status 200 (got {r.status_code})", r.status_code == 200)
     if r.status_code == 200:
         data = r.json()
@@ -283,7 +301,7 @@ ftth_outstate = dict(ftth_payload)
 ftth_outstate["deployment_type"] = "outstate"
 ftth_outstate["router_identity"] = "FTTH-OUTSTATE-TEST"
 try:
-    r = requests.post(f"{VM}/api/generate-ftth-bng", json=ftth_outstate, timeout=30)
+    r = CLIENT.post(build_url("/api/generate-ftth-bng"), json=ftth_outstate, timeout=30)
     check(f"Status 200 (got {r.status_code})", r.status_code == 200)
     if r.status_code == 200:
         data = r.json()
@@ -312,7 +330,7 @@ ftth_preview_payload = {
     "deployment_type": "instate"
 }
 try:
-    r = requests.post(f"{VM}/api/preview-ftth-bng", json=ftth_preview_payload, timeout=30)
+    r = CLIENT.post(build_url("/api/preview-ftth-bng"), json=ftth_preview_payload, timeout=30)
     check(f"Status 200 (got {r.status_code})", r.status_code == 200)
     if r.status_code == 200:
         data = r.json()
@@ -356,7 +374,7 @@ add disabled=no name=vpls2000 remote-peer=10.2.0.10 vpls-id=200:0
 add disabled=no name=vpls3000 remote-peer=10.2.0.10 vpls-id=300:0
 """
 try:
-    r = requests.post(f"{VM}/api/apply-compliance",
+    r = CLIENT.post(build_url("/api/apply-compliance"),
                      json={"config": mpls_frontend_config, "loopback_ip": "10.5.0.100"},
                      timeout=15)
     check(f"Status 200 (got {r.status_code})", r.status_code == 200)
@@ -389,7 +407,7 @@ interface eth0
   ip address 10.3.24.200/24
 """
 try:
-    r = requests.post(f"{VM}/api/apply-compliance",
+    r = CLIENT.post(build_url("/api/apply-compliance"),
                      json={"config": tarana_config, "loopback_ip": "10.3.24.200"}, timeout=15)
     check("Status 200", r.status_code == 200)
     if r.status_code == 200:
@@ -410,7 +428,7 @@ print("=" * 70)
 print("TEST 8: GET /api/health")
 print("=" * 70)
 try:
-    r = requests.get(f"{VM}/api/health", timeout=10)
+    r = CLIENT.get(build_url("/api/health"), timeout=10)
     check("Status 200", r.status_code == 200)
     data = r.json()
     check("Status online", data.get("status") == "online")

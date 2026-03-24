@@ -51,7 +51,7 @@ Admin endpoints marked **🔒 Admin** additionally require the `admin` role.
 5. [Config Translation & Validation](#5-config-translation--validation)
 6. [Config Generation — MikroTik](#6-config-generation--mikrotik)
 7. [Config Generation — FTTH BNG](#7-config-generation--ftth-bng)
-8. [Config Generation — Nokia 7250](#8-config-generation--nokia-7250)
+8. [Config Generation — Nokia](#8-config-generation--nokia)
 9. [Device Migration](#9-device-migration)
 10. [SSH / Remote Device](#10-ssh--remote-device)
 11. [Compliance & Policy](#11-compliance--policy)
@@ -592,9 +592,9 @@ Generate Non-MPLS Enterprise RouterOS config.
   "public_cidr": "132.147.181.176/30",
   "bh_cidr": "10.33.1.152/30",
   "loopback_ip": "10.33.0.95",
-  "uplink_interface": "sfp28-2",
-  "public_port": "sfp28-1",
-  "nat_port": "sfp28-3",
+  "uplink_interface": "sfp28-1",
+  "public_port": "sfp28-7",
+  "nat_port": "sfp28-8",
   "dns1": "142.147.112.3",
   "dns2": "142.147.112.19",
   "snmp_community": "FBZ1yYdphf",
@@ -607,7 +607,25 @@ Generate Non-MPLS Enterprise RouterOS config.
 
 **Response `200`**
 ```json
-{ "success": true, "config": "# RouterOS 7.19.4\n..." }
+{
+  "success": true,
+  "config": "# RouterOS 7.19.4\n...",
+  "device": "CCR2216",
+  "version": "7.19.4",
+  "profile": {
+    "public_port": "sfp28-7",
+    "nat_port": "sfp28-8",
+    "uplink_interface": "sfp28-1"
+  }
+}
+```
+
+**Response `400`**
+```json
+{
+  "success": false,
+  "error": "Enterprise interface roles must be unique. Conflicts: ether7: customer handoff, nat"
+}
 ```
 
 ---
@@ -692,7 +710,7 @@ Generate complete FTTH BNG config from strict template.
 
 ### `POST /api/gen-ftth-bng` _(deprecated)_
 
-Legacy FTTH endpoint. Supports both legacy and full payloads.
+Alternate FTTH endpoint. Supports both payload shapes during the transition to the unified FTTH configurator.
 
 **Legacy Request**
 ```json
@@ -734,6 +752,205 @@ Returns parsed FTTH CIDR details for preview (no config generated).
 
 ---
 
+### `POST /api/generate-ftth-fiber-customer`
+
+Generate the FTTH Fiber Customer handoff block for MikroTik, with optional Nextlink compliance injection.
+
+**Request**
+```json
+{
+  "routerboard": "ccr2004",
+  "routeros": "7.19.4",
+  "provider": "ATT",
+  "port": "sfp-sfpplus1",
+  "address": "10.42.10.2/30",
+  "network": "10.42.10.0/30",
+  "loopback_ip": "10.26.0.7/32",
+  "vlan_mode": "tagged",
+  "vlan_id": "300",
+  "apply_compliance": true
+}
+```
+
+**Response `200`**
+```json
+{
+  "success": true,
+  "config": "# FIBER SITE SETTINGS\n...",
+  "base_config": "# FIBER SITE SETTINGS\n...",
+  "selected_port": "sfp-sfpplus1",
+  "compliance_source": "bundled-local",
+  "metadata": {
+    "routerboard": "ccr2004",
+    "routeros": "7.19.4",
+    "provider": "ATT",
+    "port": "sfp-sfpplus1",
+    "address": "10.42.10.2/30",
+    "network": "10.42.10.0/30",
+    "loopback_ip": "10.26.0.7/32",
+    "router_id": "10.26.0.7",
+    "vlan_mode": "tagged",
+    "vlan_id": "300"
+  },
+  "compliance": {
+    "compliant": true,
+    "missing_items": []
+  },
+  "warnings": []
+}
+```
+
+**Notes**
+- `loopback_ip` is required when `apply_compliance=true`.
+- The response `config` is the final rendered output shown in the FTTH Home Fiber Customer UI.
+- `base_config` is the pre-compliance handoff block, useful for debugging or future Swagger examples.
+
+---
+
+### `POST /api/generate-mt-switch-config`
+
+Generate MikroTik switch config from the old toolbox switch profiles, now backend-backed for the current UI.
+
+**Request**
+```json
+{
+  "switch_type": "2004",
+  "profile": "no_bng",
+  "routeros": "7.19.4",
+  "switch_name": "SWT-CCR2004-1.TX-MARLIN-W-FC-2",
+  "gps": "31.306,-96.898",
+  "management_ip": "10.246.48.194/27",
+  "gateway": "10.246.48.193",
+  "uplink1": "sfp28-1",
+  "uplink2": "",
+  "state_scope": "instate",
+  "apply_compliance": true,
+  "ports": [
+    { "port": "sfp-sfpplus1", "comment": "AP1 Cambium 6ghz" },
+    { "port": "sfp-sfpplus2", "comment": "AP2 Cambium 6ghz" }
+  ]
+}
+```
+
+**Response `200`**
+```json
+{
+  "success": true,
+  "config": "# SWITCH PROFILE: CCR2004 NO BNG\n...",
+  "base_config": "# SWITCH PROFILE: CCR2004 NO BNG\n...",
+  "metadata": {
+    "switch_type": "2004",
+    "switch_label": "CCR2004",
+    "profile": "no_bng",
+    "switch_name": "SWT-CCR2004-1.TX-MARLIN-W-FC-2",
+    "routeros": "7.19.4",
+    "management_ip": "10.246.48.194/27",
+    "gateway": "10.246.48.193",
+    "uplink1": "sfp28-1",
+    "uplink2": "",
+    "state_scope": "instate",
+    "ports": [
+      { "port": "sfp-sfpplus1", "comment": "AP1 Cambium 6ghz" }
+    ]
+  },
+  "compliance_source": "bundled-local",
+  "warnings": []
+}
+```
+
+**Notes**
+- `switch_type=326` must use `profile=crs326`.
+- `switch_type=309|2004` must use `profile=bng` or `profile=no_bng`.
+- `uplink2` is required for the `crs326` bonded profile.
+
+---
+
+### `POST /api/generate-ftth-fiber-site`
+
+Generate the paired MikroTik `1072` and `1036` FTTH fiber-site configs and the backhaul IP / port map.
+
+**Request**
+```json
+{
+  "tower_name": "TX-MARLIN-W-FC-2",
+  "tower_gps": "30.1,-96.1",
+  "asn": "26077",
+  "routeros_1072": "7.19.4",
+  "loopback_1072": "10.26.0.7/32",
+  "loopback_1036": "10.26.0.8/32",
+  "bh1_subnet": "10.25.10.0/29",
+  "link_1072_1036_a": "10.25.10.8/30",
+  "link_1072_1036_b": "10.25.10.12/30",
+  "cpe_subnet": "10.40.0.0/22",
+  "unauth_subnet": "10.130.0.0/22",
+  "cgn_priv_subnet": "100.64.0.0/22",
+  "cgn_pub_ip": "132.147.184.147/32",
+  "fiber_provider": "ATT",
+  "fiber_port": "sfp-sfpplus8",
+  "fiber_port_ip": "10.42.10.2/30",
+  "fiber_vlan_mode": "tagged",
+  "fiber_vlan_id": "300",
+  "backhauls": [
+    { "port": "3", "name": "BH-TO-SITE-A", "subnet": "10.25.10.16/29", "master": "yes", "bandwidth": "1G" }
+  ],
+  "apply_compliance": true
+}
+```
+
+**Response `200`**
+```json
+{
+  "success": true,
+  "router_1072_config": "# 1072 FIBER SITE CONFIG ...",
+  "router_1036_config": "# 1036 FIBER SITE CONFIG ...",
+  "port_map": "===================================================================",
+  "compliance_source": "bundled-local",
+  "warnings": []
+}
+```
+
+---
+
+### `POST /api/generate-ftth-isd-fiber`
+
+Generate the MikroTik ISD fiber config and the backhaul IP / port map.
+
+**Request**
+```json
+{
+  "router_type": "2004",
+  "routeros": "7.19.4",
+  "tower_name": "TX-MARLIN-W-FC-2",
+  "tower_gps": "30.1,-96.1",
+  "loopback_subnet": "10.26.0.7/32",
+  "bh1_subnet": "10.25.10.0/29",
+  "private_ip": "10.50.0.0/24",
+  "public_ip": "198.51.100.0/29",
+  "fiber_provider": "ATT",
+  "fiber_port": "sfp-sfpplus1",
+  "fiber_port_ip": "10.42.10.2/30",
+  "has_vlan": true,
+  "fiber_vlan_num": "300",
+  "backhauls": [
+    { "port": "4", "name": "BH-TO-SITE-B", "subnet": "10.25.10.24/29", "master": "no", "bandwidth": "1G" }
+  ],
+  "apply_compliance": true
+}
+```
+
+**Response `200`**
+```json
+{
+  "success": true,
+  "config": "# ISD FIBER CONFIG ...",
+  "port_map": "===================================================================",
+  "compliance_source": "bundled-local",
+  "warnings": []
+}
+```
+
+---
+
 ### `POST /api/ftth-home/mf2-package`
 
 Generate MF2 ZIP package with updated gateway/primary IP in startup XML.
@@ -751,11 +968,27 @@ Generate MF2 ZIP package with updated gateway/primary IP in startup XML.
 
 ---
 
-## 8. Config Generation — Nokia 7250
+## 8. Config Generation — Nokia
 
 ### `GET /api/nokia7250-defaults`
 
 Return Nokia 7250 credentials/secrets from environment variables.
+
+**Response `200`**
+```json
+{
+  "snmp_community": "...",
+  "nlroot_pw": "...",
+  "admin_pw": "...",
+  "bgp_auth_key": "..."
+}
+```
+
+---
+
+### `GET /api/nokia-configurator-defaults`
+
+Alias for the unified Nokia Configurator to load credentials/secrets from the backend.
 
 **Response `200`**
 ```json
@@ -796,6 +1029,51 @@ Generate Nokia 7250 (SR OS) configuration.
 **Response `200`**
 ```json
 { "success": true, "config": "# Nokia 7250 SR OS\nconfigure\n..." }
+```
+
+---
+
+### `POST /api/generate-nokia-configurator`
+
+Generate unified Nokia Configurator output for `7210` and `7750` profiles from the same workspace.
+
+**Request**
+```json
+{
+  "model": "7210",
+  "profile": "isd",
+  "system_name": "RTR-NK7210-TEST",
+  "system_ip": "10.25.0.46/32",
+  "latitude": "29.1",
+  "longitude": "-96.1",
+  "timezone": "CST",
+  "static_hop": "10.25.1.1",
+  "isd_public": "172.16.10.1/24",
+  "isd_private": "192.168.10.1/24",
+  "uplinks": [
+    { "port": "1/1/1", "desc": "BH-1", "ip": "10.45.248.105/30", "speed": "10000" }
+  ]
+}
+```
+
+**Response `200`**
+```json
+{
+  "success": true,
+  "config": "##################################\n# NOKIA 7210 ISD CONFIG\n...",
+  "device_type": "Nokia 7210 ISD",
+  "config_type": "nokia-7210-isd",
+  "model": "7210",
+  "profile": "isd"
+}
+```
+
+**Response `400`**
+```json
+{
+  "success": false,
+  "error": "System name and system IP are required"
+}
 ```
 
 ---
@@ -878,6 +1156,31 @@ Get all supported RouterBoard models with specs.
     }
   ],
   "total_models": 11
+}
+```
+
+---
+
+### `GET /api/toolbox-inventory`
+
+Return the normalized refinement inventory used when folding proven toolbox behavior into the unified app.
+
+**Response `200`**
+```json
+{
+  "success": true,
+  "inventory": {
+    "mikrotik": ["mt_tower.py", "mt_enterprise.py", "mt_mpls_enterprise.py"],
+    "nokia": ["nokia7210.py", "nokia7250.py", "BNG_7750_VPLS_Gen.py"],
+    "templates": ["MT_BNG2_Univ_Base.py", "MT_BNG2_Univ_Tarana.py"]
+  },
+  "role_patterns": {
+    "switch": ["netonix", "cnmatrix", "switch uplink"],
+    "backhaul": ["backhaul", "uplink", "transport"],
+    "tarana": ["tarana", "alpha", "beta", "gamma", "delta"],
+    "lte": ["lte", "bbu", "vlan 75", "vlan 444"],
+    "6ghz": ["6ghz", "al60", "wave", "cnep3k"]
+  }
 }
 ```
 
@@ -1082,6 +1385,48 @@ Save a completed config to the database with auto-extracted port mapping.
 { "success": true, "config_id": 42, "message": "Config saved" }
 ```
 
+**Common frontend payload variants**
+```json
+{
+  "config_type": "cisco-interface",
+  "device_name": "TenGigE 0/0/0/1",
+  "device_type": "Cisco",
+  "customer_code": "",
+  "loopback_ip": "10.42.10.1",
+  "config_content": "configure terminal\ninterface TenGigE 0/0/0/1\n...",
+  "site_name": "BH-TO-SITE-A",
+  "metadata": {
+    "port_description": "BH-TO-SITE-A",
+    "port_type": "TenGigE",
+    "port_number": "0/0/0/1",
+    "interface_ip": "10.42.10.1",
+    "subnet_mask": "255.255.255.252",
+    "ospf_cost": "10",
+    "passive": "No"
+  }
+}
+```
+
+```json
+{
+  "config_type": "ftth-fiber-customer",
+  "device_name": "FIBERCOMM",
+  "device_type": "MikroTik Fiber Customer",
+  "customer_code": "FIBERCOMM",
+  "loopback_ip": "",
+  "config_content": "# FIBER SITE SETTINGS\n/interface ethernet\n...",
+  "site_name": "FIBERCOMM",
+  "metadata": {
+    "provider": "FIBERCOMM",
+    "port": "sfp-sfpplus8",
+    "address": "10.42.10.2/30",
+    "network": "10.42.10.0/30",
+    "vlan_mode": "tagged",
+    "vlan_id": "300"
+  }
+}
+```
+
 ---
 
 ### `GET /api/get-completed-configs`
@@ -1179,6 +1524,29 @@ Log user activity to database.
 **Response `200`**
 ```json
 { "success": true }
+```
+
+**Common frontend payload variants**
+```json
+{
+  "username": "user@team.nxlink.com",
+  "type": "new-config",
+  "device": "Cisco",
+  "siteName": "BH-TO-SITE-A",
+  "routeros": "",
+  "success": true
+}
+```
+
+```json
+{
+  "username": "user@team.nxlink.com",
+  "type": "new-config",
+  "device": "MikroTik Fiber Customer",
+  "siteName": "FIBERCOMM",
+  "routeros": "7",
+  "success": true
+}
 ```
 
 ---
