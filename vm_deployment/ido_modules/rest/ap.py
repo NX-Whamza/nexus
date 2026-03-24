@@ -91,13 +91,16 @@ def configure_cambium_device(payload: dict):
     logstream = io.StringIO()
     payload["logstream"] = logstream
     d = EPMPConfig(**payload)
-    d.init_and_configure()
-    return {
+    result = d.init_and_configure() or {}
+    response = {
         "success": True,
         "device_type": payload.get("device_type"),
         "device_name": getattr(d, "device_name", None),
         "logs": logstream.getvalue(),
     }
+    if isinstance(result, dict):
+        response.update(result)
+    return response
 
 
 def get_tachyon_running_config(ip_address: str, device_type: str, password: str | None = None):
@@ -226,6 +229,11 @@ async def get_ap_running_config(ip_address: str, device_type: str, password: str
         raise HTTPException(status_code=400, detail=f"{err}") from err
     except Exception as err:
         msg = str(err)
+        if "configuration import is in progress" in msg.lower():
+            raise HTTPException(
+                status_code=409,
+                detail="Device configuration import is already in progress on this AP. Wait for the AP to finish applying/rebooting, then retry.",
+            ) from err
         if "invalid response while logging in" in msg.lower() or "login failed" in msg.lower():
             raise HTTPException(
                 status_code=400,
@@ -298,6 +306,11 @@ async def get_ap_standard_config(
         raise HTTPException(status_code=400, detail=f"{err}") from err
     except Exception as err:
         msg = str(err)
+        if "configuration import is in progress" in msg.lower():
+            raise HTTPException(
+                status_code=409,
+                detail="Device configuration import is already in progress on this AP. Wait for the AP to finish applying/rebooting, then retry.",
+            ) from err
         if "invalid response while logging in" in msg.lower() or "login failed" in msg.lower():
             raise HTTPException(
                 status_code=400,
@@ -391,6 +404,11 @@ async def get_ap_device_info(
     except Exception as err:
         logging.error(err)
         msg = str(err)
+        if "configuration import is in progress" in msg.lower():
+            raise HTTPException(
+                status_code=409,
+                detail="Device configuration import is already in progress on this AP. Wait for the AP to finish applying/rebooting, then retry.",
+            ) from err
         if "invalid response while logging in" in msg.lower() or "login failed" in msg.lower():
             raise HTTPException(
                 status_code=400,
@@ -421,4 +439,9 @@ async def configure_ap_device(payload: dict = Body(...)):
     except ValueError as err:
         raise HTTPException(status_code=400, detail=f"{err}") from err
     except Exception as err:
+        if "configuration import is in progress" in str(err).lower():
+            raise HTTPException(
+                status_code=409,
+                detail="Device configuration import is already in progress on this AP. Wait for the AP to finish applying/rebooting, then retry.",
+            ) from err
         raise HTTPException(status_code=500, detail=f"{err}") from err

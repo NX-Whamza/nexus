@@ -37,13 +37,30 @@ def _discover_backend_path() -> str:
     return ""
 
 
+def _discover_base_config_path() -> str:
+    candidates = [
+        (os.getenv("BASE_CONFIG_PATH") or "").strip(),
+        (os.getenv("NEXTLINK_BASE_CONFIG_PATH") or "").strip(),
+        str(Path(__file__).resolve().parent / "base_configs"),
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        p = Path(candidate)
+        if (p / "Cambium").is_dir():
+            return str(p)
+    return ""
+
+
 BACKEND_PATH = _discover_backend_path()
+BASE_CONFIG_ROOT = _discover_base_config_path()
 if BACKEND_PATH and BACKEND_PATH not in sys.path:
     sys.path.insert(0, BACKEND_PATH)
 
 if BACKEND_PATH:
-    os.environ.setdefault("BASE_CONFIG_PATH", BACKEND_PATH)
-    os.environ.setdefault("FIRMWARE_PATH", BACKEND_PATH)
+    if BASE_CONFIG_ROOT:
+        os.environ.setdefault("BASE_CONFIG_PATH", BASE_CONFIG_ROOT)
+        os.environ.setdefault("FIRMWARE_PATH", BASE_CONFIG_ROOT)
     # Field Config Studio device defaults for netlaunch modules.
     # Most modules use username "admin" and password from these env keys.
     _ssh_pw = (os.getenv("NEXTLINK_SSH_PASSWORD") or "").strip()

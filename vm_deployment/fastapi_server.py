@@ -191,6 +191,20 @@ def _ido_backend_url() -> str:
                 return str(p)
         return ""
 
+    def _ido_local_base_config_path() -> str:
+        candidates = [
+            (os.getenv("BASE_CONFIG_PATH") or "").strip(),
+            (os.getenv("NEXTLINK_BASE_CONFIG_PATH") or "").strip(),
+            str(Path(__file__).resolve().parent / "base_configs"),
+        ]
+        for candidate in candidates:
+            if not candidate:
+                continue
+            p = Path(candidate)
+            if (p / "Cambium").is_dir():
+                return str(p)
+        return ""
+
     local_proc = getattr(_ido_backend_url, "_local_proc", None)
     local_lock = getattr(_ido_backend_url, "_local_lock", None)
     if local_lock is None:
@@ -202,9 +216,10 @@ def _ido_backend_url() -> str:
         if str(os.getenv("ENABLE_LOCAL_IDO_BACKEND_AUTOSTART", "true")).strip().lower() in {"0", "false", "no"}:
             return ""
 
-        base_path = _ido_local_backend_path()
-        if not base_path:
+        backend_path = _ido_local_backend_path()
+        if not backend_path:
             return ""
+        base_config_path = _ido_local_base_config_path() or backend_path
 
         host = (os.getenv("LOCAL_IDO_BACKEND_HOST") or "127.0.0.1").strip()
         port = int((os.getenv("LOCAL_IDO_BACKEND_PORT") or "18081").strip())
@@ -236,8 +251,8 @@ def _ido_backend_url() -> str:
             ]
             try:
                 env = os.environ.copy()
-                env.setdefault("BASE_CONFIG_PATH", base_path)
-                env.setdefault("FIRMWARE_PATH", base_path)
+                env.setdefault("BASE_CONFIG_PATH", base_config_path)
+                env.setdefault("FIRMWARE_PATH", base_config_path)
                 # Field Config Studio device defaults (netlaunch backend modules use these env vars).
                 # If explicit module vars are not set, fall back to NEXTLINK_SSH_PASSWORD.
                 ssh_pw = (env.get("NEXTLINK_SSH_PASSWORD") or "").strip()
@@ -253,7 +268,7 @@ def _ido_backend_url() -> str:
                 if configured_stub:
                     env.setdefault("BNG_SSH_SERVER_CONFIG", configured_stub)
                 else:
-                    backend_stub = Path(base_path) / ".bng_ssh_servers.json"
+                    backend_stub = Path(backend_path) / ".bng_ssh_servers.json"
                     if backend_stub.exists():
                         env.setdefault("BNG_SSH_SERVER_CONFIG", str(backend_stub))
                     else:

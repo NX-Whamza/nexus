@@ -23,6 +23,20 @@ VALID_DEVICE_TYPES = {"SS": "SS", "ICT800": "ICT", "ICTMPS": "ICT"}
 app = APIRouter()
 
 
+def _merge_generic_device_info(result: dict, generic_result: dict) -> dict:
+    result = dict(result or {})
+    generic_result = dict(generic_result or {})
+    for key, value in generic_result.items():
+        # Preserve device-specific success and error details.
+        if key in {"success", "message"} and key in result:
+            continue
+        if isinstance(value, list) and result.get(key):
+            result[key] += value
+        elif not result.get(key):
+            result[key] = value
+    return result
+
+
 def configure_ups_device(payload: dict):
     payload = dict(payload or {})
     logstream = io.StringIO()
@@ -90,13 +104,7 @@ async def get_ups_device_info(
                 pool, functools.partial(device_info, ip_address, run_tests=run_tests)
             )
 
-            for key, value in generic_result.items():
-                if isinstance(value, list) and result.get(key):
-                    result[key] += value
-                elif not result.get(key):
-                    result[key] = value
-
-        return result
+        return _merge_generic_device_info(result, generic_result)
     except ValueError as err:
         raise HTTPException(status_code=400, detail=f"{err}") from err
     except HTTPException:

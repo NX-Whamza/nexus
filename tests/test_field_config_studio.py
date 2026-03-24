@@ -27,6 +27,9 @@ def test_field_config_studio_ui_has_dynamic_device_forms_and_no_aviat():
     assert "CNEP3KL" in content
     assert "F4600C" in content
     assert "ICTMPS" in content
+    assert "autoFillFieldConfigFromDeviceInfo" in content
+    assert "label: 'Battery Capacity (Ah)', type: 'text'" in content
+    assert "Reboot still required on device" in content
 
 
 def test_field_config_studio_backend_routes_and_aliases_exist():
@@ -41,6 +44,7 @@ def test_field_config_studio_backend_routes_and_aliases_exist():
     assert '"CNF300-13": "F300-13"' in ap_text
     assert '"CNEP3KL": "CN"' in ap_text
     assert '"F4600C": "CN"' in ap_text
+    assert "Device configuration import is already in progress on this AP" in ap_text
     assert '@app.post("/api/swt/configure")' in switch_text
     assert '@app.post("/api/ups/configure")' in ups_text
     assert '"ICTMPS": "ICT"' in ups_text

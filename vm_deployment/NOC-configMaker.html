@@ -16041,17 +16041,12 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     ];
                 }
                 if (toolKey === 'smartsys-ups') {
-                    const batteryType = state.battery_type || 'li_ion';
-                    const batteryCapacityOptions = batteryType === 'lead_acid'
-                        ? [{ value: '190', label: '190 Ah' }, { value: '100', label: '100 Ah' }]
-                        : [{ value: '200', label: '200 Ah' }, { value: '100', label: '100 Ah' }];
                     return [
                         { name: 'site_name', label: 'Site Name', type: 'text', placeholder: 'AA-BBBBBB-CC-#', requiredFor: ['generate'] },
                         { name: 'device_number', label: 'Device Number', type: 'text', defaultValue: '1', requiredFor: ['generate'] },
                         { name: 'latitude', label: 'Latitude', type: 'text', placeholder: 'XX.XXXXXX', requiredFor: ['generate'] },
                         { name: 'longitude', label: 'Longitude', type: 'text', placeholder: '-XX.XXXXXX', requiredFor: ['generate'] },
-                        { name: 'battery_type', label: 'Battery Type', type: 'select', options: [{ value: 'li_ion', label: 'Lithium Ion' }, { value: 'lead_acid', label: 'Lead Acid' }], defaultValue: 'li_ion', requiredFor: ['generate'] },
-                        { name: 'battery_capacity', label: 'Battery Capacity (Ah)', type: 'select', options: batteryCapacityOptions, defaultValue: batteryCapacityOptions[0]?.value || '200', requiredFor: ['generate'] },
+                        { name: 'battery_capacity', label: 'Battery Capacity (Ah)', type: 'text', placeholder: 'e.g. 2000.0', requiredFor: ['generate'] },
                         { name: 'trap_addr', label: 'Zabbix Proxy Address', type: 'select', options: FIELD_CONFIG_ZABBIX_OPTIONS, requiredFor: ['generate'] },
                     ];
                 }
@@ -16156,14 +16151,14 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     if (typeof parsed === 'string') {
                         try {
                             const parsedAgain = JSON.parse(parsed);
-                            return JSON.stringify(parsedAgain, null, 2);
+                            return { text: JSON.stringify(parsedAgain, null, 2), data: parsedAgain };
                         } catch (_) {
-                            return parsed;
+                            return { text: parsed, data: parsed };
                         }
                     }
-                    return JSON.stringify(parsed, null, 2);
+                    return { text: JSON.stringify(parsed, null, 2), data: parsed };
                 } catch (_) {
-                    return text;
+                    return { text, data: null };
                 }
             }
 
@@ -16174,6 +16169,23 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     ...(inputs.password ? { password: inputs.password } : {}),
                     ...Object.fromEntries(Object.entries(inputs.fields || {}).filter(([, value]) => value !== '' && value !== null && value !== undefined)),
                 };
+            }
+
+            function autoFillFieldConfigFromDeviceInfo(toolKey, resultData) {
+                if (!resultData || typeof resultData !== 'object') return;
+                let next = {};
+                if (toolKey === 'smartsys-ups') {
+                    next = {
+                        ...(resultData.site_name ? { site_name: String(resultData.site_name).trim() } : {}),
+                        ...(resultData.latitude !== undefined && resultData.latitude !== null && resultData.latitude !== '' ? { latitude: String(resultData.latitude).trim() } : {}),
+                        ...(resultData.longitude !== undefined && resultData.longitude !== null && resultData.longitude !== '' ? { longitude: String(resultData.longitude).trim() } : {}),
+                        ...(resultData.battery_capacity !== undefined && resultData.battery_capacity !== null && resultData.battery_capacity !== '' ? { battery_capacity: String(resultData.battery_capacity).trim() } : {}),
+                        ...(resultData.trap_addr ? { trap_addr: String(resultData.trap_addr).trim() } : {}),
+                    };
+                }
+                if (!Object.keys(next).length) return;
+                setFieldConfigState(toolKey, next);
+                renderFieldConfigDynamicFields(toolKey, document.getElementById('fieldConfigDeviceType')?.value || '');
             }
 
             function validateFieldConfigActionInputs(toolKey, actionKey, inputs) {
@@ -16295,8 +16307,19 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 writeFieldConfigOutput(`Running ${tool.label} -> ${actionKey}...`);
                 setFieldConfigStatus(`Calling /${action.path} ...`);
                 const result = await callIdoProxyAdvanced(action.path, { method: action.method, query, body });
-                writeFieldConfigOutput(result);
-                setFieldConfigStatus(`Completed ${tool.label} -> ${actionKey}`);
+                writeFieldConfigOutput(result.text);
+                if (actionKey === 'device_info') {
+                    autoFillFieldConfigFromDeviceInfo(toolKey, result.data);
+                }
+                const rebootPending = actionKey === 'generate'
+                    && result?.data
+                    && typeof result.data === 'object'
+                    && (result.data.pending_reboot || result.data.reboot_required);
+                if (rebootPending) {
+                    setFieldConfigStatus(`Completed ${tool.label} -> ${actionKey} | Reboot still required on device`);
+                } else {
+                    setFieldConfigStatus(`Completed ${tool.label} -> ${actionKey}`);
+                }
             }
 
             function parseCidrNetwork(cidr) {
