@@ -27,6 +27,15 @@ err()  { echo -e "${RED}[ERR]  $*${NC}"; }
 REPO_URL="https://github.com/NX-Whamza/noc-configmaker.git"
 DEV_DIR="$HOME/noc-configmaker-dev"
 
+generate_version_env() {
+  info "Generating app version metadata..."
+  python3 "$DEV_DIR/vm_deployment/generate_version_env.py" --output "$DEV_DIR/.version.env" >/dev/null
+  set -a
+  . "$DEV_DIR/.version.env"
+  set +a
+  ok "App version: ${NEXUS_APP_VERSION:-unknown}"
+}
+
 echo "=========================================="
 echo "NOC Config Maker – DEV Environment Setup"
 echo "=========================================="
@@ -83,6 +92,7 @@ bash "$DEV_DIR/vm_deployment/configure_nginx_dev_domain.sh"
 # ── 5. Build and start dev stack ──
 info "Building and starting the dev Docker stack..."
 cd "$DEV_DIR"
+generate_version_env
 docker compose up -d --build
 
 echo ""

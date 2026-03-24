@@ -126,6 +126,12 @@ services:
       AZURE_TENANT_ID: ${AZURE_TENANT_ID:-143673a5-ff46-4d23-8255-b4ef07861814}
       # Environment label (dev/production) — used for UI banners and logging
       NOC_ENVIRONMENT: ${NOC_ENVIRONMENT:-production}
+      NEXUS_APP_PRODUCT: ${NEXUS_APP_PRODUCT:-NEXUS}
+      NEXUS_APP_VERSION: ${NEXUS_APP_VERSION:-}
+      NEXUS_APP_VERSION_BASE: ${NEXUS_APP_VERSION_BASE:-2.6}
+      NEXUS_APP_BUILD_NUMBER: ${NEXUS_APP_BUILD_NUMBER:-0}
+      NEXUS_APP_RELEASE_DATE: ${NEXUS_APP_RELEASE_DATE:-}
+      NEXUS_APP_GIT_SHA: ${NEXUS_APP_GIT_SHA:-}
     volumes:
       - ./secure_data:/app/secure_data
     depends_on:

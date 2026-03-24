@@ -57,7 +57,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="NOC Config Maker API", version="1.0", lifespan=lifespan)
+app = FastAPI(title="NEXUS API", version="2.6.0", lifespan=lifespan)
 
 # Match current permissive CORS behavior from Flask setup.
 app.add_middleware(

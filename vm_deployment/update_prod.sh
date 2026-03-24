@@ -17,6 +17,15 @@ err()  { echo -e "${RED}[ERR]  $*${NC}"; }
 PROD_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROD_DIR"
 
+generate_version_env() {
+  info "Generating app version metadata..."
+  python3 "$PROD_DIR/vm_deployment/generate_version_env.py" --output "$PROD_DIR/.version.env" >/dev/null
+  set -a
+  . "$PROD_DIR/.version.env"
+  set +a
+  ok "App version: ${NEXUS_APP_VERSION:-unknown}"
+}
+
 echo "=========================================="
 echo "NOC Config Maker – PRODUCTION Update"
 echo "Dir: $PROD_DIR"
@@ -57,6 +66,7 @@ else
 fi
 
 # ── 2. Rebuild production containers ──
+generate_version_env
 info "Rebuilding production containers..."
 docker compose up -d --build
 ok "Production stack rebuilt"

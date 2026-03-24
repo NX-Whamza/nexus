@@ -4,11 +4,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NOC Config Maker - Sign In</title>
+    <title>NEXUS - Sign In</title>
     <meta name="theme-color" content="#ff7a00">
     <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
     <link rel="manifest" href="assets/site.webmanifest">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg-1: #08111d;
+            --bg-2: #0f1f31;
+            --panel: rgba(10, 18, 29, 0.92);
+            --panel-soft: rgba(15, 28, 43, 0.82);
+            --panel-border: rgba(255, 255, 255, 0.1);
+            --text: #eef4ff;
+            --text-soft: #b7c6d9;
+            --text-muted: #8ca0b7;
+            --accent: #ff7a00;
+            --accent-deep: #c95f00;
+            --accent-soft: rgba(255, 122, 0, 0.16);
+            --success: #39d98a;
+            --error: #ff7f88;
+            --shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+            --radius-xl: 28px;
+            --radius-lg: 18px;
+            --radius-md: 14px;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -16,246 +39,377 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-            color: #fff;
+            font-family: 'Inter', Arial, sans-serif;
+            color: var(--text);
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 20px;
+            padding: 28px;
+            background:
+                radial-gradient(circle at top left, rgba(255, 122, 0, 0.16), transparent 30%),
+                radial-gradient(circle at bottom right, rgba(43, 135, 255, 0.16), transparent 34%),
+                linear-gradient(145deg, var(--bg-1) 0%, var(--bg-2) 55%, #0a1624 100%);
         }
 
-        .login-container {
-            background: #2a2a2a;
-            border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        body::before,
+        body::after {
+            content: '';
+            position: fixed;
+            inset: auto;
+            pointer-events: none;
+            border-radius: 999px;
+            filter: blur(70px);
+            opacity: 0.6;
+        }
+
+        body::before {
+            width: 260px;
+            height: 260px;
+            top: 10%;
+            left: 8%;
+            background: rgba(255, 122, 0, 0.14);
+        }
+
+        body::after {
+            width: 300px;
+            height: 300px;
+            right: 7%;
+            bottom: 8%;
+            background: rgba(74, 155, 255, 0.13);
+        }
+
+        .auth-shell {
             width: 100%;
-            max-width: 420px;
-            padding: 40px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            max-width: 1180px;
+            display: grid;
+            grid-template-columns: 1.12fr 0.88fr;
+            background: rgba(7, 15, 24, 0.76);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius-xl);
+            overflow: hidden;
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(16px);
         }
 
-        .logo-section {
-            text-align: center;
-            margin-bottom: 40px;
-        }
-
-        .logo {
-            width: 80px;
-            height: 80px;
-            margin: 0 auto 20px;
-            background: linear-gradient(135deg, #e67e22 0%, #d35400 100%);
-            border-radius: 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+        .brand-panel {
             position: relative;
-            box-shadow: 0 4px 20px rgba(230, 126, 34, 0.3);
+            padding: 54px 56px;
+            background:
+                linear-gradient(180deg, rgba(255, 122, 0, 0.08), transparent 35%),
+                linear-gradient(145deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 36px;
         }
 
-        .logo::before {
+        .brand-panel::after {
             content: '';
             position: absolute;
-            width: 100%;
-            height: 100%;
-            background:
-                linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%),
-                radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.2) 0%, transparent 50%);
-            border-radius: 16px;
+            inset: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 24px;
+            pointer-events: none;
         }
 
-        .logo-icon {
-            font-size: 42px;
-            font-weight: bold;
-            color: white;
-            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        .brand-block,
+        .platform-copy,
+        .platform-footer {
+            position: relative;
             z-index: 1;
         }
 
-        .logo-text {
-            font-size: 24px;
+        .brand-mark {
+            width: 78px;
+            height: 78px;
+            border-radius: 22px;
+            display: grid;
+            place-items: center;
+            background:
+                linear-gradient(155deg, #ff9838, #ff7a00 58%, #cc5f00);
+            box-shadow: 0 20px 44px rgba(255, 122, 0, 0.25);
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 29px;
             font-weight: 700;
+            letter-spacing: 0.08em;
             color: #fff;
-            letter-spacing: 1px;
-            margin-top: 10px;
+            margin-bottom: 22px;
         }
 
-        .logo-subtitle {
+        .brand-kicker {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            color: var(--text-soft);
             font-size: 12px;
-            color: #bbb;
-            margin-top: 5px;
-            font-weight: 400;
-        }
-
-        .login-title {
-            font-size: 28px;
             font-weight: 600;
-            margin-bottom: 8px;
-            color: #fff;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-bottom: 18px;
         }
 
-        .login-subtitle {
+        .brand-name {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: clamp(42px, 5vw, 68px);
+            line-height: 0.94;
+            letter-spacing: -0.04em;
+            margin-bottom: 10px;
+        }
+
+        .brand-subtitle {
+            color: var(--text-soft);
+            font-size: 17px;
+            font-weight: 500;
+            letter-spacing: 0.01em;
+            margin-bottom: 22px;
+        }
+
+        .platform-title {
+            font-size: clamp(28px, 3vw, 40px);
+            line-height: 1.02;
+            letter-spacing: -0.03em;
+            margin-bottom: 18px;
+            max-width: 12ch;
+        }
+
+        .platform-copy p {
+            color: var(--text-soft);
+            font-size: 15px;
+            line-height: 1.7;
+            max-width: 58ch;
+            margin-bottom: 26px;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+        }
+
+        .feature-card {
+            padding: 18px 18px 16px;
+            border-radius: var(--radius-lg);
+            background: rgba(255, 255, 255, 0.035);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            min-height: 138px;
+        }
+
+        .feature-label {
             font-size: 14px;
-            color: #bbb;
-            margin-bottom: 30px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .feature-copy {
+            color: var(--text-soft);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .platform-footer {
+            color: var(--text-muted);
+            font-size: 13px;
+            line-height: 1.7;
+            max-width: 60ch;
+        }
+
+        .auth-panel {
+            padding: 54px 48px;
+            background: var(--panel);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .auth-card {
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .auth-eyebrow {
+            color: var(--accent);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            margin-bottom: 14px;
+        }
+
+        .auth-title {
+            font-size: 34px;
+            line-height: 1.02;
+            letter-spacing: -0.03em;
+            margin-bottom: 10px;
+        }
+
+        .auth-subtitle {
+            color: var(--text-soft);
+            font-size: 14px;
+            line-height: 1.7;
+            margin-bottom: 28px;
+        }
+
+        .error-message,
+        .info-message {
+            padding: 13px 14px;
+            border-radius: var(--radius-md);
+            font-size: 13px;
+            line-height: 1.5;
+            margin-bottom: 18px;
+            display: none;
+        }
+
+        .error-message {
+            background: rgba(255, 127, 136, 0.12);
+            border: 1px solid rgba(255, 127, 136, 0.28);
+            color: var(--error);
+        }
+
+        .error-message.show,
+        .info-message.show {
+            display: block;
+        }
+
+        .info-message {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            color: var(--text-soft);
+        }
+
+        .auth-button {
+            width: 100%;
+            padding: 15px 18px;
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+        }
+
+        .auth-button:hover {
+            transform: translateY(-1px);
+        }
+
+        .auth-button:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
         }
 
         .sso-button {
-            width: 100%;
-            padding: 14px 20px;
-            background: linear-gradient(135deg, #e67e22 0%, #d35400 100%);
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 15px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
+            background: linear-gradient(135deg, #ff8f29 0%, var(--accent) 58%, var(--accent-deep) 100%);
+            color: #fff;
+            box-shadow: 0 18px 28px rgba(255, 122, 0, 0.22);
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 10px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 15px rgba(230, 126, 34, 0.3);
+            gap: 12px;
+            margin-bottom: 18px;
         }
 
-        .sso-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(230, 126, 34, 0.4);
-        }
-
-        .sso-button:active {
-            transform: translateY(0);
-        }
-
-        .sso-button .ms-icon {
-            width: 20px;
-            height: 20px;
-            background: white;
-            border-radius: 2px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+        .ms-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.92);
+            color: var(--accent-deep);
+            display: grid;
+            place-items: center;
             font-size: 12px;
-            font-weight: bold;
-            color: #e67e22;
+            font-weight: 800;
         }
 
         .divider {
-            text-align: center;
-            margin: 25px 0;
-            position: relative;
-            color: #888;
-            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            color: var(--text-muted);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            margin: 18px 0 22px;
         }
 
         .divider::before,
         .divider::after {
             content: '';
-            position: absolute;
-            top: 50%;
-            width: 40%;
             height: 1px;
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        .divider::before {
-            left: 0;
-        }
-
-        .divider::after {
-            right: 0;
+            flex: 1;
+            background: rgba(255, 255, 255, 0.08);
         }
 
         .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 18px;
         }
 
         .form-label {
             display: block;
             font-size: 13px;
-            font-weight: 600;
-            color: #ddd;
+            font-weight: 700;
             margin-bottom: 8px;
+            color: var(--text-soft);
         }
 
         .form-input {
             width: 100%;
-            padding: 12px 16px;
-            background: #1a1a1a;
+            padding: 14px 15px;
+            border-radius: var(--radius-md);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            color: #fff;
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text);
             font-size: 14px;
-            transition: all 0.3s ease;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+        }
+
+        .form-input::placeholder {
+            color: #6f859a;
         }
 
         .form-input:focus {
             outline: none;
-            border-color: #e67e22;
-            box-shadow: 0 0 0 3px rgba(230, 126, 34, 0.1);
+            border-color: rgba(255, 122, 0, 0.72);
+            box-shadow: 0 0 0 4px rgba(255, 122, 0, 0.12);
+            background: rgba(255, 255, 255, 0.055);
         }
 
-        .form-input::placeholder {
-            color: #666;
+        .helper-text {
+            display: block;
+            margin-top: 7px;
+            color: var(--text-muted);
+            font-size: 12px;
+            line-height: 1.5;
         }
 
         .login-button {
-            width: 100%;
-            padding: 14px 20px;
-            background: linear-gradient(135deg, #e67e22 0%, #d35400 100%);
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 15px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            margin-top: 10px;
-            box-shadow: 0 4px 15px rgba(230, 126, 34, 0.3);
+            margin-top: 8px;
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text);
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         .login-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(230, 126, 34, 0.4);
-        }
-
-        .login-button:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .error-message {
-            background: rgba(220, 53, 69, 0.1);
-            border: 1px solid rgba(220, 53, 69, 0.3);
-            color: #ff6b6b;
-            padding: 12px;
-            border-radius: 8px;
-            font-size: 13px;
-            margin-bottom: 20px;
-            display: none;
-        }
-
-        .error-message.show {
-            display: block;
+            box-shadow: 0 14px 24px rgba(0, 0, 0, 0.2);
         }
 
         .forgot-password {
-            text-align: center;
-            margin-top: 20px;
+            margin-top: 18px;
             font-size: 13px;
+            text-align: center;
         }
 
         .forgot-password a {
-            color: #e67e22;
+            color: var(--accent);
             text-decoration: none;
-            transition: color 0.3s ease;
+            font-weight: 600;
         }
 
         .forgot-password a:hover {
-            color: #d35400;
             text-decoration: underline;
         }
 
@@ -263,7 +417,7 @@
             display: inline-block;
             width: 16px;
             height: 16px;
-            border: 2px solid rgba(255, 255, 255, 0.3);
+            border: 2px solid rgba(255, 255, 255, 0.35);
             border-radius: 50%;
             border-top-color: white;
             animation: spin 0.8s linear infinite;
@@ -274,56 +428,137 @@
                 transform: rotate(360deg);
             }
         }
+
+        @media (max-width: 980px) {
+            .auth-shell {
+                grid-template-columns: 1fr;
+                max-width: 720px;
+            }
+
+            .brand-panel,
+            .auth-panel {
+                padding: 36px 30px;
+            }
+
+            .feature-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 640px) {
+            body {
+                padding: 16px;
+            }
+
+            .auth-shell {
+                border-radius: 22px;
+            }
+
+            .brand-panel,
+            .auth-panel {
+                padding: 28px 22px;
+            }
+
+            .brand-name {
+                font-size: 42px;
+            }
+
+            .auth-title {
+                font-size: 28px;
+            }
+        }
     </style>
 </head>
 
 <body>
-    <div class="login-container">
-        <div class="logo-section">
-            <div class="logo">
-                <div class="logo-icon">⚡</div>
-            </div>
-            <div class="logo-text">NOC CONFIG MAKER</div>
-            <div class="logo-subtitle">Network Operations Center Tool</div>
-        </div>
-
-        <h1 class="login-title">Sign in</h1>
-        <p class="login-subtitle">Enter your credentials to access the NOC Config Maker</p>
-
-        <div id="errorMessage" class="error-message"></div>
-
-        <button id="ssoButton" class="sso-button" onclick="signInWithMicrosoft()">
-            <div class="ms-icon">M</div>
-            Continue with Single Sign-On
-        </button>
-
-        <div class="divider">Prefer your credentials? Use the form below.</div>
-
-        <form id="loginForm" onsubmit="handleEmailLogin(event)">
-            <div class="form-group">
-                <label class="form-label" for="email">Email</label>
-                <input type="email" id="email" class="form-input" placeholder="user@team.nxlink.com"
-                    pattern=".*@team\.nxlink\.com" title="Only @team.nxlink.com email addresses are allowed" required
-                    autocomplete="email">
-                <small style="display: block; margin-top: 6px; color: #888; font-size: 12px;">
-                    Only @team.nxlink.com email addresses are allowed
-                </small>
+    <div class="auth-shell">
+        <section class="brand-panel">
+            <div class="brand-block">
+                <div class="brand-mark">NX</div>
+                <div class="brand-kicker">Connected network workspace</div>
+                <h1 class="brand-name">NEXUS</h1>
+                <div class="brand-subtitle">Unified Network Operations Platform</div>
             </div>
 
-            <div class="form-group">
-                <label class="form-label" for="password">Password</label>
-                <input type="password" id="password" class="form-input" placeholder="Enter your password" required
-                    autocomplete="current-password">
+            <div class="platform-copy">
+                <h2 class="platform-title">Unified Network Operations Platform</h2>
+                <p>
+                    A single platform for network devices, software updates, configurations, command workflows, and
+                    connected operational systems.
+                </p>
+                <p>
+                    NEXUS brings generation, validation, field execution, maintenance, and operational tooling into one
+                    workspace so teams can move across network workflows without losing context.
+                </p>
+
+                <div class="feature-grid">
+                    <article class="feature-card">
+                        <div class="feature-label">Device operations</div>
+                        <div class="feature-copy">Manage network device workflows across deployment, support, maintenance, and operational execution.</div>
+                    </article>
+                    <article class="feature-card">
+                        <div class="feature-label">Configurations</div>
+                        <div class="feature-copy">Generate, review, validate, compare, and standardize configurations from one shared platform.</div>
+                    </article>
+                    <article class="feature-card">
+                        <div class="feature-label">Command workflows</div>
+                        <div class="feature-copy">Keep operational commands, references, and execution tooling available from the same workspace.</div>
+                    </article>
+                    <article class="feature-card">
+                        <div class="feature-label">Connected systems</div>
+                        <div class="feature-copy">Work across integrated backend tools and operational systems through a single platform surface.</div>
+                    </article>
+                </div>
             </div>
 
-            <button type="submit" id="loginButton" class="login-button">
-                Log in
-            </button>
-        </form>
+            <div class="platform-footer">
+                A single platform for network devices, updates, configurations, command workflows, and connected systems.
+            </div>
+        </section>
 
-        <div class="forgot-password">
-            <a href="#" onclick="showForgotPassword(); return false;">Forgot your password?</a>
-        </div>
+        <section class="auth-panel">
+            <div class="auth-card">
+                <div class="auth-eyebrow">Access NEXUS</div>
+                <h2 class="auth-title">Sign in to NEXUS</h2>
+                <p class="auth-subtitle">
+                    Use your Microsoft account to access your workspace, or enter your email credentials below.
+                </p>
+
+                <div id="errorMessage" class="error-message"></div>
+                <button id="ssoButton" class="auth-button sso-button" onclick="signInWithMicrosoft()">
+                    <div class="ms-icon">M</div>
+                    Continue with Microsoft
+                </button>
+
+                <div class="divider">or</div>
+
+                <form id="loginForm" onsubmit="handleEmailLogin(event)">
+                    <div class="form-group">
+                        <label class="form-label" for="email">Email</label>
+                        <input type="email" id="email" class="form-input" placeholder="name@company.com"
+                            pattern=".*@team\.nxlink\.com" title="Only @team.nxlink.com email addresses are allowed" required
+                            autocomplete="email">
+                        <small class="helper-text">
+                            Use your `@team.nxlink.com` account for email sign-in.
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="password">Password</label>
+                        <input type="password" id="password" class="form-input" placeholder="Password" required
+                            autocomplete="current-password">
+                    </div>
+
+                    <button type="submit" id="loginButton" class="auth-button login-button">
+                        Sign in with email
+                    </button>
+                </form>
+
+                <div class="forgot-password">
+                    <a href="#" onclick="showForgotPassword(); return false;">Forgot your password?</a>
+                </div>
+            </div>
+        </section>
     </div>
 
     <script>
@@ -341,7 +576,7 @@
             }
         })();
 
-        // ── API Base URL detection (mirrors NOC-configMaker.html logic) ──
+        // API Base URL detection (mirrors NOC-configMaker.html logic)
         const _isFileProtocol = window.location.protocol === 'file:';
         const _isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         const _isLocalDev = _isFileProtocol || _isLocalhost;
@@ -374,50 +609,43 @@
             }
         };
 
-        // ── Handle SSO callback parameters ────────────────────────────
+        // Handle SSO callback parameters
         (function handleSSOCallback() {
             const params = new URLSearchParams(window.location.search);
 
-            // SSO error – show it and clean the URL
             const ssoError = params.get('sso_error');
             if (ssoError) {
                 window.history.replaceState({}, '', window.location.pathname);
-                // Defer so the DOM is ready
                 window.addEventListener('DOMContentLoaded', function () {
                     showError(ssoError);
                 });
                 return;
             }
 
-            // SSO success – store token + user info, then redirect
             const ssoToken = params.get('sso_token');
-            const ssoUser  = params.get('sso_user');
+            const ssoUser = params.get('sso_user');
             if (ssoToken && ssoUser) {
                 try {
                     const userObj = JSON.parse(ssoUser);
                     localStorage.setItem('auth_token', ssoToken);
                     localStorage.setItem('user_info', JSON.stringify(userObj));
-                    // Clean the URL and go to the main app
                     window.location.replace('NOC-configMaker.html');
-                    return; // prevent further page logic
+                    return;
                 } catch (e) {
                     console.error('Failed to parse SSO user info', e);
                 }
             }
         })();
 
-        // Check if user is already logged in
         window.addEventListener('DOMContentLoaded', function () {
             const token = localStorage.getItem('auth_token');
             const user = localStorage.getItem('user_info');
 
             if (token && user) {
-                // User is already logged in, redirect to main app
                 window.location.href = 'NOC-configMaker.html';
             }
         });
 
-        // Microsoft SSO Sign In
         async function signInWithMicrosoft() {
             const button = document.getElementById('ssoButton');
             const originalText = button.innerHTML;
@@ -425,9 +653,6 @@
             button.innerHTML = '<div class="loading"></div> Signing in...';
 
             try {
-                // For now, use a simplified approach - in production, use MSAL.js
-                // This will redirect to Microsoft login
-                // Use relative URL so it works through the launcher proxy
                 const response = await fetch(`${API_BASE}/api/auth/microsoft`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
@@ -451,7 +676,6 @@
             }
         }
 
-        // Email/Password Login
         async function handleEmailLogin(event) {
             event.preventDefault();
 
@@ -460,9 +684,8 @@
             const button = document.getElementById('loginButton');
             const originalText = button.innerHTML;
 
-            // Client-side domain validation
             if (!email.endsWith('@team.nxlink.com')) {
-                showError('Only @team.nxlink.com email addresses are allowed. Please use your company email (e.g., user@team.nxlink.com)');
+                showError('Only @team.nxlink.com email addresses are allowed. Please use your company email (for example, user@team.nxlink.com).');
                 return;
             }
 
@@ -471,14 +694,12 @@
             hideError();
 
             try {
-                // Use relative URL so it works through the launcher proxy
                 const response = await fetch(`${API_BASE}/api/auth/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email, password })
                 });
 
-                // Check if response is JSON before parsing
                 const contentType = response.headers.get('content-type');
                 if (!contentType || !contentType.includes('application/json')) {
                     const text = await response.text();
@@ -488,16 +709,12 @@
                 const data = await response.json();
 
                 if (response.ok && data.success) {
-                    // Store auth token and user info
                     localStorage.setItem('auth_token', data.token);
                     localStorage.setItem('user_info', JSON.stringify(data.user));
 
-                    // Check if password change is required
                     if (data.requiresPasswordChange) {
-                        // Redirect to password change page
                         window.location.href = 'change-password.html?firstLogin=true';
                     } else {
-                        // Redirect to main app
                         window.location.href = 'NOC-configMaker.html';
                     }
                 } else {
@@ -505,7 +722,6 @@
                 }
             } catch (error) {
                 console.error('Login Error:', error);
-                // Check if it's a backend connection error
                 let errorMessage = error.message || 'Invalid email or password. Please try again.';
                 if (error.message && (error.message.includes('502') || error.message.includes('503') || error.message.includes('504'))) {
                     errorMessage = 'Backend server is not ready. Please wait a moment and try again, or restart the application.';

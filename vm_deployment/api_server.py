@@ -54,6 +54,7 @@ import threading
 import queue
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 from ftth_renderer import render_ftth_config
 from typing import Optional
 try:
@@ -241,6 +242,90 @@ def _health_check_ido_backend():
         result['ok'] = False
         result['detail'] = f'IDO backend health check failed: {exc}'
     return result
+
+
+APP_VERSION_CONFIG_PATH = Path(__file__).parent / 'assets' / 'app-version.json'
+DEFAULT_APP_VERSION_CONFIG = {
+    'product': 'NEXUS',
+    'version_base': '2.6',
+    'build_offset': 0,
+    'release_date': 'Mar 2026',
+}
+
+
+def _load_app_version_config():
+    config = dict(DEFAULT_APP_VERSION_CONFIG)
+    try:
+        if APP_VERSION_CONFIG_PATH.exists():
+            payload = json.loads(APP_VERSION_CONFIG_PATH.read_text(encoding='utf-8'))
+            if isinstance(payload, dict):
+                config.update(payload)
+    except Exception as exc:
+        print(f"[APP] Failed to load app-version.json: {exc}")
+    return config
+
+
+def _git_metadata():
+    repo_root = Path(__file__).resolve().parent.parent
+    result = {'sha': None, 'count': None}
+    try:
+        sha = subprocess.run(
+            ['git', 'rev-parse', '--short', 'HEAD'],
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        if sha:
+            result['sha'] = sha
+    except Exception:
+        pass
+    try:
+        count_raw = subprocess.run(
+            ['git', 'rev-list', '--count', 'HEAD'],
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        if count_raw:
+            result['count'] = int(count_raw)
+    except Exception:
+        pass
+    return result
+
+
+def get_app_version_meta():
+    config = _load_app_version_config()
+    git_meta = _git_metadata()
+    product = os.getenv('NEXUS_APP_PRODUCT') or str(config.get('product') or 'NEXUS')
+    base = (os.getenv('NEXUS_APP_VERSION_BASE') or str(config.get('version_base') or '2.6')).strip().lstrip('v')
+    release_date = (os.getenv('NEXUS_APP_RELEASE_DATE') or str(config.get('release_date') or get_cst_now().strftime('%b %Y'))).strip()
+
+    explicit_version = (os.getenv('NEXUS_APP_VERSION') or '').strip()
+    build_number_raw = os.getenv('NEXUS_APP_BUILD_NUMBER')
+    if build_number_raw not in (None, ''):
+        try:
+            build_number = max(int(build_number_raw), 0)
+        except ValueError:
+            build_number = 0
+    else:
+        git_count = git_meta.get('count')
+        build_offset = int(config.get('build_offset', 0) or 0)
+        build_number = max((git_count or build_offset) - build_offset, 0)
+
+    version = explicit_version or f"v{base}.{build_number}"
+    git_sha = (os.getenv('NEXUS_APP_GIT_SHA') or git_meta.get('sha') or '').strip() or None
+
+    return {
+        'product': product,
+        'version': version,
+        'version_base': base,
+        'build_number': build_number,
+        'release_date': release_date,
+        'git_sha': git_sha,
+        'environment': os.getenv('NOC_ENVIRONMENT', 'production'),
+    }
 
 
 from pathlib import Path
@@ -13162,11 +13247,21 @@ def health():
     return jsonify({
         'status': 'online',
         'degraded': degraded,
+        'app': get_app_version_meta(),
         'ai_provider': AI_PROVIDER,
         'api_key_configured': bool(OPENAI_API_KEY) if AI_PROVIDER == 'openai' else None,
         'timestamp': get_cst_timestamp(),
         'message': 'Unified backend (api_server.py) is online and ready',
         'checks': checks,
+    })
+
+
+@app.route('/api/version', methods=['GET'])
+def app_version():
+    return jsonify({
+        'success': True,
+        **get_app_version_meta(),
+        'timestamp': get_cst_timestamp(),
     })
 
 
@@ -13178,6 +13273,7 @@ def health():
 _API_REGISTRY = [
     # ── Health & System ──
     {"method": "GET",  "path": "/api/health",               "category": "Health & System",   "summary": "Server alive + AI provider status"},
+    {"method": "GET",  "path": "/api/version",              "category": "Health & System",   "summary": "Resolved app version metadata"},
     {"method": "GET",  "path": "/api/app-config",            "category": "Health & System",   "summary": "Runtime config (BNG peers, defaults)"},
     {"method": "GET",  "path": "/api/infrastructure",        "category": "Health & System",   "summary": "Infrastructure defaults (DNS, RADIUS, SNMP)", "auth": True},
     {"method": "POST", "path": "/api/reload-training",       "category": "Health & System",   "summary": "Hot-reload AI training rules"},
@@ -13305,7 +13401,7 @@ def api_docs():
 
     return jsonify({
         'success': True,
-        'version': '1.0.0',
+        'version': '2.6.0',
         'total_endpoints': len(_API_REGISTRY),
         'filtered': len(endpoints),
         'categories': categories,

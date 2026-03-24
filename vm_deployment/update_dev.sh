@@ -17,6 +17,15 @@ ok()   { echo -e "${GREEN}[OK]   $*${NC}"; }
 DEV_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$DEV_DIR"
 
+generate_version_env() {
+  info "Generating app version metadata..."
+  python3 "$DEV_DIR/vm_deployment/generate_version_env.py" --output "$DEV_DIR/.version.env" >/dev/null
+  set -a
+  . "$DEV_DIR/.version.env"
+  set +a
+  ok "App version: ${NEXUS_APP_VERSION:-unknown}"
+}
+
 echo "=========================================="
 echo "NOC Config Maker – DEV Update"
 echo "Dir: $DEV_DIR"
@@ -29,6 +38,7 @@ git pull origin main --ff-only
 ok "Code updated to $(git rev-parse --short HEAD)"
 
 # ── 2. Rebuild and restart dev containers ──
+generate_version_env
 info "Rebuilding dev containers..."
 docker compose up -d --build
 ok "Dev stack rebuilt and restarted"

@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NOC Operations Config Suite</title>
+    <title>NEXUS</title>
     <meta name="theme-color" content="#ff7a00">
     <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
     <meta http-equiv="Pragma" content="no-cache">
@@ -344,7 +344,7 @@
             background: linear-gradient(135deg, var(--accent-color) 0%, var(--button-hover) 100%);
             border-radius: 6px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 14px; color: #fff; font-weight: bold;
+            font-size: 11px; color: #fff; font-weight: 800; letter-spacing: 0.08em;
             box-shadow: 0 2px 8px rgba(0,0,0,0.25);
         }
         .sidebar-logo-text {
@@ -1835,6 +1835,38 @@
         .dashboard-header p {
             color: #999;
             font-size: 14px;
+        }
+
+        .dashboard-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 16px;
+        }
+
+        .dashboard-meta-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: var(--container-bg);
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .dashboard-meta-label {
+            font-size: 11px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--text-color-secondary);
+            font-weight: 700;
+        }
+
+        .dashboard-meta-value {
+            font-size: 12px;
+            color: var(--text-color);
+            font-weight: 700;
         }
 
         .metrics-row {
@@ -3565,13 +3597,13 @@
         <!-- Sidebar Navigation -->
         <aside class="app-sidebar" id="appSidebar">
             <div class="sidebar-logo">
-                <div class="sidebar-logo-icon">N</div>
-                <div class="sidebar-logo-text">NOC Config Suite<span class="sub">Network Operations Center</span></div>
+                <div class="sidebar-logo-icon">NX</div>
+                <div class="sidebar-logo-text">NEXUS<span class="sub">Unified Network Operations Platform</span></div>
                 <button type="button" class="sidebar-pin-btn" id="sidebarPinBtn" aria-label="Pin sidebar" aria-pressed="false" title="Pin sidebar">
                     <span class="sidebar-pin-icon">&#128204;</span>
                 </button>
             </div>
-            <div class="sidebar-version"><span class="ver-tag" id="appVersionBadge">v2.5.0</span> <span id="appVersionDate">Mar 2026</span></div>
+            <div class="sidebar-version"><span class="ver-tag" id="appVersionBadge">v2.6.0</span> <span id="appVersionDate">Mar 2026</span></div>
             <div class="sidebar-scroll">
                 <div class="sidebar-section-label">Main</div>
                 <div class="sb-item active" data-sb-tab="home" data-tooltip="Home">
@@ -3776,7 +3808,7 @@
                 <div class="header-status" id="globalUpdatedPill" title="App version">
                     <span class="status-dot" id="globalUpdatedDot" style="width: 6px; height: 6px;"></span>
                     <span class="status-kv"><span class="k">Version</span><span class="v"
-                            id="globalUpdatedAt">v2.5.0</span></span>
+                            id="globalUpdatedAt">v2.6.0</span></span>
                 </div>
                 <button class="toggle-dark" id="settingsBtn"
                     onclick="window.openSettingsModal && window.openSettingsModal()"
@@ -3850,8 +3882,22 @@
             <div class="content-pane active" id="home-pane">
                 <div class="dashboard-container">
                     <div class="dashboard-header">
-                    <h1>Welcome to NOC Operations Config Suite</h1>
-                        <p>Network operations configuration and management tool</p>
+                    <h1>Welcome to NEXUS</h1>
+                        <p>A single platform for network devices, updates, configurations, command workflows, and connected operational systems.</p>
+                        <div class="dashboard-meta">
+                            <div class="dashboard-meta-pill">
+                                <span class="dashboard-meta-label">Release</span>
+                                <span class="dashboard-meta-value" id="homeReleaseVersion">v2.6.0</span>
+                            </div>
+                            <div class="dashboard-meta-pill">
+                                <span class="dashboard-meta-label">Updated</span>
+                                <span class="dashboard-meta-value" id="homeReleaseDate">Mar 2026</span>
+                            </div>
+                            <div class="dashboard-meta-pill">
+                                <span class="dashboard-meta-label">Workspace</span>
+                                <span class="dashboard-meta-value">Devices, configs, commands</span>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Executive status strip (minimal) -->
@@ -3867,9 +3913,9 @@
                     <div class="announcements-section">
                         <h2 class="announcements-title">Current Announcements</h2>
                         <div class="announcement-card" id="announcementsContainer">
-                            <h3>Welcome!</h3>
-                            <p>Welcome to NOC Operations Config Suite (Multi-Use Configuration Generator)!</p>
-                            <p>Use the generators, helpers, and operational tools from the tabs below.</p>
+                            <h3>Unified Network Operations Platform</h3>
+                            <p>NEXUS brings generation, validation, field execution, maintenance, and operational tooling into one workspace so teams can move across network workflows without losing context.</p>
+                            <p>Use the generators, device tools, command workflows, and connected operational systems from the navigation to move between planning, execution, and support in one place.</p>
                         </div>
                     </div>
 
@@ -9826,6 +9872,67 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
 
         window.AI_API_BASE = `${API_BASE}/api`;
         const AI_API_BASE = window.AI_API_BASE; // Local alias for backward compatibility
+        const DEFAULT_APP_VERSION_META = {
+            product: 'NEXUS',
+            version: 'v2.6.0',
+            releaseDate: 'Mar 2026'
+        };
+        window.APP_VERSION_META = { ...DEFAULT_APP_VERSION_META };
+
+        function getUiAssetUrl(path) {
+            const cleanedPath = String(path || '').replace(/^\/+/, '');
+            if (window.location.protocol === 'file:') return cleanedPath;
+            return `${window.location.origin}/${cleanedPath}`;
+        }
+
+        function applyAppVersionMeta(meta) {
+            const resolvedMeta = {
+                ...DEFAULT_APP_VERSION_META,
+                ...(meta || {})
+            };
+            window.APP_VERSION_META = resolvedMeta;
+
+            ['appVersionBadge', 'globalUpdatedAt', 'homeReleaseVersion'].forEach((id) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = resolvedMeta.version;
+            });
+
+            ['appVersionDate', 'homeReleaseDate'].forEach((id) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = resolvedMeta.releaseDate;
+            });
+        }
+
+        async function loadAppVersionMeta() {
+            try {
+                const apiResponse = await fetch(`${resolveApiBase()}/version`, { cache: 'no-store' });
+                if (!apiResponse.ok) throw new Error(`HTTP ${apiResponse.status}`);
+                const data = await apiResponse.json();
+                applyAppVersionMeta({
+                    product: data.product,
+                    version: data.version,
+                    releaseDate: data.release_date
+                });
+            } catch (error) {
+                console.warn('[APP] Failed to load API version metadata, falling back to asset file:', error);
+                try {
+                    const response = await fetch(getUiAssetUrl('assets/app-version.json'), { cache: 'no-store' });
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    const data = await response.json();
+                    applyAppVersionMeta({
+                        product: data.product,
+                        version: data.version || `v${String(data.version_base || '2.6').replace(/^v/, '')}.0`,
+                        releaseDate: data.release_date || DEFAULT_APP_VERSION_META.releaseDate
+                    });
+                } catch (fallbackError) {
+                    console.warn('[APP] Failed to load asset version metadata, using defaults:', fallbackError);
+                    applyAppVersionMeta(DEFAULT_APP_VERSION_META);
+                }
+            }
+        }
+
+        applyAppVersionMeta(DEFAULT_APP_VERSION_META);
+        loadAppVersionMeta();
 
         function resolveApiBase() {
             const raw = (typeof AI_API_BASE !== 'undefined' ? AI_API_BASE : window.AI_API_BASE) || '/api';
@@ -9910,9 +10017,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
         function updateHomeStatusStrip(health, backendOnline) {
             const online = !!backendOnline;
             setStatusPill('homeStatusUpdated', 'homeStatusUpdatedValue', online ? '' : 'err', new Date().toLocaleString());
-
-            const globalUpdatedAt = document.getElementById('globalUpdatedAt');
-            if (globalUpdatedAt) globalUpdatedAt.textContent = 'v2.5.0';
+            applyAppVersionMeta(window.APP_VERSION_META);
 
             const globalPill = document.getElementById('globalUpdatedPill');
             if (globalPill) {
@@ -9983,7 +10088,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             `;
             warningBanner.innerHTML = `
                  Backend server is offline. The application may not function properly.
-                <br><small>Please ensure NOC-ConfigMaker.exe is running and check the console window for errors.</small>
+                <br><small>Please ensure the NEXUS application is running and check the console window for errors.</small>
             `;
             document.body.insertBefore(warningBanner, document.body.firstChild);
 
@@ -10124,11 +10229,149 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             });
         }
 
+        const TOOL_ROUTE_DEFINITIONS = {
+            'home': { tabId: 'home', label: 'Home Dashboard', desc: 'Return to home' },
+            'tower': { tabId: 'tower', label: 'MikroTik Config Generator', desc: 'Full BGP/OSPF/MPLS tower config' },
+            'enterprise': { tabId: 'enterprise', label: 'Non-MPLS Enterprise', desc: 'Simplified enterprise configs' },
+            'enterprise-mpls': { tabId: 'enterprise-mpls', label: 'MPLS Enterprise', desc: 'Enterprise with MPLS/OSPF/BGP' },
+            'tarana': { tabId: 'tarana', label: 'Tarana Sectors', desc: 'ALPHA/BETA/GAMMA/DELTA sectors' },
+            'enterprise-feeding': { tabId: 'enterprise-feeding', label: 'Enterprise Feeding', desc: 'Commercial uplink provisioning' },
+            'ccr2004': { tabId: 'ccr2004', label: '6GHz Switch Port', desc: '6 GHz switch port templates' },
+            'switch-maker': { tabId: 'switch-maker', label: 'MikroTik Switch Maker', desc: 'Switch config builder' },
+            'field-config-studio': { tabId: 'field-config-studio', label: 'Device Config Studio', desc: 'Field device configuration workspace' },
+            'nokia7250-maker': { tabId: 'nokia7250-maker', label: 'Nokia Configurator', desc: 'Unified Nokia configuration workspace' },
+            'mikrotik-to-nokia': { tabId: 'mikrotik-to-nokia', label: 'Nokia Migration', desc: 'MikroTik to Nokia conversion' },
+            'aviat-backhaul': { tabId: 'aviat-backhaul', label: 'Aviat Backhaul Updater', desc: 'Firmware upgrade and maintenance workflow' },
+            'ftth-home': { tabId: 'ftth-home', label: 'FTTH Configurator', desc: 'FTTH OLT and BNG workspaces' },
+            'ftth-home:olt': { tabId: 'ftth-home', subtab: 'olt', label: 'FTTH OLT Configuration', desc: 'OLT configuration workspace' },
+            'ftth-home:bng': { tabId: 'ftth-home', subtab: 'bng', label: 'FTTH BNG Configuration', desc: 'BNG configuration workspace' },
+            'ftth-home:fiber': { tabId: 'ftth-home', subtab: 'fiber', label: 'FTTH Fiber Customer', desc: 'Fiber customer handoff configuration' },
+            'ftth-home:fiber-site': { tabId: 'ftth-home', subtab: 'fiber-site', label: 'FTTH Fiber Site', desc: '1072 and 1036 fiber site configuration' },
+            'ftth-home:isd-fiber': { tabId: 'ftth-home', subtab: 'isd-fiber', label: 'FTTH ISD Fiber', desc: 'ISD fiber configuration workspace' },
+            'command-vault': { tabId: 'command-vault', label: 'Command Vault', desc: 'Nokia, Cisco, and MikroTik command references' },
+            'command-vault:nokia': { tabId: 'command-vault', subtab: 'nokia', label: 'Command Vault Nokia', desc: 'Nokia command references' },
+            'command-vault:cisco': { tabId: 'command-vault', subtab: 'cisco', label: 'Command Vault Cisco', desc: 'Cisco command references' },
+            'command-vault:mikrotik': { tabId: 'command-vault', subtab: 'mikrotik', label: 'Command Vault MikroTik', desc: 'MikroTik command references' },
+            'cisco-config': { tabId: 'cisco-config', label: 'Cisco Port Setup', desc: 'Cisco port and OSPF handoff generator' },
+            'config-diff': { tabId: 'config-diff', label: 'Config Diff Viewer', desc: 'Side-by-side config comparison' },
+            'bulk-config': { tabId: 'bulk-config', label: 'Bulk Operations Center', desc: 'Generate, fetch, and migrate at scale' },
+            'maintenance': { tabId: 'maintenance', label: 'Scheduled Maintenance', desc: 'Plan and track maintenance windows' },
+            'compliance-scanner': { tabId: 'compliance-scanner', label: 'Compliance Scanner', desc: 'Bulk compliance audit workspace' },
+            'completed-configs': { tabId: 'completed-configs', label: 'Completed Configs', desc: 'Saved configuration archive' },
+            'log-history': { tabId: 'log-history', label: 'Log History', desc: 'Activity and configuration history' },
+            'admin-panel': { tabId: 'admin-panel', label: 'Admin Panel', desc: 'Feedback and user management' }
+        };
+
+        const CONFIG_TYPE_ROUTE_MAP = {
+            'tower': TOOL_ROUTE_DEFINITIONS['tower'],
+            'bng2': TOOL_ROUTE_DEFINITIONS['tower'],
+            'enterprise': TOOL_ROUTE_DEFINITIONS['enterprise'],
+            'mpls-enterprise': TOOL_ROUTE_DEFINITIONS['enterprise-mpls'],
+            'tarana': TOOL_ROUTE_DEFINITIONS['tarana'],
+            'switch-config': TOOL_ROUTE_DEFINITIONS['switch-maker'],
+            'upgrade': TOOL_ROUTE_DEFINITIONS['aviat-backhaul'],
+            'migration': TOOL_ROUTE_DEFINITIONS['mikrotik-to-nokia'],
+            'nokia-7250': TOOL_ROUTE_DEFINITIONS['nokia7250-maker'],
+            'ftth-bng': TOOL_ROUTE_DEFINITIONS['ftth-home:bng'],
+            'ftth-fiber-customer': TOOL_ROUTE_DEFINITIONS['ftth-home:fiber'],
+            'ftth-fiber-site': TOOL_ROUTE_DEFINITIONS['ftth-home:fiber-site'],
+            'ftth-isd-fiber': TOOL_ROUTE_DEFINITIONS['ftth-home:isd-fiber'],
+            'cisco-interface': TOOL_ROUTE_DEFINITIONS['cisco-config'],
+            'ssh-fetch': TOOL_ROUTE_DEFINITIONS['bulk-config']
+        };
+
+        const ACTIVITY_TYPE_ROUTE_MAP = {
+            'migration': TOOL_ROUTE_DEFINITIONS['mikrotik-to-nokia'],
+            'upgrade': TOOL_ROUTE_DEFINITIONS['aviat-backhaul'],
+            'new-config': TOOL_ROUTE_DEFINITIONS['completed-configs'],
+            'tower': TOOL_ROUTE_DEFINITIONS['tower'],
+            'bng2': TOOL_ROUTE_DEFINITIONS['tower'],
+            'tower-config': TOOL_ROUTE_DEFINITIONS['tower'],
+            'enterprise-config': TOOL_ROUTE_DEFINITIONS['enterprise'],
+            'enterprise-Non-MPLS': TOOL_ROUTE_DEFINITIONS['enterprise'],
+            'enterprise-non-mpls': TOOL_ROUTE_DEFINITIONS['enterprise'],
+            'generated enterprise config': TOOL_ROUTE_DEFINITIONS['enterprise'],
+            'mpls-enterprise-config': TOOL_ROUTE_DEFINITIONS['enterprise-mpls'],
+            'generated mpls enterprise config': TOOL_ROUTE_DEFINITIONS['enterprise-mpls'],
+            'switch': TOOL_ROUTE_DEFINITIONS['switch-maker'],
+            'switch-config': TOOL_ROUTE_DEFINITIONS['switch-maker'],
+            '6ghz-switch-config': TOOL_ROUTE_DEFINITIONS['ccr2004'],
+            'tarana-config': TOOL_ROUTE_DEFINITIONS['tarana'],
+            'enterprise-feeding-config': TOOL_ROUTE_DEFINITIONS['enterprise-feeding'],
+            'enterprise-feeding-outstate-config': TOOL_ROUTE_DEFINITIONS['enterprise-feeding'],
+            'aviat-upgrade': TOOL_ROUTE_DEFINITIONS['aviat-backhaul'],
+            'nokia-7250-config': TOOL_ROUTE_DEFINITIONS['nokia7250-maker'],
+            'ftth-bng': TOOL_ROUTE_DEFINITIONS['ftth-home:bng'],
+            'ftth-fiber-customer': TOOL_ROUTE_DEFINITIONS['ftth-home:fiber'],
+            'ftth-fiber-site': TOOL_ROUTE_DEFINITIONS['ftth-home:fiber-site'],
+            'ftth-isd-fiber': TOOL_ROUTE_DEFINITIONS['ftth-home:isd-fiber'],
+            'cisco-config': TOOL_ROUTE_DEFINITIONS['cisco-config'],
+            'maintenance-scheduled': TOOL_ROUTE_DEFINITIONS['maintenance'],
+            'maintenance-started': TOOL_ROUTE_DEFINITIONS['maintenance'],
+            'maintenance-completed': TOOL_ROUTE_DEFINITIONS['maintenance'],
+            'maintenance-failed': TOOL_ROUTE_DEFINITIONS['maintenance']
+        };
+
+        function makeRouteKey(tabId, subtab) {
+            return subtab ? `${tabId}:${subtab}` : tabId;
+        }
+
+        function beautifyTypeLabel(value) {
+            return String(value || 'activity').replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+        }
+
+        function getToolRouteDefinition(tabId, subtab = null) {
+            return TOOL_ROUTE_DEFINITIONS[makeRouteKey(tabId, subtab)] || TOOL_ROUTE_DEFINITIONS[tabId] || null;
+        }
+
+        function getConfigRoute(configType) {
+            const rawValue = String(configType || '').trim();
+            const normalized = rawValue.toLowerCase();
+            if (CONFIG_TYPE_ROUTE_MAP[rawValue]) return CONFIG_TYPE_ROUTE_MAP[rawValue];
+            if (CONFIG_TYPE_ROUTE_MAP[normalized]) return CONFIG_TYPE_ROUTE_MAP[normalized];
+            if (normalized.startsWith('nokia-')) return TOOL_ROUTE_DEFINITIONS['nokia7250-maker'];
+            return null;
+        }
+
+        function getActivityRoute(activityType) {
+            const rawValue = String(activityType || '').trim();
+            const normalized = rawValue.toLowerCase();
+            if (ACTIVITY_TYPE_ROUTE_MAP[rawValue]) return ACTIVITY_TYPE_ROUTE_MAP[rawValue];
+            if (ACTIVITY_TYPE_ROUTE_MAP[normalized]) return ACTIVITY_TYPE_ROUTE_MAP[normalized];
+            if (normalized.startsWith('nokia-')) return TOOL_ROUTE_DEFINITIONS['nokia7250-maker'];
+            return null;
+        }
+
+        function getConfigTypeDisplayName(configType) {
+            const normalized = String(configType || '').trim().toLowerCase();
+            if (normalized === 'bng2') return 'BNG2 Configuration';
+            if (normalized === 'tower') return 'Tower Configuration';
+            if (normalized.startsWith('nokia-7210-')) return 'Nokia 7210 Configuration';
+            if (normalized.startsWith('nokia-7750-')) return 'Nokia 7750 Configuration';
+            if (normalized.startsWith('nokia-7250')) return 'Nokia Configurator';
+            return getConfigRoute(configType)?.label || beautifyTypeLabel(configType);
+        }
+
+        function navigateToToolRoute(route) {
+            if (!route || typeof window.navigateToTab !== 'function') return false;
+            window.navigateToTab(route.tabId);
+            if (route.tabId === 'ftth-home' && route.subtab && typeof window.showFtthHomeSubTab === 'function') {
+                window.showFtthHomeSubTab(route.subtab);
+            }
+            if (route.tabId === 'command-vault' && route.subtab && typeof window.showCommandVaultSubTab === 'function') {
+                window.showCommandVaultSubTab(route.subtab);
+            }
+            return true;
+        }
+        window.navigateToToolRoute = navigateToToolRoute;
+
         /* ── Activity display helpers (shared across Home, Log History, etc.) ── */
         function getActivityDisplay(type, siteName) {
             const map = {
                 'migration':            { icon: '\u{1F504}', label: 'Migration' },
                 'new-config':           { icon: '\u{1F4C4}', label: 'Config Generated' },
+                'tower':                { icon: '\u{1F4E1}', label: 'Tower Configuration' },
+                'bng2':                 { icon: '\u{1F310}', label: 'BNG2 Configuration' },
                 'tower-config':         { icon: '\u{1F4E1}', label: 'Tower Config' },
                 'enterprise-config':    { icon: '\u{1F3E2}', label: 'Enterprise Config' },
                 'enterprise-Non-MPLS':  { icon: '\u{1F3E2}', label: 'Enterprise (Non-MPLS)' },
@@ -10141,12 +10384,20 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 'enterprise-feeding-outstate-config': { icon: '\u{1F3E2}', label: 'Enterprise Feeding Out-of-State' },
                 'aviat-upgrade':        { icon: '\u{2B06}', label: 'Aviat Backhaul Upgrade' },
                 'ftth-bng':             { icon: '\u{1F310}', label: 'FTTH BNG Config' },
+                'ftth-fiber-customer':  { icon: '\u{1F9F5}', label: 'FTTH Fiber Customer' },
+                'ftth-fiber-site':      { icon: '\u{1F3D7}', label: 'FTTH Fiber Site' },
+                'ftth-isd-fiber':       { icon: '\u{1F9F0}', label: 'FTTH ISD Fiber' },
+                'cisco-config':         { icon: '\u{1F4BB}', label: 'Cisco Port Setup' },
+                'nokia-7250-config':    { icon: '\u{1F5A5}', label: 'Nokia Configurator' },
+                'generated enterprise config': { icon: '\u{1F3E2}', label: 'Non-MPLS Enterprise' },
+                'generated mpls enterprise config': { icon: '\u{1F4C8}', label: 'MPLS Enterprise' },
+                'switch':               { icon: '\u{1F5A7}', label: 'Switch Config' },
                 'maintenance-scheduled':{ icon: '\u{1F4C5}', label: 'Maintenance Scheduled' },
                 'maintenance-started':  { icon: '\u{26A0}',  label: 'Maintenance Started' },
                 'maintenance-completed':{ icon: '\u2705',     label: 'Maintenance Completed' },
                 'maintenance-failed':   { icon: '\u274C',     label: 'Maintenance Failed' },
             };
-            return map[type] || { icon: '\u{1F4CB}', label: (type || 'activity').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) };
+            return map[type] || { icon: '\u{1F4CB}', label: getActivityRoute(type)?.label || beautifyTypeLabel(type) };
         }
 
         function buildFriendlyActivityTitle(type, siteName, device) {
@@ -11033,16 +11284,16 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 const username = userInfo.email || 'unknown';
 
                 await window.sendActivityToBackend({
-                    type: 'new-config',
+                    type: 'switch-config',
                     description: `Generated ${state === 'instate' ? 'IN-STATE' : 'OUT-OF-STATE'} ${profile.toUpperCase().replace('_', ' ')} MikroTik switch configuration: ${switchName}`,
                     device: metadata.switch_label || switchType,
                     routeros: routerOS,
-                    site: switchName,
+                    siteName: switchName,
                     username: username
                 });
 
                 await window.saveConfigToHistory({
-                    site: switchName,
+                    siteName: switchName,
                     device: metadata.switch_label || switchType,
                     routeros: routerOS,
                     config: config,
@@ -13632,16 +13883,9 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                             // If backend is unavailable, just navigate to the tab
                             alert('Migration completed. Config may have been downloaded already.');
                         });
-                } else if (type === 'aviat-upgrade') {
-                    window.navigateToTab?.('aviat-backhaul');
                 } else {
-                    // Navigate to saved configs tab and display the config
-                    window.navigateToTab?.('completed-configs');
-
-                    // Fetch and display the config
-                    if (id) {
-                        viewCompletedConfig(id);
-                    }
+                    const route = getActivityRoute(type) || TOOL_ROUTE_DEFINITIONS['log-history'];
+                    navigateToToolRoute(route);
                 }
 
                 // Close open nav/dropdowns after selection
@@ -18250,7 +18494,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
 
                     if (typeof saveConfigToHistory === 'function') {
                         saveConfigToHistory({
-                            type: (backendResult.configType === 'bng2') ? 'bng2' : 'new-config',
+                            type: backendResult.configType || 'tower',
                             device: targetDevice,
                             siteName: siteName,
                             routeros: targetRouterOS,
@@ -18272,7 +18516,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
 
                     if (typeof saveConfigToHistory === 'function' && !error?.validationBlocked) {
                         saveConfigToHistory({
-                            type: 'new-config',
+                            type: getSelectedMtConfigType() || 'tower',
                             device: targetDevice || 'Unknown',
                             siteName: siteName || 'Tower Config',
                             routeros: targetRouterOS || 'Unknown',
@@ -19737,7 +19981,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
 
                     // Track activity for live feed (BEFORE completing tracker)
                     console.log('[MPLS ENTERPRISE] Saving to history:', {
-                        type: 'new-config',
+                        type: 'generated mpls enterprise config',
                         device: routerboardDevice,
                         siteName: deviceName || customerCode || 'MPLS Enterprise',
                         routeros: routerosVersion,
@@ -19745,7 +19989,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     });
 
                     saveConfigToHistory({
-                        type: 'new-config',
+                        type: 'generated mpls enterprise config',
                         device: routerboardDevice,
                         siteName: deviceName || customerCode || 'MPLS Enterprise',
                         routeros: routerosVersion,
@@ -19767,7 +20011,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
 
                     // Still track as success (config was generated, just validation failed)
                     console.log('[MPLS ENTERPRISE] Saving to history (validation failed but config generated):', {
-                        type: 'new-config',
+                        type: 'generated mpls enterprise config',
                         device: routerboardDevice,
                         siteName: deviceName || customerCode || 'MPLS Enterprise',
                         routeros: routerosVersion,
@@ -19775,7 +20019,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     });
 
                     saveConfigToHistory({
-                        type: 'new-config',
+                        type: 'generated mpls enterprise config',
                         device: routerboardDevice,
                         siteName: deviceName || customerCode || 'MPLS Enterprise',
                         routeros: routerosVersion,
@@ -23281,6 +23525,7 @@ Ready for translation!`);
                         return;
                     }
 
+                    populateConfigTypeFilter(data.configs || []);
                     displayConfigsList(data.configs || []);
                     populateYearFilter(data.years || []);
                 })
@@ -23312,6 +23557,7 @@ Ready for translation!`);
                         listContainer.innerHTML = `<p style="color: red; text-align: center; padding: 20px;">Error: ${data.error}</p>`;
                         return;
                     }
+                    populateConfigTypeFilter(data.configs || []);
                     displayConfigsList(data.configs || []);
                 })
                 .catch(error => {
@@ -23347,12 +23593,16 @@ Ready for translation!`);
 
                 groupedByYear[year].forEach(config => {
                     const date = formatCSTTimestamp(config.created_at);
+                    const typeLabel = getConfigTypeDisplayName(config.config_type);
+                    const openToolButton = getConfigRoute(config.config_type)
+                        ? `<button onclick="event.stopPropagation(); openConfigRouteByType(${JSON.stringify(config.config_type || '')})" style="background: #FF9800; color: white; border: none; padding: 8px 15px; border-radius: 3px; cursor: pointer; margin-right: 5px;"> Open Tool</button>`
+                        : '';
                     html += `<div style="background: var(--output-bg); border: 1px solid var(--border-color); border-radius: 5px; padding: 15px; margin-bottom: 10px; cursor: pointer;" onclick="viewCompletedConfig(${config.id})">`;
                     html += `<div style="display: flex; justify-content: space-between; align-items: start;">`;
                     html += `<div style="flex: 1;">`;
-                    html += `<strong style="color: var(--text-color); font-size: 16px;">${config.config_type === 'tower' ? '' : config.config_type === 'enterprise' ? '' : ''} ${config.device_name || config.customer_code || 'Unnamed Config'}</strong>`;
+                    html += `<strong style="color: var(--text-color); font-size: 16px;">${config.device_name || config.customer_code || 'Unnamed Config'}</strong>`;
                     html += `<div style="color: var(--text-color-secondary); font-size: 14px; margin-top: 5px;">`;
-                    html += `<span>Type: ${config.config_type}</span> | `;
+                    html += `<span>Type: ${typeLabel}</span> | `;
                     html += `<span>Device: ${config.device_type || 'N/A'}</span> | `;
                     html += `<span>Created: ${date}</span>`;
                     html += `</div>`;
@@ -23364,8 +23614,9 @@ Ready for translation!`);
                     }
                     html += `</div>`;
                     html += `<div>`;
+                    html += openToolButton;
                     html += `<button onclick="event.stopPropagation(); downloadCompletedConfig(${config.id})" style="background: #4CAF50; color: white; border: none; padding: 8px 15px; border-radius: 3px; cursor: pointer; margin-right: 5px;"> Download</button>`;
-                    html += `<button onclick="event.stopPropagation(); downloadHistoryPortMap(${config.id})" style="background: #FF9800; color: white; border: none; padding: 8px 15px; border-radius: 3px; cursor: pointer; margin-right: 5px;" title="Download Port Map"> Port Map</button>`;
+                    html += `<button onclick="event.stopPropagation(); downloadHistoryPortMap(${config.id})" style="background: #B86B00; color: white; border: none; padding: 8px 15px; border-radius: 3px; cursor: pointer; margin-right: 5px;" title="Download Port Map"> Port Map</button>`;
                     html += `<button onclick="event.stopPropagation(); viewCompletedConfig(${config.id})" style="background: #2196F3; color: white; border: none; padding: 8px 15px; border-radius: 3px; cursor: pointer;"> View</button>`;
                     html += `</div>`;
                     html += `</div>`;
@@ -23395,6 +23646,39 @@ Ready for translation!`);
                 yearSelect.appendChild(option);
             });
         }
+
+        function populateConfigTypeFilter(configs) {
+            const typeSelect = document.getElementById('configTypeFilter');
+            if (!typeSelect) return;
+
+            const currentValue = typeSelect.value || '';
+            const types = Array.from(new Set((configs || []).map((config) => config.config_type).filter(Boolean))).sort();
+
+            typeSelect.innerHTML = '';
+            const allOption = document.createElement('option');
+            allOption.value = '';
+            allOption.textContent = 'All Types';
+            typeSelect.appendChild(allOption);
+
+            types.forEach((type) => {
+                const option = document.createElement('option');
+                option.value = type;
+                option.textContent = getConfigTypeDisplayName(type);
+                typeSelect.appendChild(option);
+            });
+
+            typeSelect.value = types.includes(currentValue) ? currentValue : '';
+        }
+
+        function openConfigRouteByType(configType) {
+            const route = getConfigRoute(configType);
+            if (!route) {
+                nocToast(`No tool route is registered for ${beautifyTypeLabel(configType)}`, 'warning');
+                return;
+            }
+            navigateToToolRoute(route);
+        }
+        window.openConfigRouteByType = openConfigRouteByType;
 
         function viewCompletedConfig(configId) {
             fetch(`${AI_API_BASE}/get-completed-config/${configId}`)
@@ -23450,6 +23734,10 @@ Ready for translation!`);
                         ? (data.default_config_variant && configVariants[data.default_config_variant] ? data.default_config_variant : Object.keys(configVariants)[0])
                         : null;
                     const initialConfig = hasVariants ? (configVariants[defaultVariant] || '') : (data.config_content || '');
+                    const route = getConfigRoute(data.config_type);
+                    const openToolButton = route
+                        ? `<button id="completedConfigRouteBtn" style="background: #FF9800; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-right: 10px;"> Open Tool</button>`
+                        : '';
                     const selectorMarkup = hasVariants ? `
                     <div style="margin: 12px 0 16px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                         <label for="completedConfigVariantSelect" style="color: var(--text-color-secondary); font-size: 13px;">Saved Output Format</label>
@@ -23466,12 +23754,21 @@ Ready for translation!`);
                     ${selectorMarkup}
                     <pre id="completedConfigContentView" style="background: var(--output-bg); padding: 20px; border-radius: 5px; overflow-x: auto; white-space: pre-wrap; font-family: monospace; font-size: 12px; max-height: 60vh; overflow-y: auto;"></pre>
                     <div style="margin-top: 20px;">
+                        ${openToolButton}
                         <button id="completedConfigCopyBtn" style="background: #2196F3; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-right: 10px;"> Copy Config</button>
                         <button id="completedConfigDownloadBtn" onclick="downloadCompletedConfig(${configId})" style="background: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;"> Download</button>
                     </div>
                 </div>
             `;
                     document.body.appendChild(modal);
+
+                    const routeBtn = modal.querySelector('#completedConfigRouteBtn');
+                    if (routeBtn && route) {
+                        routeBtn.addEventListener('click', () => {
+                            modal.remove();
+                            navigateToToolRoute(route);
+                        });
+                    }
 
                     if (hasVariants) {
                         const select = modal.querySelector('#completedConfigVariantSelect');
@@ -24092,6 +24389,29 @@ Ready for translation!`);
             if (typeof window.loadLogHistory === 'function') window.loadLogHistory();
         };
 
+        function populateLogTypeFilterOptions(activities) {
+            const select = document.getElementById('logTypeFilter');
+            if (!select) return;
+
+            const currentValue = select.value || '';
+            const types = Array.from(new Set((activities || []).map((activity) => activity?.type).filter(Boolean))).sort();
+
+            select.innerHTML = '';
+            const allOption = document.createElement('option');
+            allOption.value = '';
+            allOption.textContent = 'All Types';
+            select.appendChild(allOption);
+
+            types.forEach((type) => {
+                const option = document.createElement('option');
+                option.value = type;
+                option.textContent = getActivityDisplay(type).label;
+                select.appendChild(option);
+            });
+
+            select.value = types.includes(currentValue) ? currentValue : '';
+        }
+
         window.loadLogHistory = async function () {
             try {
                 const tableBody = document.getElementById('logHistoryTableBody');
@@ -24115,6 +24435,7 @@ Ready for translation!`);
                 console.log('[LOG HISTORY] Response received:', data);
 
                 if (data.success && data.activities && Array.isArray(data.activities)) {
+                    populateLogTypeFilterOptions(data.activities);
                     const userFilter = (document.getElementById('logUserFilter')?.value || '').toLowerCase();
                     const typeFilter = document.getElementById('logTypeFilter')?.value || '';
                     const dateFrom = document.getElementById('logDateFrom')?.value || '';
@@ -24595,24 +24916,14 @@ Ready for translation!`);
             // Navigate to activity details
             window.navigateToActivity = function (type, activityId) {
                 console.log(`[NAVIGATE] Type: ${type}, ID: ${activityId}`);
+                if (type === 'migration' || type === 'upgrade') {
+                    navigateToToolRoute(TOOL_ROUTE_DEFINITIONS['tower']);
+                    setTimeout(() => { if (typeof switchMode === 'function') switchMode('upgrade'); }, 120);
+                    return;
+                }
 
-                // Always navigate to Log History tab when clicking recent activity
-                navigateToTab('log-history');
-
-                // Optionally scroll to the specific activity if needed
-                setTimeout(() => {
-                    if (activityId) {
-                        // Try to highlight or scroll to the specific activity in log history
-                        const activityElement = document.querySelector(`[data-activity-id="${activityId}"]`);
-                        if (activityElement) {
-                            activityElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            activityElement.style.backgroundColor = 'rgba(230, 126, 34, 0.2)';
-                            setTimeout(() => {
-                                activityElement.style.backgroundColor = '';
-                            }, 2000);
-                        }
-                    }
-                }, 300);
+                const route = getActivityRoute(type) || TOOL_ROUTE_DEFINITIONS['log-history'];
+                navigateToToolRoute(route);
             };
 
             // ========================================
@@ -25235,7 +25546,7 @@ Ready for translation!`);
                 }
 
                 const activityPayload = {
-                    type: 'new-config',
+                    type: configType,
                     device: deviceType,
                     siteName: deviceName,
                     routeros: '',
@@ -26029,7 +26340,7 @@ Ready for translation!`);
                 if (typeof sendActivityToBackend === 'function' || typeof window.sendActivityToBackend === 'function') {
                     const activityFn = typeof sendActivityToBackend === 'function' ? sendActivityToBackend : window.sendActivityToBackend;
                     activityFn({
-                        type: 'new-config',
+                        type: 'nokia-7250-config',
                         device: 'Nokia 7250 IXR',
                         siteName: hostname,
                         routeros: '',
@@ -27655,7 +27966,7 @@ Ready for translation!`);
 
                 if (typeof window.sendActivityToBackend === 'function') {
                     window.sendActivityToBackend({
-                        type: 'new-config',
+                        type: 'ftth-fiber-customer',
                         device: 'MikroTik Fiber Customer',
                         siteName: provider,
                         routeros,
@@ -27868,7 +28179,7 @@ Ready for translation!`);
                 }
                 if (typeof window.sendActivityToBackend === 'function') {
                     window.sendActivityToBackend({
-                        type: 'new-config',
+                        type: 'ftth-fiber-site',
                         device: 'MikroTik 1072/1036 Fiber Site',
                         siteName: payload.tower_name,
                         routeros: payload.routeros_1072,
@@ -27960,7 +28271,7 @@ Ready for translation!`);
                 }
                 if (typeof window.sendActivityToBackend === 'function') {
                     window.sendActivityToBackend({
-                        type: 'new-config',
+                        type: 'ftth-isd-fiber',
                         device: 'MikroTik ISD Fiber',
                         siteName: payload.tower_name,
                         routeros: payload.routeros,
@@ -28084,7 +28395,7 @@ Ready for translation!`);
 
             if (typeof window.sendActivityToBackend === 'function') {
                 window.sendActivityToBackend({
-                    type: 'new-config',
+                    type: 'cisco-config',
                     device: 'Cisco',
                     siteName: desc,
                     routeros: '',
@@ -30139,6 +30450,33 @@ Ready for translation!`);
             { cat: 'Actions', icon: '', label: 'Log Out', desc: 'Sign out of your account', action: () => window.handleLogout && window.handleLogout() },
         ];
 
+        function getCommandPaletteItems() {
+            const combined = [...CMD_ITEMS];
+            const seen = new Set(combined.map((item) => `${item.cat}|${item.label}`));
+
+            document.querySelectorAll('#appSidebar .sb-item[data-sb-tab]').forEach((item) => {
+                const tabId = item.getAttribute('data-sb-tab');
+                const subtab = item.getAttribute('data-sb-subtab');
+                const route = getToolRouteDefinition(tabId, subtab);
+                if (!route) return;
+
+                const label = route.label || item.querySelector('.sb-item-label')?.textContent?.trim() || beautifyTypeLabel(makeRouteKey(tabId, subtab));
+                const dedupeKey = `Navigate|${label}`;
+                if (seen.has(dedupeKey)) return;
+                seen.add(dedupeKey);
+
+                combined.push({
+                    cat: 'Navigate',
+                    icon: '',
+                    label,
+                    desc: route.desc || 'Navigation item',
+                    action: () => navigateToToolRoute(route)
+                });
+            });
+
+            return combined;
+        }
+
         let cmdSelectedIdx = 0;
         let cmdFiltered = [];
 
@@ -30161,11 +30499,12 @@ Ready for translation!`);
             const results = document.getElementById('cmdPaletteResults');
             if (!results) return;
             const q = query.toLowerCase().trim();
-            cmdFiltered = q ? CMD_ITEMS.filter(i =>
+            const paletteItems = getCommandPaletteItems();
+            cmdFiltered = q ? paletteItems.filter(i =>
                 i.label.toLowerCase().includes(q) ||
                 i.desc.toLowerCase().includes(q) ||
                 i.cat.toLowerCase().includes(q)
-            ) : [...CMD_ITEMS];
+            ) : [...paletteItems];
 
             if (!cmdFiltered.length) {
                 results.innerHTML = '<div class="cmd-palette-empty"><div class="empty-icon"></div><p>No results for "<strong>' + query.replace(/</g, '&lt;') + '</strong>"</p></div>';

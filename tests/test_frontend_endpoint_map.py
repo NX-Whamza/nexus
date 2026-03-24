@@ -39,6 +39,7 @@ def test_frontend_endpoint_wiring_has_backend_routes():
     frontend_endpoints = {
         '/api/auth/verify',
         '/api/health',
+        '/api/version',
         '/api/app-config',
         '/api/preview-ftth-bng',
         '/api/generate-ftth-bng',
