@@ -81,9 +81,9 @@
 
         .auth-shell {
             width: 100%;
-            max-width: 1180px;
+            max-width: 1040px;
             display: grid;
-            grid-template-columns: 1.12fr 0.88fr;
+            grid-template-columns: 1.02fr 0.88fr;
             background: rgba(7, 15, 24, 0.76);
             border: 1px solid var(--panel-border);
             border-radius: var(--radius-xl);
@@ -94,14 +94,14 @@
 
         .brand-panel {
             position: relative;
-            padding: 54px 56px;
+            padding: 42px 44px;
             background:
                 linear-gradient(180deg, rgba(255, 122, 0, 0.08), transparent 35%),
                 linear-gradient(145deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            gap: 36px;
+            gap: 26px;
         }
 
         .brand-panel::after {
@@ -121,20 +121,20 @@
         }
 
         .brand-mark {
-            width: 78px;
-            height: 78px;
-            border-radius: 22px;
+            width: 66px;
+            height: 66px;
+            border-radius: 18px;
             display: grid;
             place-items: center;
             background:
                 linear-gradient(155deg, #ff9838, #ff7a00 58%, #cc5f00);
             box-shadow: 0 20px 44px rgba(255, 122, 0, 0.25);
             font-family: 'Space Grotesk', sans-serif;
-            font-size: 29px;
+            font-size: 24px;
             font-weight: 700;
             letter-spacing: 0.08em;
             color: #fff;
-            margin-bottom: 22px;
+            margin-bottom: 18px;
         }
 
         .brand-kicker {
@@ -155,71 +155,79 @@
 
         .brand-name {
             font-family: 'Space Grotesk', sans-serif;
-            font-size: clamp(42px, 5vw, 68px);
+            font-size: clamp(38px, 4.2vw, 56px);
             line-height: 0.94;
             letter-spacing: -0.04em;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
         }
 
         .brand-subtitle {
             color: var(--text-soft);
-            font-size: 17px;
+            font-size: 15px;
             font-weight: 500;
             letter-spacing: 0.01em;
-            margin-bottom: 22px;
+            margin-bottom: 18px;
         }
 
         .platform-title {
-            font-size: clamp(28px, 3vw, 40px);
-            line-height: 1.02;
+            font-size: clamp(24px, 2.4vw, 32px);
+            line-height: 1.08;
             letter-spacing: -0.03em;
-            margin-bottom: 18px;
-            max-width: 12ch;
+            margin-bottom: 14px;
+            max-width: 14ch;
         }
 
         .platform-copy p {
             color: var(--text-soft);
-            font-size: 15px;
-            line-height: 1.7;
+            font-size: 14px;
+            line-height: 1.65;
             max-width: 58ch;
-            margin-bottom: 26px;
+            margin-bottom: 20px;
+        }
+
+        .platform-lead {
+            color: var(--text);
+            font-size: 16px;
+            line-height: 1.55;
+            max-width: 42ch;
+            margin-bottom: 14px;
         }
 
         .feature-grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 16px;
+            gap: 12px;
         }
 
         .feature-card {
-            padding: 18px 18px 16px;
+            padding: 14px 14px 13px;
             border-radius: var(--radius-lg);
             background: rgba(255, 255, 255, 0.035);
             border: 1px solid rgba(255, 255, 255, 0.08);
-            min-height: 138px;
+            min-height: 110px;
         }
 
         .feature-label {
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 700;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
         }
 
         .feature-copy {
             color: var(--text-soft);
-            font-size: 13px;
-            line-height: 1.6;
+            font-size: 12px;
+            line-height: 1.5;
         }
 
         .platform-footer {
             color: var(--text-muted);
-            font-size: 13px;
-            line-height: 1.7;
+            font-size: 12px;
+            line-height: 1.6;
             max-width: 60ch;
         }
 
         .auth-panel {
-            padding: 54px 48px;
+            padding: 42px 38px;
             background: var(--panel);
             display: flex;
             align-items: center;
@@ -228,7 +236,7 @@
 
         .auth-card {
             width: 100%;
-            max-width: 400px;
+            max-width: 380px;
         }
 
         .auth-eyebrow {
@@ -482,10 +490,7 @@
 
             <div class="platform-copy">
                 <h2 class="platform-title">Unified Network Operations Platform</h2>
-                <p>
-                    A single platform for network devices, software updates, configurations, command workflows, and
-                    connected operational systems.
-                </p>
+                <p class="platform-lead">A single platform for network devices, updates, configurations, command workflows, and connected operational systems.</p>
                 <p>
                     NEXUS brings generation, validation, field execution, maintenance, and operational tooling into one
                     workspace so teams can move across network workflows without losing context.
@@ -512,7 +517,7 @@
             </div>
 
             <div class="platform-footer">
-                A single platform for network devices, updates, configurations, command workflows, and connected systems.
+                Built for network operations, engineering execution, and connected infrastructure workflows.
             </div>
         </section>
 
