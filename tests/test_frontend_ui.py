@@ -112,6 +112,17 @@ def test_switch_maker_uses_backend_profile_generator():
     assert 'sfp-sfpplus23' in content, 'Missing CRS326 bonded uplink default in switch UI wiring'
 
 
+def test_routerboard_identity_prefixes_are_normalized():
+    content = UI_FILE.read_text(encoding='utf-8')
+    assert 'function getMikroTikIdentityPrefix(modelValue, options = {})' in content, 'Missing shared MikroTik identity prefix helper in NOC-configMaker.html'
+    assert 'placeholder="RTR-MT2004.HALLETTSVILLE-NW-1"' in content, 'Missing MT-prefixed tower identity placeholder in NOC-configMaker.html'
+    assert 'RTR-${getMikroTikIdentityPrefix(deviceConfig.name, { style: \'family\' })}-1.${siteName}' in content, 'Missing RouterBOARD system identity auto-fill normalization in NOC-configMaker.html'
+    assert 'RTR-${getMikroTikIdentityPrefix(deviceConfig.name, { style: \'family\' })}-1.${this.value}' in content, 'Missing site-change RouterBOARD identity normalization in NOC-configMaker.html'
+    assert 'RTR-MTCCR-2004' not in content, 'Found stale malformed CCR2004 identity prefix in NOC-configMaker.html'
+    assert 'RTR-MTRB-5009' not in content, 'Found stale malformed RB5009 identity prefix in NOC-configMaker.html'
+    assert 'placeholder="RTR-2004.HALLETTSVILLE-NW-1"' not in content, 'Found stale tower identity placeholder without MT prefix in NOC-configMaker.html'
+
+
 def test_enterprise_uses_single_routerboard_source_of_truth():
     content = UI_FILE.read_text(encoding='utf-8')
     assert 'const ENTERPRISE_DEVICE_PROFILES =' in content, 'Missing shared enterprise device profile map in NOC-configMaker.html'
@@ -169,6 +180,7 @@ if __name__ == '__main__':
         test_ftth_modal_exists()
         test_ftth_speed_controls_and_backend_payload_hooks_exist()
         test_ftth_fiber_customer_and_cisco_generator_exist()
+        test_routerboard_identity_prefixes_are_normalized()
         test_enterprise_uses_single_routerboard_source_of_truth()
         test_nokia_configurator_is_truly_unified()
         test_sidebar_and_nokia_7250_layout_updates_exist()

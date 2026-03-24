@@ -1677,6 +1677,45 @@ def get_enterprise_device_profile(device_name: str):
     return ENTERPRISE_DEVICE_PROFILES['rb5009'].copy()
 
 
+def get_mikrotik_identity_prefix(device_name: str, compact: bool = False) -> str:
+    normalized = (device_name or '').strip().lower()
+    if normalized not in ENTERPRISE_DEVICE_PROFILES:
+        model_key = resolve_routerboard_model_key(device_name)
+        if model_key:
+            normalized = (ROUTERBOARD_MODELS.get(model_key, {}).get('series') or '').lower() or normalized
+
+    family_tokens = {
+        'ccr1036': 'MTCCR1036',
+        'ccr1072': 'MTCCR1072',
+        'ccr2004': 'MTCCR2004',
+        'ccr2116': 'MTCCR2116',
+        'ccr2216': 'MTCCR2216',
+        'rb1009': 'MTRB1009',
+        'rb2011': 'MTRB2011',
+        'rb5009': 'MTRB5009',
+    }
+    compact_tokens = {
+        'ccr1036': 'MT1036',
+        'ccr1072': 'MT1072',
+        'ccr2004': 'MT2004',
+        'ccr2116': 'MT2116',
+        'ccr2216': 'MT2216',
+        'rb1009': 'MT1009',
+        'rb2011': 'MT2011',
+        'rb5009': 'MT5009',
+    }
+    mapping = compact_tokens if compact else family_tokens
+    if normalized in mapping:
+        return mapping[normalized]
+
+    raw = re.sub(r'[^A-Z0-9]+', '', (device_name or '').strip().upper())
+    digits_match = re.search(r'(\d{3,4})', raw)
+    digits = digits_match.group(1) if digits_match else '2004'
+    if compact:
+        return f'MT{digits}'
+    return f"MT{raw or digits}"
+
+
 def _extract_used_physical_interfaces(config_text, source_device):
     known_ports = set(_all_device_ports(source_device))
     if not known_ports:
@@ -9143,7 +9182,7 @@ def gen_enterprise_non_mpls():
         snmp_community = data.get('snmp_community', 'CHANGE_ME')
         syslog_ip = data.get('syslog_ip')
         coords = data.get('coords')
-        identity = data.get('identity', f"RTR-{device}.AUTO-GEN")
+        identity = data.get('identity', f"RTR-{get_mikrotik_identity_prefix(device)}.AUTO-GEN")
         uplink_comment = data.get('uplink_comment', '').strip()  # Uplink comment/location for backhaul
 
         interface_roles = {

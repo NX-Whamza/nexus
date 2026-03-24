@@ -4308,7 +4308,7 @@
                             </div>
                             <div>
                                 <label for="mtRouterIdentity">Router Identity (Auto-generated)</label>
-                                <input type="text" id="mtRouterIdentity" placeholder="RTR-2004.HALLETTSVILLE-NW-1" readonly>
+                                <input type="text" id="mtRouterIdentity" placeholder="RTR-MT2004.HALLETTSVILLE-NW-1" readonly>
                             </div>
                             <div>
                                 <label for="mtLatitude">Latitude</label>
@@ -13113,7 +13113,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     const siteName = document.getElementById('siteName')?.value;
                     const systemName = document.getElementById('systemName');
                     if (siteName && systemName) {
-                        systemName.value = `RTR-${deviceConfig.name}-1.${siteName}`;
+                        systemName.value = `RTR-${getMikroTikIdentityPrefix(deviceConfig.name, { style: 'family' })}-1.${siteName}`;
                     }
                 }
             }
@@ -14368,7 +14368,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                             const deviceConfig = targetDevice && DEVICE_CONFIGS[targetDevice] ? DEVICE_CONFIGS[targetDevice] : DEVICE_CONFIGS.ccr2004;
 
                             // Auto-fill system identity with proper device name
-                            systemName.value = `RTR-${deviceConfig.name}-1.${this.value}`;
+                            systemName.value = `RTR-${getMikroTikIdentityPrefix(deviceConfig.name, { style: 'family' })}-1.${this.value}`;
                         }
                     });
                 }
@@ -15322,11 +15322,43 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 URL.revokeObjectURL(url);
             }
 
+            function getMikroTikIdentityPrefix(modelValue, options = {}) {
+                const style = options.style === 'compact' ? 'compact' : 'family';
+                const normalized = normalizeRouterModelToLegacy(modelValue);
+                const familyTokens = {
+                    ccr1036: 'MTCCR1036',
+                    ccr1072: 'MTCCR1072',
+                    ccr2004: 'MTCCR2004',
+                    ccr2116: 'MTCCR2116',
+                    ccr2216: 'MTCCR2216',
+                    rb1009: 'MTRB1009',
+                    rb2011: 'MTRB2011',
+                    rb5009: 'MTRB5009'
+                };
+                const compactTokens = {
+                    ccr1036: 'MT1036',
+                    ccr1072: 'MT1072',
+                    ccr2004: 'MT2004',
+                    ccr2116: 'MT2116',
+                    ccr2216: 'MT2216',
+                    rb1009: 'MT1009',
+                    rb2011: 'MT2011',
+                    rb5009: 'MT5009'
+                };
+                const mapping = style === 'compact' ? compactTokens : familyTokens;
+                if (mapping[normalized]) return mapping[normalized];
+
+                const raw = String(modelValue || '').trim().toUpperCase();
+                const digitsMatch = raw.match(/(\d{3,4})/);
+                const digits = digitsMatch ? digitsMatch[1] : '2004';
+                if (style === 'compact') return `MT${digits}`;
+
+                const rawToken = raw.replace(/[^A-Z0-9]+/g, '');
+                return `MT${rawToken || digits}`;
+            }
+
             function getMtModelTokenForIdentity(modelValue) {
-                const v = String(modelValue || '').trim().toLowerCase();
-                if (!v) return '2004';
-                const m = v.match(/(\d{3,4})/);
-                return m ? m[1] : '2004';
+                return getMikroTikIdentityPrefix(modelValue, { style: 'compact' });
             }
 
             function sanitizeSiteNameForIdentity(value) {
@@ -23035,33 +23067,7 @@ Ready for translation!`);
             const deviceNameField = document.getElementById('ent_deviceName');
 
             if (deviceType && customerCode) {
-                let devicePrefix = '';
-                switch (deviceType) {
-                    case 'ccr2004':
-                        devicePrefix = 'RTR-MTCCR-2004';
-                        break;
-                    case 'rb5009':
-                        devicePrefix = 'RTR-MTRB-5009';
-                        break;
-                    case 'ccr1036':
-                        devicePrefix = 'RTR-MTCCR1036';
-                        break;
-                    case 'rb1009':
-                        devicePrefix = 'RTR-MTRB1009';
-                        break;
-                    case 'rb2011':
-                        devicePrefix = 'RTR-MTRB2011';
-                        break;
-                    case 'ccr1072':
-                        devicePrefix = 'RTR-MTCCR1072';
-                        break;
-                    case 'ccr2216':
-                        devicePrefix = 'RTR-MTCCR2216';
-                        break;
-                    default:
-                        devicePrefix = 'RTR-MT';
-                }
-
+                const devicePrefix = `RTR-${getMikroTikIdentityPrefix(deviceType, { style: 'family' })}`;
                 deviceNameField.value = `${devicePrefix}.${customerCode}`;
             } else {
                 deviceNameField.value = '';

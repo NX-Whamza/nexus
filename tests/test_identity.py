@@ -75,6 +75,31 @@ def test_missing_identity_inserts_target():
     assert ("2004" in out) or ("CCR2004" in out) or ("CCR" in out)
 
 
+def test_enterprise_default_identity_uses_mt_prefix():
+    payload = {
+        "device": "RB5009",
+        "target_version": "7.19.4",
+        "public_cidr": "67.219.124.128/29",
+        "bh_cidr": "10.1.248.200/29",
+        "loopback_ip": "10.13.0.84/32",
+        "uplink_interface": "sfp-sfpplus1",
+        "public_port": "ether7",
+        "nat_port": "ether8",
+        "snmp_community": "TEST",
+        "uplink_comment": "TX-DELEON-NO-1",
+    }
+    r = client.post(
+        "/api/gen-enterprise-non-mpls",
+        data=json.dumps(payload),
+        content_type="application/json",
+    )
+    assert r.status_code == 200
+    body = r.get_json() or {}
+    assert body.get("success") is True
+    config_text = body.get("config") or ""
+    assert "set name=RTR-MTRB5009.AUTO-GEN" in config_text
+
+
 if __name__ == "__main__":
     # Run tests without pytest to avoid requiring extra deps in minimal dev envs.
     tests = [
@@ -82,6 +107,7 @@ if __name__ == "__main__":
         test_quoted_identity_with_space_keeps_and_rewrites,
         test_digits_only_identity_replaced,
         test_missing_identity_inserts_target,
+        test_enterprise_default_identity_uses_mt_prefix,
     ]
     ok = True
     for t in tests:
