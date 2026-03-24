@@ -185,6 +185,58 @@ def get_unix_timestamp():
     return int(get_utc_now().timestamp())
 
 
+def _health_check_secure_data():
+    secure_dir = ensure_secure_data_dir()
+    result = {
+        'name': 'secure_data',
+        'ok': True,
+        'path': str(secure_dir),
+        'detail': 'secure_data directory is writable',
+    }
+    probe_name = f".healthcheck_{os.getpid()}_{int(time.time())}"
+    probe_path = secure_dir / probe_name
+    try:
+        with open(probe_path, 'w', encoding='utf-8') as handle:
+            handle.write('ok')
+        probe_path.unlink(missing_ok=True)
+    except Exception as exc:
+        result['ok'] = False
+        result['detail'] = f'secure_data directory is not writable: {exc}'
+    return result
+
+
+def _health_check_ido_backend():
+    backend_url = _ido_backend_url()
+    result = {
+        'name': 'ido_backend',
+        'ok': True,
+        'configured': bool(backend_url),
+        'backend_url': backend_url,
+        'detail': 'IDO backend reachable',
+    }
+    if not backend_url:
+        result['ok'] = False
+        result['detail'] = 'IDO backend URL is not configured'
+        return result
+    try:
+        resp = requests.get(urljoin(backend_url.rstrip('/') + '/', 'health/full'), timeout=1.5)
+        result['status_code'] = resp.status_code
+        if resp.headers.get('content-type', '').lower().startswith('application/json'):
+            payload = resp.json()
+            result['payload'] = payload
+            result['ok'] = bool(payload.get('ok', resp.status_code == 200))
+            if not result['ok']:
+                result['detail'] = payload.get('missing_required_modules') or payload.get('detail') or 'IDO backend reported unhealthy'
+        else:
+            result['ok'] = resp.status_code == 200
+            if not result['ok']:
+                result['detail'] = f'IDO backend returned HTTP {resp.status_code}'
+    except Exception as exc:
+        result['ok'] = False
+        result['detail'] = f'IDO backend health check failed: {exc}'
+    return result
+
+
 from pathlib import Path
 # Import NextLink standards (for migration rules, error detection, etc.)
 from nextlink_standards import (
@@ -12274,13 +12326,19 @@ def health():
     Backend is considered 'online' if this endpoint responds.
     The backend will handle AI provider availability and fallbacks internally.
     """
-    # Backend is always 'online' if this endpoint responds
+    checks = [
+        _health_check_secure_data(),
+        _health_check_ido_backend(),
+    ]
+    degraded = any(not check.get('ok') for check in checks)
     return jsonify({
         'status': 'online',
+        'degraded': degraded,
         'ai_provider': AI_PROVIDER,
         'api_key_configured': bool(OPENAI_API_KEY) if AI_PROVIDER == 'openai' else None,
         'timestamp': get_cst_timestamp(),
-        'message': 'Unified backend (api_server.py) is online and ready'
+        'message': 'Unified backend (api_server.py) is online and ready',
+        'checks': checks,
     })
 
 

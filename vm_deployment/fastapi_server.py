@@ -65,6 +65,17 @@ def _str_to_bool(value: str) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
+def _startup_maintenance_delay_seconds(default: float = 2.0) -> float:
+    raw = (os.getenv("STARTUP_MAINTENANCE_DELAY_SECONDS") or "").strip()
+    if not raw:
+        return default
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        print(f"[STARTUP] Invalid STARTUP_MAINTENANCE_DELAY_SECONDS={raw!r}; using {default}s")
+        return default
+
+
 def _maybe_purge_bad_aviat_logs_on_startup() -> None:
     """
     Optional one-shot cleanup for known bad Aviat log entries.
@@ -128,9 +139,27 @@ def _maybe_purge_bad_aviat_logs_on_startup() -> None:
         print(f"[ACTIVITY] Auto-purge failed: {exc}")
 
 
+def _run_startup_maintenance() -> None:
+    delay_seconds = _startup_maintenance_delay_seconds()
+    if delay_seconds > 0:
+        time.sleep(delay_seconds)
+    _maybe_purge_bad_aviat_logs_on_startup()
+
+
 @app.on_event("startup")
 def _startup_maintenance() -> None:
-    _maybe_purge_bad_aviat_logs_on_startup()
+    mode = (os.getenv("STARTUP_MAINTENANCE_MODE") or "background").strip().lower()
+    if mode == "blocking":
+        print("[STARTUP] Running startup maintenance in blocking mode")
+        _run_startup_maintenance()
+        return
+
+    print("[STARTUP] Scheduling startup maintenance in background mode")
+    threading.Thread(
+        target=_run_startup_maintenance,
+        name="startup-maintenance",
+        daemon=True,
+    ).start()
 
 
 @app.get("/api/runtime")

@@ -105,11 +105,15 @@ AZURE_CLIENT_SECRET=PASTE_YOUR_CLIENT_SECRET_HERE
 # Deletes rows from secure_data/activity_log.db that match:
 # activity_type='aviat-upgrade' AND success=0 AND routeros_version=<FW>
 # and optional timestamp/user filters below.
-# AUTO_PURGE_BAD_AVIAT_LOGS=true
+# Default docker-compose value is false so startup never depends on this cleanup.
+# AUTO_PURGE_BAD_AVIAT_LOGS=false
 # AUTO_PURGE_BAD_AVIAT_LOGS_FROM=2026-02-02T04:00:00
 # AUTO_PURGE_BAD_AVIAT_LOGS_TO=2026-02-02T05:00:00
 # AUTO_PURGE_BAD_AVIAT_LOGS_USERNAME=whamza
 # AUTO_PURGE_BAD_AVIAT_LOGS_FW=0.0.0
+# Startup maintenance is background by default so health checks are not blocked.
+# STARTUP_MAINTENANCE_MODE=background
+# STARTUP_MAINTENANCE_DELAY_SECONDS=2
 
 # GitLab dynamic compliance (RFC-09-10-25)
 # When set, compliance rules are pulled live from the GitLab netforge/compliance repo
