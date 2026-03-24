@@ -27411,7 +27411,7 @@ Ready for translation!`);
         // ========================================
         // COMMAND VAULT
         // ========================================
-        window.showCommandVaultSubTab = function (tabKey) {
+        function setCommandVaultSubTabState(tabKey) {
             const sections = document.querySelectorAll('#command-vault-pane .command-vault-section');
             const tabs = document.querySelectorAll('#command-vault-pane .command-vault-tab');
             sections.forEach(section => {
@@ -27422,6 +27422,10 @@ Ready for translation!`);
             tabs.forEach(tab => {
                 tab.classList.toggle('active', tab.dataset.commandVaultTab === tabKey);
             });
+        }
+
+        window.showCommandVaultSubTab = function (tabKey) {
+            setCommandVaultSubTabState(tabKey);
         };
 
         window.filterNokiaVaultCommands = function () {
@@ -27478,8 +27482,8 @@ Ready for translation!`);
             if (!pane || pane.dataset.commandVaultInit === '1') return;
             pane.dataset.commandVaultInit = '1';
 
-            if (typeof window.showCommandVaultSubTab === 'function') {
-                window.showCommandVaultSubTab('nokia');
+            if (!pane.querySelector('.command-vault-section.active')) {
+                setCommandVaultSubTabState('nokia');
             }
             // Initialize Nokia sub-tab dropdown
             initNokiaVaultDropdown();
@@ -27709,7 +27713,7 @@ Ready for translation!`);
             ftthPane.remove();
         }
 
-        window.showFtthHomeSubTab = function (tabKey) {
+        function setFtthHomeSubTabState(tabKey) {
             const sections = document.querySelectorAll('#ftth-home-pane .ftth-home-section');
             const items = document.querySelectorAll('#ftth-home-pane .ftth-home-dropdown-item');
             const labelEl = document.getElementById('ftthHomeDropdownLabel');
@@ -27734,6 +27738,10 @@ Ready for translation!`);
             }
 
             if (window.repositionProgressTracker) window.repositionProgressTracker();
+        }
+
+        window.showFtthHomeSubTab = function (tabKey) {
+            setFtthHomeSubTabState(tabKey);
         };
 
         function initFtthHomeTabs() {
@@ -27771,7 +27779,9 @@ Ready for translation!`);
                 }
             });
 
-            window.showFtthHomeSubTab('olt');
+            if (!pane.querySelector('.ftth-home-section.active')) {
+                setFtthHomeSubTabState('olt');
+            }
         }
 
         window.generateFtthHomeZip = async function () {
@@ -32467,6 +32477,7 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
         const pinBtn = document.getElementById('sidebarPinBtn');
         if (!sidebar) return;
         const SIDEBAR_PIN_KEY = 'nocSidebarPinned';
+        const LAST_ROUTE_KEY = 'nexusLastRoute';
 
         function makeSidebarNodeFocusable(node) {
             if (!node || node.hasAttribute('tabindex')) return;
@@ -32496,6 +32507,30 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
                 return localStorage.getItem(SIDEBAR_PIN_KEY) === 'true';
             } catch (e) {
                 return false;
+            }
+        }
+
+        function storeLastRoute(tabId, subtab = null) {
+            try {
+                if (!tabId) return;
+                localStorage.setItem(LAST_ROUTE_KEY, JSON.stringify({ tabId, subtab: subtab || null }));
+            } catch (e) {
+                // ignore storage errors
+            }
+        }
+
+        function getStoredRoute() {
+            try {
+                const raw = localStorage.getItem(LAST_ROUTE_KEY);
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                if (!parsed || typeof parsed !== 'object') return null;
+                const tabId = typeof parsed.tabId === 'string' ? parsed.tabId.trim() : '';
+                const subtab = typeof parsed.subtab === 'string' ? parsed.subtab.trim() : null;
+                if (!tabId) return null;
+                return getToolRouteDefinition(tabId, subtab) || getToolRouteDefinition(tabId) || null;
+            } catch (e) {
+                return null;
             }
         }
 
@@ -32636,6 +32671,9 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
             const wrappedNavigateToTab = async function(tabId) {
                 const result = await origNavigateToTab(tabId);
                 updateSidebarActive(tabId);
+                if (tabId && tabId !== 'ftth-home' && tabId !== 'command-vault') {
+                    storeLastRoute(tabId);
+                }
                 return result;
             };
             wrappedNavigateToTab.__sidebarSyncWrapped = true;
@@ -32647,6 +32685,7 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
             const wrappedFtthHomeSubTab = function(tabKey) {
                 const result = origShowFtthHomeSubTab(tabKey);
                 updateSidebarActive('ftth-home', tabKey);
+                storeLastRoute('ftth-home', tabKey);
                 return result;
             };
             wrappedFtthHomeSubTab.__sidebarSyncWrapped = true;
@@ -32658,6 +32697,7 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
             const wrappedCommandVaultSubTab = function(tabKey) {
                 const result = origShowCommandVaultSubTab(tabKey);
                 updateSidebarActive('command-vault', tabKey);
+                storeLastRoute('command-vault', tabKey);
                 return result;
             };
             wrappedCommandVaultSubTab.__sidebarSyncWrapped = true;
@@ -32665,7 +32705,15 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
         }
 
         window.addEventListener('hashchange', () => updateSidebarActive());
-        setTimeout(() => updateSidebarActive(), 0);
+        document.addEventListener('DOMContentLoaded', () => {
+            const storedRoute = getStoredRoute();
+            if (storedRoute) {
+                navigateToToolRoute(storedRoute);
+                return;
+            }
+            updateSidebarActive('home');
+            storeLastRoute('home');
+        });
     })();
     </script>
 

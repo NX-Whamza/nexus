@@ -31,6 +31,18 @@ def test_saved_config_and_log_history_filters_are_dynamic_and_routable():
     assert "const route = getActivityRoute(type) || TOOL_ROUTE_DEFINITIONS['log-history'];" in content
 
 
+def test_startup_defaults_do_not_force_sidebar_into_nested_tools():
+    content = UI_FILE.read_text(encoding="utf-8")
+    assert "const LAST_ROUTE_KEY = 'nexusLastRoute';" in content
+    assert "setCommandVaultSubTabState('nokia');" in content
+    assert "setFtthHomeSubTabState('olt');" in content
+    assert "storeLastRoute('home');" in content
+    init_command_vault = content.split("function initCommandVaultTabs() {", 1)[1].split("function initNokiaVaultDropdown()", 1)[0]
+    init_ftth_home = content.split("function initFtthHomeTabs() {", 1)[1].split("window.generateFtthHomeZip", 1)[0]
+    assert "window.showCommandVaultSubTab('nokia');" not in init_command_vault
+    assert "window.showFtthHomeSubTab('olt');" not in init_ftth_home
+
+
 def test_deploy_scripts_generate_version_env_before_rebuild():
     repo_root = Path(__file__).resolve().parents[1]
     for rel_path in (
