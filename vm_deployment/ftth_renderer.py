@@ -5,6 +5,11 @@ import re
 import hashlib
 from datetime import datetime
 
+try:
+    from engineering_compliance import load_compliance_text
+except ImportError:
+    from vm_deployment.engineering_compliance import load_compliance_text
+
 TEMPLATE_PATH = Path(__file__).parent / "ftth_template.rsc"
 
 # ---------------------------------------------------------------------------
@@ -100,6 +105,22 @@ _FTTH_TEMPLATE_KEYS = (
     "{{USER_ACQ_PASSWORD}}",
     "{{USER_ADMIN_PASSWORD}}",
 )
+
+
+def _append_ftth_speed_parts(parts: list[str], speed: str | None, auto_neg: bool = False) -> None:
+    """Render FTTH ethernet speed settings consistently.
+
+    Auto speed should not emit `auto-negotiation=no`. Forced speeds should.
+    """
+    speed_value = (speed or "").strip()
+    if not speed_value or speed_value.lower() == "auto":
+        parts.append("auto-negotiation=yes")
+        return
+    if auto_neg:
+        parts.append("auto-negotiation=yes")
+        return
+    parts.append("auto-negotiation=no")
+    parts.append(f"speed={speed_value}")
 # All keys use {{UPPER_SNAKE_CASE}} — no regex metacharacters.
 _FTTH_TEMPLATE_RE = re.compile("|".join(re.escape(k) for k in _FTTH_TEMPLATE_KEYS))
 
@@ -441,7 +462,9 @@ def _apply_ftth_compliance(config: str, loopback_ip: str) -> str:
     Parsed-blocks fallback (when GitLab raw text is unavailable):
       Uses the existing parsed-blocks path with block selection.
 
-    If no compliance data is available, returns the config unchanged.
+    If GitLab-derived compliance data is unavailable, fall back to the local
+    engineering compliance template so FTTH output still carries the baseline
+    compliance marker and system-note footer expected by the UI.
     """
     # ── Verbatim raw text (preferred) ───────────────────────────────
     if _FTTH_HAS_GITLAB and _get_gitlab_loader is not None:
@@ -469,8 +492,6 @@ def _apply_ftth_compliance(config: str, loopback_ip: str) -> str:
 
     # ── Parsed blocks fallback ──────────────────────────────────────
     blocks = _fetch_compliance_blocks(loopback_ip)
-    if not blocks:
-        return config
 
     # Strip hardcoded compliance sections
     result = _strip_named_sections(config, _FTTH_COMPLIANCE_STRIP_SECTIONS)
@@ -479,9 +500,22 @@ def _apply_ftth_compliance(config: str, loopback_ip: str) -> str:
     result = _strip_compliance_address_lists(result)
 
     # Build and append the compliance overlay
-    overlay = _build_ftth_compliance_overlay(loopback_ip, blocks)
+    overlay = _build_ftth_compliance_overlay(loopback_ip, blocks) if blocks else ""
     if overlay:
-        result = result.rstrip() + "\n\n" + overlay + "\n"
+        return result.rstrip() + "\n\n" + overlay + "\n"
+
+    bare_ip = loopback_ip.split("/")[0] if "/" in loopback_ip else loopback_ip
+    fallback_text = load_compliance_text(bare_ip).strip()
+    if fallback_text:
+        fallback_overlay = (
+            "\n\n# " + "=" * 50 + "\n"
+            "# ENGINEERING COMPLIANCE (fallback template)\n"
+            "# " + "=" * 50 + "\n"
+            "# ENGINEERING-COMPLIANCE-APPLIED\n\n"
+            + fallback_text
+            + "\n"
+        )
+        return result.rstrip() + fallback_overlay
 
     return result
 
@@ -935,18 +969,13 @@ def render_ftth_config(data: dict) -> str:
         l2mtu = uplink.get('l2mtu', '9212')
         auto_neg = uplink.get('auto_negotiation', False)
         parts = [f"set [ find default-name={port} ]"]
-        if speed == 'auto' or auto_neg is True:
-            parts.append("auto-negotiation=yes")
-        else:
-            parts.append("auto-negotiation=no")
         if comment:
             parts.append(f"comment={comment}")
         if l2mtu:
             parts.append(f"l2mtu={l2mtu}")
         if mtu:
             parts.append(f"mtu={mtu}")
-        if speed and speed != 'auto':
-            parts.append(f"speed={speed}")
+        _append_ftth_speed_parts(parts, speed, auto_neg=bool(auto_neg))
         uplink_lines.append(" ".join(parts))
 
         uplink_ip = uplink.get('ip', '')
@@ -993,14 +1022,9 @@ def render_ftth_config(data: dict) -> str:
         comment = _fmt_comment(port_cfg.get('comment') or base_name)
         speed = port_cfg.get('speed', 'auto')
         parts = [f"set [ find default-name={port} ]"]
-        if speed == 'auto':
-            parts.append("auto-negotiation=yes")
-        else:
-            parts.append("auto-negotiation=no")
         if comment:
             parts.append(f"comment={comment}")
-        if speed and speed != 'auto':
-            parts.append(f"speed={speed}")
+        _append_ftth_speed_parts(parts, speed)
         olt_lines.append(" ".join(parts))
 
     if not olt_lines:

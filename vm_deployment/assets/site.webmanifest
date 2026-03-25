@@ -1,6 +1,6 @@
 {
-  "name": "NOC Config Maker",
-  "short_name": "NOC Config",
+  "name": "NEXUS",
+  "short_name": "NEXUS",
   "start_url": "/app",
   "display": "standalone",
   "background_color": "#0b0f14",

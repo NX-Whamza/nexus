@@ -1,7 +1,13 @@
 services:
   ido-backend:
     build: .
+    restart: unless-stopped
     command: ["uvicorn", "--app-dir", ".", "vm_deployment.ido_local_backend:app", "--host", "0.0.0.0", "--port", "18081"]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     environment:
       IDO_BACKEND_PATH: ${IDO_BACKEND_PATH:-/app/vm_deployment/ido_modules}
       IDO_TOOLS_BACKEND_PATH: ${IDO_TOOLS_BACKEND_PATH:-/app/vm_deployment/ido_modules}
@@ -35,6 +41,12 @@ services:
 
   backend:
     build: .
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     environment:
       ADMIN_EMAILS: ${ADMIN_EMAILS:-netops@team.nxlink.com,whamza@team.nxlink.com}
       JWT_SECRET: ${JWT_SECRET:-}
@@ -79,11 +91,13 @@ services:
       NOC_API_V2_REQUIRE_IDEMPOTENCY: ${NOC_API_V2_REQUIRE_IDEMPOTENCY:-true}
       NOC_API_V2_IDEMPOTENCY_TTL_SECONDS: ${NOC_API_V2_IDEMPOTENCY_TTL_SECONDS:-86400}
       # One-shot cleanup for known bad Aviat log rows (safe, filtered delete).
-      AUTO_PURGE_BAD_AVIAT_LOGS: ${AUTO_PURGE_BAD_AVIAT_LOGS:-true}
+      AUTO_PURGE_BAD_AVIAT_LOGS: ${AUTO_PURGE_BAD_AVIAT_LOGS:-false}
       AUTO_PURGE_BAD_AVIAT_LOGS_FROM: ${AUTO_PURGE_BAD_AVIAT_LOGS_FROM:-2026-02-02T04:00:00}
       AUTO_PURGE_BAD_AVIAT_LOGS_TO: ${AUTO_PURGE_BAD_AVIAT_LOGS_TO:-2026-02-02T05:00:00}
       AUTO_PURGE_BAD_AVIAT_LOGS_USERNAME: ${AUTO_PURGE_BAD_AVIAT_LOGS_USERNAME:-whamza}
       AUTO_PURGE_BAD_AVIAT_LOGS_FW: ${AUTO_PURGE_BAD_AVIAT_LOGS_FW:-0.0.0}
+      STARTUP_MAINTENANCE_MODE: ${STARTUP_MAINTENANCE_MODE:-background}
+      STARTUP_MAINTENANCE_DELAY_SECONDS: ${STARTUP_MAINTENANCE_DELAY_SECONDS:-2}
       # Device auth defaults (also used by backend for SSH-fetch, Field Config Studio proxy)
       AP_STANDARD_PW: ${AP_STANDARD_PW:-CHANGE_ME}
       SM_STANDARD_PW: ${SM_STANDARD_PW:-CHANGE_ME}
@@ -113,6 +127,12 @@ services:
       AZURE_TENANT_ID: ${AZURE_TENANT_ID:-143673a5-ff46-4d23-8255-b4ef07861814}
       # Environment label (dev/production) — used for UI banners and logging
       NOC_ENVIRONMENT: ${NOC_ENVIRONMENT:-production}
+      NEXUS_APP_PRODUCT: ${NEXUS_APP_PRODUCT:-NEXUS}
+      NEXUS_APP_VERSION: ${NEXUS_APP_VERSION:-}
+      NEXUS_APP_VERSION_BASE: ${NEXUS_APP_VERSION_BASE:-2.6}
+      NEXUS_APP_BUILD_NUMBER: ${NEXUS_APP_BUILD_NUMBER:-0}
+      NEXUS_APP_RELEASE_DATE: ${NEXUS_APP_RELEASE_DATE:-}
+      NEXUS_APP_GIT_SHA: ${NEXUS_APP_GIT_SHA:-}
     volumes:
       - ./secure_data:/app/secure_data
     depends_on:
@@ -123,10 +143,16 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 60s
 
   frontend:
     image: nginx:alpine
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     ports:
       - "${FRONTEND_PORT:-8000}:80"
     volumes:
@@ -135,3 +161,9 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/NOC-configMaker.html"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

@@ -17,6 +17,15 @@ err()  { echo -e "${RED}[ERR]  $*${NC}"; }
 PROD_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROD_DIR"
 
+generate_version_env() {
+  info "Generating app version metadata..."
+  python3 "$PROD_DIR/vm_deployment/generate_version_env.py" --output "$PROD_DIR/.version.env" >/dev/null
+  set -a
+  . "$PROD_DIR/.version.env"
+  set +a
+  ok "App version: ${NEXUS_APP_VERSION:-unknown}"
+}
+
 echo "=========================================="
 echo "NOC Config Maker – PRODUCTION Update"
 echo "Dir: $PROD_DIR"
@@ -57,23 +66,34 @@ else
 fi
 
 # ── 2. Rebuild production containers ──
+generate_version_env
 info "Rebuilding production containers..."
 docker compose up -d --build
 ok "Production stack rebuilt"
+docker compose ps
 
 # ── 3. Health check ──
 echo ""
-info "Waiting 10s for containers to start..."
-sleep 10
+info "Waiting for production health (up to 90s)..."
+HEALTH_URL="http://127.0.0.1:8000/api/health"
+HEALTH_OK=0
+for _ in $(seq 1 18); do
+  if curl -fsS "$HEALTH_URL" | head -c 200; then
+    HEALTH_OK=1
+    break
+  fi
+  sleep 5
+done
 
-info "Health check:"
-if curl -fsS http://127.0.0.1:8000/api/health | head -c 200; then
-  echo ""
+echo ""
+if [ "$HEALTH_OK" -eq 1 ]; then
   ok "PRODUCTION is healthy at https://noc-configmaker.nxlink.com"
-else
+  info "Backend health payload:"
+  curl -fsS "$HEALTH_URL" | head -c 1200
   echo ""
-  err "Health check failed! Check logs:"
-  echo "  docker compose logs -f"
+else
+  err "Health check failed after 90s. Check logs:"
+  echo "  docker compose logs -f backend frontend"
 fi
 
 echo ""

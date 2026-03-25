@@ -52,6 +52,7 @@ AviatSubnetChecker/
 # Secrets
 .env
 .env.dev
+.version.env
 .secret
 api_keys.txt
 .webui_secret_key

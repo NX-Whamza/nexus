@@ -115,11 +115,15 @@ AZURE_CLIENT_SECRET=PASTE_YOUR_CLIENT_SECRET_HERE
 # AVIAT_FIRMWARE_BASELINE_URI=http://143.55.35.76/updates/wtm4100-2.11.11.18.6069.swpack
 # AVIAT_FIRMWARE_FINAL_URI=http://143.55.35.76/updates/wtm4100-6.1.0.11.52799.swpack
 # AVIAT_EXPECTED_MASK=255.255.255.248
-# AUTO_PURGE_BAD_AVIAT_LOGS=true
+# Default docker-compose value is false so startup never depends on this cleanup.
+# AUTO_PURGE_BAD_AVIAT_LOGS=false
 # AUTO_PURGE_BAD_AVIAT_LOGS_FROM=2026-02-02T04:00:00
 # AUTO_PURGE_BAD_AVIAT_LOGS_TO=2026-02-02T05:00:00
 # AUTO_PURGE_BAD_AVIAT_LOGS_USERNAME=whamza
 # AUTO_PURGE_BAD_AVIAT_LOGS_FW=0.0.0
+# Startup maintenance is background by default so health checks are not blocked.
+# STARTUP_MAINTENANCE_MODE=background
+# STARTUP_MAINTENANCE_DELAY_SECONDS=2
 
 # GitLab dynamic compliance (RFC-09-10-25)
 # When set, compliance rules are pulled live from the GitLab netforge/compliance repo

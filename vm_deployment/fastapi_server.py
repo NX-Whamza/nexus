@@ -53,11 +53,11 @@ from api_v2 import router as api_v2_router
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    _maybe_purge_bad_aviat_logs_on_startup()
+    _schedule_startup_maintenance()
     yield
 
 
-app = FastAPI(title="NOC Config Maker API", version="1.0", lifespan=lifespan)
+app = FastAPI(title="NEXUS API", version="2.6.0", lifespan=lifespan)
 
 # Match current permissive CORS behavior from Flask setup.
 app.add_middleware(
@@ -72,6 +72,17 @@ app.include_router(api_v2_router)
 
 def _str_to_bool(value: str) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _startup_maintenance_delay_seconds(default: float = 2.0) -> float:
+    raw = (os.getenv("STARTUP_MAINTENANCE_DELAY_SECONDS") or "").strip()
+    if not raw:
+        return default
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        print(f"[STARTUP] Invalid STARTUP_MAINTENANCE_DELAY_SECONDS={raw!r}; using {default}s")
+        return default
 
 
 def _maybe_purge_bad_aviat_logs_on_startup() -> None:
@@ -137,6 +148,26 @@ def _maybe_purge_bad_aviat_logs_on_startup() -> None:
         print(f"[ACTIVITY] Auto-purge failed: {exc}")
 
 
+def _run_startup_maintenance() -> None:
+    delay_seconds = _startup_maintenance_delay_seconds()
+    if delay_seconds > 0:
+        time.sleep(delay_seconds)
+    _maybe_purge_bad_aviat_logs_on_startup()
+
+
+def _schedule_startup_maintenance() -> None:
+    mode = (os.getenv("STARTUP_MAINTENANCE_MODE") or "background").strip().lower()
+    if mode == "blocking":
+        print("[STARTUP] Running startup maintenance in blocking mode")
+        _run_startup_maintenance()
+        return
+
+    print("[STARTUP] Scheduling startup maintenance in background mode")
+    threading.Thread(
+        target=_run_startup_maintenance,
+        name="startup-maintenance",
+        daemon=True,
+    ).start()
 @app.get("/api/runtime")
 def runtime_info():
     return JSONResponse(

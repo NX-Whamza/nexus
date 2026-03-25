@@ -35,6 +35,11 @@ def test_ftth_modal_exists():
     assert 'id="ftth_preset_save"' in content, 'Missing preset save button id="ftth_preset_save" in NOC-configMaker.html'
     assert 'id="ftth_preset_delete"' in content, 'Missing preset delete button id="ftth_preset_delete" in NOC-configMaker.html'
     assert 'id="ftth_preset_name"' in content, 'Missing preset name input id="ftth_preset_name" in NOC-configMaker.html'
+    assert 'id="ftthValidateBtn"' in content, 'Missing Validate button id="ftthValidateBtn" in NOC-configMaker.html'
+    assert 'id="ftthGenerate"' in content, 'Missing Generate button id="ftthGenerate" in NOC-configMaker.html'
+    assert 'id="ftthReset"' in content, 'Missing Reset button id="ftthReset" in NOC-configMaker.html'
+    assert 'id="ftthPreview"' in content, 'Missing FTTH preview container id="ftthPreview" in NOC-configMaker.html'
+    assert '<option value="25G-baseSR-LR">25G-baseSR-LR</option>' in content, 'Missing 25G-baseSR-LR option for FTTH speed selectors in NOC-configMaker.html'
 
 
 def test_ftth_speed_controls_and_backend_payload_hooks_exist():
@@ -100,7 +105,7 @@ def test_ftth_fiber_customer_and_cisco_generator_exist():
 
 def test_switch_maker_uses_backend_profile_generator():
     content = UI_FILE.read_text(encoding='utf-8')
-    assert 'PRODUCTION REFINEMENT - MikroTik Switch Config Maker' in content, 'Missing refined Switch Maker banner in NOC-configMaker.html'
+    assert '<h1> MikroTik Switch Config Maker</h1>' in content, 'Missing Switch Maker heading in NOC-configMaker.html'
     assert 'id="switch_maker_profile"' in content, 'Missing in-state switch deployment profile selector in NOC-configMaker.html'
     assert 'id="switch_outstate_profile"' in content, 'Missing out-of-state switch deployment profile selector in NOC-configMaker.html'
     assert 'id="switch_maker_apply_compliance"' in content, 'Missing in-state switch compliance toggle in NOC-configMaker.html'

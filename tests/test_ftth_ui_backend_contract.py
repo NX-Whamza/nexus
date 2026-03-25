@@ -147,12 +147,12 @@ def test_ftth_outstate_state_profile_ia_maps_ospf_and_vpls_ids():
     assert "area-id=0.0.0.42" in config
     assert "name=area42" in config
 
-
 def test_ftth_auto_speed_renders_auto_negotiation_yes_without_speed():
     payload = _ui_payload("outstate")
     payload["uplinks"][0]["speed"] = "auto"
     payload["uplinks"][0]["auto_negotiation"] = False
     payload["olt_ports"][0]["speed"] = "auto"
+    payload["olt_ports"][1]["speed"] = "25G-baseSR-LR"
 
     response = client.post("/api/generate-ftth-bng", json=payload)
     assert response.status_code == 200
@@ -160,10 +160,11 @@ def test_ftth_auto_speed_renders_auto_negotiation_yes_without_speed():
     assert data.get("success") is True
     config = data.get("config", "")
 
-    assert "set [ find default-name=sfp28-3 ] auto-negotiation=yes comment=NE-WESTERN-EA-1" in config
-    assert "set [ find default-name=sfp28-6 ] auto-negotiation=yes comment=\"NOKIA OLT\"" in config
-    assert "set [ find default-name=sfp28-3 ] auto-negotiation=yes comment=NE-WESTERN-EA-1 l2mtu=9212 mtu=9198 speed=" not in config
-    assert "set [ find default-name=sfp28-6 ] auto-negotiation=yes comment=\"NOKIA OLT\" speed=" not in config
+    assert "set [ find default-name=sfp28-3 ] comment=NE-WESTERN-EA-1 l2mtu=9212 mtu=9198 auto-negotiation=yes" in config
+    assert "set [ find default-name=sfp28-3 ] comment=NE-WESTERN-EA-1 l2mtu=9212 mtu=9198 auto-negotiation=no" not in config
+    assert "set [ find default-name=sfp28-6 ] comment=\"NOKIA OLT\" auto-negotiation=yes" in config
+    assert "set [ find default-name=sfp28-6 ] comment=\"NOKIA OLT\" auto-negotiation=no" not in config
+    assert "set [ find default-name=sfp28-7 ] comment=\"NOKIA OLT\" auto-negotiation=no speed=25G-baseSR-LR" in config
 
 
 def test_ftth_forced_speed_keeps_auto_negotiation_no_with_speed():
@@ -177,8 +178,8 @@ def test_ftth_forced_speed_keeps_auto_negotiation_no_with_speed():
     assert data.get("success") is True
     config = data.get("config", "")
 
-    assert "set [ find default-name=sfp28-3 ] auto-negotiation=no comment=NE-WESTERN-EA-1 l2mtu=9212 mtu=9198 speed=25G-baseSR-LR" in config
-    assert "set [ find default-name=sfp28-6 ] auto-negotiation=no comment=\"NOKIA OLT\" speed=25G-baseSR-LR" in config
+    assert "set [ find default-name=sfp28-3 ] comment=NE-WESTERN-EA-1 l2mtu=9212 mtu=9198 auto-negotiation=no speed=25G-baseSR-LR" in config
+    assert "set [ find default-name=sfp28-6 ] comment=\"NOKIA OLT\" auto-negotiation=no speed=25G-baseSR-LR" in config
 
 
 def test_ftth_bgp_connections_use_dynamic_peer_inputs_and_loopback_router_id():
