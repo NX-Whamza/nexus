@@ -143,6 +143,20 @@ def test_enterprise_uses_single_routerboard_source_of_truth():
     assert "type: 'generated mpls enterprise config'" in content, 'Missing MPLS enterprise activity logging in NOC-configMaker.html'
 
 
+def test_tarana_tab_uses_shared_port_population_and_validates_bng1_inputs():
+    content = UI_FILE.read_text(encoding='utf-8')
+    assert 'function getTaranaPortOptions(deviceKey)' in content, 'Missing shared Tarana port inventory helper in NOC-configMaker.html'
+    assert 'function populateTaranaPortSelects(options)' in content, 'Missing shared Tarana port select population helper in NOC-configMaker.html'
+    assert 'function resolveTaranaMgmtCidr(cidrInput)' in content, 'Missing Tarana BNG1 CIDR normalization helper in NOC-configMaker.html'
+    assert 'function getTaranaSpeedSyntax(routerosVersion)' in content, 'Missing Tarana RouterOS speed helper in NOC-configMaker.html'
+    assert 'Gateway or Network (CIDR)' in content, 'Missing Tarana BNG1 gateway/network guidance in NOC-configMaker.html'
+    assert 'You can enter the /29 network or the first usable router IP.' in content, 'Missing Tarana BNG1 CIDR hint in NOC-configMaker.html'
+    assert "preserveSelection: true" in content, 'Tarana port dropdowns should preserve user selections during repopulation'
+    assert 'Each Tarana sector must use a different port.' in content, 'Missing Tarana duplicate-port validation in NOC-configMaker.html'
+    assert 'const speedSyntax = getTaranaSpeedSyntax(routerosVersion);' in content, 'Missing Tarana RouterOS-aware speed syntax wiring in NOC-configMaker.html'
+    assert 'Tarana BNG1 supports only CCR2004 and CCR2216.' in content, 'Missing explicit Tarana BNG1 device guard in NOC-configMaker.html'
+
+
 def test_nokia_configurator_is_truly_unified():
     content = UI_FILE.read_text(encoding='utf-8')
     assert 'id="nokiaPlatformModel"' in content, 'Missing Nokia platform model selector in NOC-configMaker.html'
@@ -234,6 +248,7 @@ if __name__ == '__main__':
         test_ftth_fiber_customer_and_cisco_generator_exist()
         test_routerboard_identity_prefixes_are_normalized()
         test_enterprise_uses_single_routerboard_source_of_truth()
+        test_tarana_tab_uses_shared_port_population_and_validates_bng1_inputs()
         test_nokia_configurator_is_truly_unified()
         test_sidebar_and_nokia_7250_layout_updates_exist()
         print('[OK] test_ftth_modal_exists')

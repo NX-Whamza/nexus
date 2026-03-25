@@ -6450,7 +6450,6 @@
                                         <option value="">Select RouterBoard Device</option>
                                         <option value="ccr2004">CCR2004 (RouterOS 7.x)</option>
                                         <option value="ccr2216">CCR2216 (RouterOS 7.x)</option>
-                                        <option value="ccr2116">CCR2116 (RouterOS 7.x)</option>
                                     </select>
                                 </div>
                                 <div>
@@ -6490,9 +6489,9 @@
                             </div>
 
                             <div style="margin-top: 20px;">
-                                <label for="tarana_mgmtSubnet">UNICORNMGMT Subnet (CIDR):</label>
-                                <input type="text" id="tarana_mgmtSubnet" placeholder="e.g. 10.246.21.64/29">
-                                <div class="hint">Router IP = first usable.</div>
+                                <label for="tarana_mgmtSubnet">UNICORNMGMT Gateway or Network (CIDR):</label>
+                                <input type="text" id="tarana_mgmtSubnet" placeholder="e.g. 10.246.21.65/29 or 10.246.21.64/29">
+                                <div class="hint">You can enter the /29 network or the first usable router IP.</div>
                             </div>
 
                             <div style="margin-top: 20px; display: flex; gap: 10px;">
@@ -11724,91 +11723,210 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             }
         }
 
+        function getTaranaDeviceConfig(deviceKey) {
+            const normalized = typeof getNormalizedDeviceKey === 'function'
+                ? getNormalizedDeviceKey(deviceKey, '')
+                : String(deviceKey || '').trim().toLowerCase();
+            if (!normalized || typeof DEVICE_CONFIGS === 'undefined') return null;
+            if (typeof getDeviceConfig === 'function') {
+                return getDeviceConfig(normalized, '') || null;
+            }
+            return DEVICE_CONFIGS[normalized] || null;
+        }
+
+        function getTaranaPortOptions(deviceKey) {
+            const normalized = typeof getNormalizedDeviceKey === 'function'
+                ? getNormalizedDeviceKey(deviceKey, '')
+                : String(deviceKey || '').trim().toLowerCase();
+            if (!normalized) return [];
+
+            const config = getTaranaDeviceConfig(normalized);
+            const configPorts = config
+                ? [
+                    ...(Array.isArray(config.ports) ? config.ports : []),
+                    ...(Array.isArray(config.sfpPorts) ? config.sfpPorts : [])
+                ].filter(Boolean)
+                : [];
+            if (configPorts.length) {
+                return [...new Set(configPorts)];
+            }
+
+            const hardcodedPorts = {
+                ccr2004: [
+                    'ether1',
+                    'sfp-sfpplus1', 'sfp-sfpplus2', 'sfp-sfpplus3', 'sfp-sfpplus4',
+                    'sfp-sfpplus5', 'sfp-sfpplus6', 'sfp-sfpplus7', 'sfp-sfpplus8',
+                    'sfp-sfpplus9', 'sfp-sfpplus10', 'sfp-sfpplus11', 'sfp-sfpplus12',
+                    'sfp28-1', 'sfp28-2'
+                ],
+                ccr2116: [
+                    'ether1', 'ether2', 'ether3', 'ether4', 'ether5', 'ether6',
+                    'ether7', 'ether8', 'ether9', 'ether10', 'ether11', 'ether12',
+                    'sfp-sfpplus1', 'sfp-sfpplus2', 'sfp-sfpplus3', 'sfp-sfpplus4'
+                ],
+                ccr2216: [
+                    'ether1',
+                    'qsfp28-1-1', 'qsfp28-1-2', 'qsfp28-1-3', 'qsfp28-1-4',
+                    'qsfp28-2-1', 'qsfp28-2-2', 'qsfp28-2-3', 'qsfp28-2-4',
+                    'sfp28-1', 'sfp28-2', 'sfp28-3', 'sfp28-4', 'sfp28-5', 'sfp28-6',
+                    'sfp28-7', 'sfp28-8', 'sfp28-9', 'sfp28-10', 'sfp28-11', 'sfp28-12'
+                ]
+            };
+            if (hardcodedPorts[normalized]) {
+                return [...hardcodedPorts[normalized]];
+            }
+
+            if (typeof getDevicePortOptions === 'function') {
+                const fallbackPorts = getDevicePortOptions(normalized);
+                if (Array.isArray(fallbackPorts) && fallbackPorts.length) {
+                    return [...new Set(fallbackPorts.filter(Boolean))];
+                }
+            }
+            return [];
+        }
+
+        function populateTaranaPortSelects(options) {
+            const settings = options || {};
+            const selectIds = Array.isArray(settings.selectIds) ? settings.selectIds : [];
+            const placeholder = settings.placeholder || 'Select Port';
+            const defaults = settings.defaults || {};
+            const preserveSelection = settings.preserveSelection !== false;
+            const deviceKey = String(settings.deviceKey || '').trim().toLowerCase();
+            const deviceConfig = getTaranaDeviceConfig(deviceKey);
+            const allPorts = getTaranaPortOptions(deviceKey);
+            const deviceLabel = deviceConfig ? ` (${deviceConfig.name})` : '';
+
+            selectIds.forEach((selectId) => {
+                const select = document.getElementById(selectId);
+                if (!select) return;
+
+                const previousValue = preserveSelection ? select.value : '';
+                select.innerHTML = '';
+
+                const placeholderOption = document.createElement('option');
+                placeholderOption.value = '';
+                placeholderOption.textContent = allPorts.length ? placeholder : `${placeholder} (Choose Device First)`;
+                select.appendChild(placeholderOption);
+
+                allPorts.forEach((port) => {
+                    const option = document.createElement('option');
+                    option.value = port;
+                    option.textContent = `${port}${deviceLabel}`;
+                    select.appendChild(option);
+                });
+
+                const defaultValue = defaults[selectId];
+                if (preserveSelection && previousValue && allPorts.includes(previousValue)) {
+                    select.value = previousValue;
+                } else if (defaultValue && allPorts.includes(defaultValue)) {
+                    select.value = defaultValue;
+                } else {
+                    select.value = '';
+                }
+            });
+
+            return { deviceConfig, allPorts };
+        }
+
+        function getTaranaSpeedSyntax(routerosVersion) {
+            const version = String(routerosVersion || '').trim();
+            if (typeof getRouterOSVersionType === 'function') {
+                return getRouterOSVersionType(version) === 'new' ? '10G-baseSR-LR' : '10Gbps';
+            }
+            return version === '7.11.2' ? '10Gbps' : '10G-baseSR-LR';
+        }
+
+        function resolveTaranaMgmtCidr(cidrInput) {
+            const parsed = parseCidr(cidrInput);
+            if (!parsed) {
+                throw new Error('Enter a valid CIDR such as 10.246.21.65/29 or 10.246.21.64/29.');
+            }
+            if (parsed.prefix < 8 || parsed.prefix > 30) {
+                throw new Error('Tarana UNICORNMGMT CIDR must use a prefix between /8 and /30.');
+            }
+
+            const enteredIpInt = ipToInt(parsed.ip);
+            const canonicalNetworkInt = enteredIpInt & parsed.mask;
+            const broadcastInt = canonicalNetworkInt | (~parsed.mask >>> 0);
+            const firstHostInt = canonicalNetworkInt + 1;
+            const lastHostInt = broadcastInt - 1;
+
+            if (firstHostInt > lastHostInt) {
+                throw new Error('Tarana UNICORNMGMT CIDR does not contain usable host addresses.');
+            }
+
+            if (enteredIpInt === canonicalNetworkInt) {
+                return {
+                    routerIp: intToIp(firstHostInt),
+                    network: intToIp(canonicalNetworkInt),
+                    prefix: parsed.prefix
+                };
+            }
+
+            if (enteredIpInt === firstHostInt) {
+                return {
+                    routerIp: intToIp(enteredIpInt),
+                    network: intToIp((enteredIpInt - 1) >>> 0),
+                    prefix: parsed.prefix
+                };
+            }
+
+            throw new Error('Enter either the Tarana network address or the first usable router IP for UNICORNMGMT.');
+        }
+
         // TARANA SECTORS BNG2 - Critical function - must always work
         // This function is isolated and protected with multiple fallbacks
         function handleTaranaBNG2DeviceChange() {
             console.log('[BNG2] handleTaranaBNG2DeviceChange called');
             const deviceSelect = document.getElementById('tarana_bng2_device');
-            const portSelects = [
-                document.getElementById('tarana_bng2_alphaPort'),
-                document.getElementById('tarana_bng2_betaPort'),
-                document.getElementById('tarana_bng2_gammaPort'),
-                document.getElementById('tarana_bng2_deltaPort')
-            ];
-
             if (!deviceSelect) {
                 console.error('[BNG2] Device select element not found!');
                 return;
             }
 
             const selectedDevice = deviceSelect.value;
-
-            // If no device selected, clear all ports
-            if (!selectedDevice) {
-                portSelects.forEach(ps => {
-                    if (ps) {
-                        ps.innerHTML = '<option value="">Select Port (Choose Device First)</option>';
-                    }
-                });
-                return;
-            }
-
-            // Get device config
-            const deviceConfig = getDeviceConfig(selectedDeviceKey, '');
-            if (!deviceConfig) {
-                console.error('[BNG2] No device configuration found for:', selectedDevice);
-                portSelects.forEach(ps => {
-                    if (ps) ps.innerHTML = '<option value="">Select Port (Choose Device First)</option>';
-                });
-                return;
-            }
-
-            // Get all available ports
-            let allPorts = [];
-            if (deviceConfig.ports && deviceConfig.sfpPorts) {
-                allPorts = [...deviceConfig.ports, ...deviceConfig.sfpPorts];
-            } else if (typeof getDevicePortOptions === 'function') {
-                allPorts = getDevicePortOptions(selectedDevice) || [];
-            } else {
-                // Fallback: hardcoded ports for common devices
-                if (selectedDeviceKey === 'ccr2004') {
-                    allPorts = ['sfp-sfpplus1', 'sfp-sfpplus2', 'sfp-sfpplus3', 'sfp-sfpplus4', 'sfp-sfpplus5', 'sfp-sfpplus6', 'sfp-sfpplus7', 'sfp-sfpplus8', 'sfp-sfpplus9', 'sfp-sfpplus10', 'sfp-sfpplus11', 'sfp-sfpplus12'];
-                } else if (selectedDeviceKey === 'ccr2216') {
-                    allPorts = ['sfp28-1', 'sfp28-2', 'sfp28-3', 'sfp28-4', 'sfp28-5', 'sfp28-6', 'sfp28-7', 'sfp28-8', 'sfp28-9', 'sfp28-10', 'sfp28-11', 'sfp28-12'];
-                } else if (selectedDeviceKey === 'ccr2116') {
-                    allPorts = ['ether1', 'ether2', 'ether3', 'ether4', 'ether5', 'ether6', 'ether7', 'ether8', 'ether9', 'ether10', 'ether11', 'ether12', 'sfp-sfpplus1', 'sfp-sfpplus2', 'sfp-sfpplus3', 'sfp-sfpplus4'];
+            const selectedDeviceKey = getNormalizedDeviceKey(selectedDevice, '');
+            const defaultPorts = getTaranaRecommendedPortsForDevice(selectedDeviceKey);
+            const defaultsByDevice = {
+                ccr2004: {
+                    tarana_bng2_alphaPort: defaultPorts.alpha,
+                    tarana_bng2_betaPort: defaultPorts.beta,
+                    tarana_bng2_gammaPort: defaultPorts.gamma,
+                    tarana_bng2_deltaPort: 'sfp-sfpplus6'
+                },
+                ccr2116: {
+                    tarana_bng2_alphaPort: 'ether9',
+                    tarana_bng2_betaPort: 'ether10',
+                    tarana_bng2_gammaPort: 'ether11',
+                    tarana_bng2_deltaPort: 'ether12'
+                },
+                ccr2216: {
+                    tarana_bng2_alphaPort: defaultPorts.alpha,
+                    tarana_bng2_betaPort: defaultPorts.beta,
+                    tarana_bng2_gammaPort: defaultPorts.gamma,
+                    tarana_bng2_deltaPort: defaultPorts.delta
                 }
-            }
+            };
 
-            // Clear existing options and populate with available ports
-            portSelects.forEach((portSelect, index) => {
-                if (portSelect) {
-                    portSelect.innerHTML = '<option value="">Select Port</option>';
-
-                    // Add all available ports
-                    allPorts.forEach(port => {
-                        const option = document.createElement('option');
-                        option.value = port;
-                        option.textContent = `${port} (${deviceConfig.name})`;
-                        portSelect.appendChild(option);
-                    });
-
-                    // Auto-select recommended ports for BNG2 (but allow user to change)
-                    const taranaDefaults = getTaranaRecommendedPortsForDevice(selectedDeviceKey);
-                    const recommendedPorts = [
-                        taranaDefaults.alpha,
-                        taranaDefaults.beta,
-                        taranaDefaults.gamma,
-                        taranaDefaults.delta
-                    ];
-
-                    if (recommendedPorts[index] && allPorts.includes(recommendedPorts[index])) {
-                        portSelect.value = recommendedPorts[index];
-                    }
-                }
+            const { deviceConfig, allPorts } = populateTaranaPortSelects({
+                deviceKey: selectedDeviceKey,
+                selectIds: [
+                    'tarana_bng2_alphaPort',
+                    'tarana_bng2_betaPort',
+                    'tarana_bng2_gammaPort',
+                    'tarana_bng2_deltaPort'
+                ],
+                placeholder: 'Select Port',
+                defaults: defaultsByDevice[selectedDeviceKey] || {},
+                preserveSelection: true
             });
 
-            console.log('[BNG2] Ports populated for device:', deviceConfig.name);
+            if (!selectedDevice || !allPorts.length) {
+                console.warn('[BNG2] No ports available for device:', selectedDevice || '(none)');
+                return;
+            }
+
+            console.log('[BNG2] Ports populated for device:', deviceConfig ? deviceConfig.name : selectedDevice, allPorts);
         }
 
         // MPLS Enterprise Device Name Updater
@@ -11928,135 +12046,64 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             console.log('[TARANA] handleTaranaDeviceChange called');
             try {
                 const deviceSelect = document.getElementById('tarana_routerboard_device');
-                const portSelects = [
-                    document.getElementById('tarana_alphaPort'),
-                    document.getElementById('tarana_betaPort'),
-                    document.getElementById('tarana_gammaPort'),
-                    document.getElementById('tarana_deltaPort')
-                ];
-
-                console.log('[TARANA] deviceSelect:', deviceSelect);
-                console.log('[TARANA] portSelects:', portSelects);
-                console.log('[TARANA] DEVICE_CONFIGS available:', typeof DEVICE_CONFIGS !== 'undefined');
-
                 if (!deviceSelect) {
                     console.error('[TARANA] Device select element not found!');
                     return;
                 }
 
-                // Check if port selects exist
-                const missingPorts = portSelects.filter(ps => !ps);
-                if (missingPorts.length > 0) {
-                    console.error('[TARANA] Missing port select elements:', missingPorts.length);
-                }
-
                 const selectedDevice = deviceSelect.value;
                 const selectedDeviceKey = getNormalizedDeviceKey(selectedDevice, '');
-                console.log('[TARANA] Selected device value:', selectedDevice);
-
-                // If no device selected, clear all ports
                 if (!selectedDevice) {
-                    portSelects.forEach(ps => {
-                        if (ps) {
-                            ps.innerHTML = '<option value="">None</option>';
-                        }
+                    populateTaranaPortSelects({
+                        deviceKey: '',
+                        selectIds: ['tarana_alphaPort', 'tarana_betaPort', 'tarana_gammaPort', 'tarana_deltaPort'],
+                        placeholder: 'None',
+                        preserveSelection: false
                     });
                     return;
                 }
 
-                // Hard restrict Tarana to CCR2004/CCR2216 only
                 if (!['ccr2004', 'ccr2216'].includes(selectedDeviceKey)) {
                     deviceSelect.value = '';
-                    alert('Tarana sectors are supported only on CCR2004 and CCR2216.');
-                    portSelects.forEach(ps => { if (ps) ps.innerHTML = '<option value="">None</option>'; });
-                    return;
-                }
-
-                // Get device config or use fallback
-                let allPorts = [];
-                let deviceConfig = null;
-
-                // Try DEVICE_CONFIGS first
-                if (typeof DEVICE_CONFIGS !== 'undefined' && DEVICE_CONFIGS[selectedDeviceKey]) {
-                    deviceConfig = DEVICE_CONFIGS[selectedDeviceKey];
-                    console.log('[TARANA] Found device config:', deviceConfig);
-                    if (deviceConfig.ports && deviceConfig.sfpPorts) {
-                        allPorts = [...deviceConfig.ports, ...deviceConfig.sfpPorts];
-                        console.log('[TARANA] Ports from DEVICE_CONFIGS:', allPorts.length);
-                    }
-                } else {
-                    console.warn('[TARANA] DEVICE_CONFIGS not available or device not found, using fallback');
-                }
-
-                // Fallback: use getDevicePortOptions if DEVICE_CONFIGS structure is missing or incomplete
-                if (!allPorts || allPorts.length === 0) {
-                    if (typeof getDevicePortOptions !== 'undefined') {
-                        allPorts = getDevicePortOptions(selectedDeviceKey);
-                        console.log('[TARANA] Ports from getDevicePortOptions:', allPorts ? allPorts.length : 0);
-                    } else {
-                        // Hardcoded fallback for CCR2004 and CCR2216
-                        if (selectedDeviceKey === 'ccr2004') {
-                            allPorts = ['sfp-sfpplus1', 'sfp-sfpplus2', 'sfp-sfpplus3', 'sfp-sfpplus4', 'sfp-sfpplus5', 'sfp-sfpplus6', 'sfp-sfpplus7', 'sfp-sfpplus8', 'sfp-sfpplus9', 'sfp-sfpplus10', 'sfp-sfpplus11', 'sfp-sfpplus12', 'ether1'];
-                            console.log('[TARANA] Using hardcoded fallback for ccr2004');
-                        } else if (selectedDeviceKey === 'ccr2216') {
-                            allPorts = ['sfp28-1', 'sfp28-2', 'sfp28-3', 'sfp28-4', 'sfp28-5', 'sfp28-6', 'sfp28-7', 'sfp28-8', 'sfp28-9', 'sfp28-10', 'sfp28-11', 'sfp28-12', 'ether1'];
-                            console.log('[TARANA] Using hardcoded fallback for ccr2216');
-                        }
-                    }
-                }
-
-                if (!allPorts || allPorts.length === 0) {
-                    console.error('[TARANA] No ports found for device:', selectedDevice);
-                    portSelects.forEach(portSelect => {
-                        if (portSelect) {
-                            portSelect.innerHTML = '<option value="">None</option>';
-                        }
+                    populateTaranaPortSelects({
+                        deviceKey: '',
+                        selectIds: ['tarana_alphaPort', 'tarana_betaPort', 'tarana_gammaPort', 'tarana_deltaPort'],
+                        placeholder: 'None',
+                        preserveSelection: false
                     });
+                    alert('Tarana BNG1 supports only CCR2004 and CCR2216.');
                     return;
                 }
 
-                // Get deviceConfig if not already set
-                if (!deviceConfig && typeof DEVICE_CONFIGS !== 'undefined') {
-                    deviceConfig = DEVICE_CONFIGS[selectedDeviceKey] || null;
-                }
-
-                // Clear existing options and populate with available ports
-                console.log('[TARANA] Populating ports:', allPorts.length, 'ports found');
-                portSelects.forEach((portSelect, index) => {
-                    if (portSelect) {
-                        console.log(`[TARANA] Populating ${portSelect.id} with ${allPorts.length} ports`);
-                        portSelect.innerHTML = '<option value="">None</option>';
-
-                        // Add all available ports
-                        allPorts.forEach(port => {
-                            const option = document.createElement('option');
-                            option.value = port;
-                            const displayName = deviceConfig ? `${port} (${deviceConfig.name})` : port;
-                            option.textContent = displayName;
-                            portSelect.appendChild(option);
-                        });
-
-                        // Preselect recommended Tarana ports when device is CCR2004/CCR2216
-                        const defaults = getTaranaRecommendedPortsForDevice(selectedDeviceKey);
-                        const defaultMap = {
-                            tarana_alphaPort: defaults.alpha,
-                            tarana_betaPort: defaults.beta,
-                            tarana_gammaPort: defaults.gamma,
-                            tarana_deltaPort: defaults.delta
-                        };
-                        if (defaultMap[portSelect.id] && allPorts.includes(defaultMap[portSelect.id])) {
-                            portSelect.value = defaultMap[portSelect.id];
-                            console.log('[TARANA] Auto-selected', portSelect.id, defaultMap[portSelect.id]);
-                        }
-                        console.log(`[TARANA] ${portSelect.id} now has ${portSelect.options.length} options, selected: ${portSelect.value}`);
-                    } else {
-                        console.error(`[TARANA] Port select ${index} is null!`);
+                const defaultPorts = getTaranaRecommendedPortsForDevice(selectedDeviceKey);
+                const defaultsByDevice = {
+                    ccr2004: {
+                        tarana_alphaPort: defaultPorts.alpha,
+                        tarana_betaPort: defaultPorts.beta,
+                        tarana_gammaPort: defaultPorts.gamma,
+                        tarana_deltaPort: defaultPorts.delta
+                    },
+                    ccr2216: {
+                        tarana_alphaPort: defaultPorts.alpha,
+                        tarana_betaPort: defaultPorts.beta,
+                        tarana_gammaPort: defaultPorts.gamma,
+                        tarana_deltaPort: defaultPorts.delta
                     }
+                };
+
+                const { deviceConfig, allPorts } = populateTaranaPortSelects({
+                    deviceKey: selectedDeviceKey,
+                    selectIds: ['tarana_alphaPort', 'tarana_betaPort', 'tarana_gammaPort', 'tarana_deltaPort'],
+                    placeholder: 'None',
+                    defaults: defaultsByDevice[selectedDeviceKey] || {},
+                    preserveSelection: true
                 });
 
-                const deviceName = deviceConfig ? deviceConfig.name : selectedDevice.toUpperCase();
-                console.log(`[TARANA] Device selected: ${deviceName}`);
-                console.log(`[TARANA] Ports updated:`, allPorts);
+                if (!allPorts.length) {
+                    throw new Error(`No ports found for ${selectedDevice}.`);
+                }
+
+                console.log('[TARANA] Ports updated for device:', deviceConfig ? deviceConfig.name : selectedDevice, allPorts);
             } catch (error) {
                 console.error('[TARANA] Error in handleTaranaDeviceChange:', error);
                 alert('Error populating ports. Please check the browser console for details.');
@@ -20161,6 +20208,9 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     bng2Btn.style.background = '#6c757d';
                     bng2Btn.classList.remove('active');
                 }
+                if (typeof handleTaranaDeviceChange === 'function') {
+                    handleTaranaDeviceChange();
+                }
             } else if (tab === 'bng2') {
                 if (bng1Section) bng1Section.style.display = 'none';
                 if (bng2Section) bng2Section.style.display = 'block';
@@ -20171,6 +20221,9 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 if (bng2Btn) {
                     bng2Btn.style.background = '#2196F3';
                     bng2Btn.classList.add('active');
+                }
+                if (typeof handleTaranaBNG2DeviceChange === 'function') {
+                    handleTaranaBNG2DeviceChange();
                 }
             }
         }
@@ -20184,17 +20237,30 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 const delta = (document.getElementById('tarana_deltaPort') || document.getElementById('tower_tarana_delta'))?.value || '';
                 const unicornCidr = (document.getElementById('tarana_mgmtSubnet') || document.getElementById('tarana_unicornmgmt_subnet') || document.getElementById('tower_unicornmgmt_subnet'))?.value?.trim() || '';
                 const deviceSel = (document.getElementById('tarana_routerboard_device') || document.getElementById('tarana_device') || document.getElementById('upgradeTargetDevice'));
+                const routerosSel = document.getElementById('tarana_routeros_version');
                 const device = deviceSel ? deviceSel.value.toLowerCase() : 'ccr2004';
+                const routerosVersion = routerosSel ? routerosSel.value : '';
 
                 // BNG1 Format constants
                 const mgmtBridgeName = 'bridge3000';
                 const mgmtBridgeComment = '"UNICORN MGMT"';
                 const ipComment = '"UNICORN MGMT"';
                 const ethernetComments = ['Alpha', 'Beta', 'Gamma', 'Delta'];
+                const speedSyntax = getTaranaSpeedSyntax(routerosVersion);
 
                 // Restrict to CCR2004/CCR2216
                 if (deviceSel && !(device === 'ccr2004' || device === 'ccr2216')) {
                     alert('Tarana sectors are only supported on CCR2004 and CCR2216.');
+                    return;
+                }
+
+                if (!device) {
+                    alert('Select a RouterBoard device.');
+                    return;
+                }
+
+                if (!routerosVersion) {
+                    alert('Select a RouterOS version.');
                     return;
                 }
 
@@ -20204,13 +20270,17 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 }
 
                 const sectorPorts = [alpha, beta, gamma].concat(delta ? [delta] : []);
+                if (new Set(sectorPorts).size !== sectorPorts.length) {
+                    alert('Each Tarana sector must use a different port.');
+                    return;
+                }
                 let config = '';
 
                 // SECTION 1: INTERFACE ETHERNET
                 config += `/interface ethernet\n\n`;
                 sectorPorts.forEach((p, i) => {
                     const comment = ethernetComments[i] || 'Sector';
-                    config += `set [ find default-name=${p} ] comment="${comment}"\n`;
+                    config += `set [ find default-name=${p} ] auto-negotiation=no comment="${comment}" speed=${speedSyntax}\n`;
                 });
                 config += `\n`;
 
@@ -20221,58 +20291,19 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
 
                 // IP Address + VLANs + Bridge Ports + OSPF (only if subnet provided)
                 if (unicornCidr) {
-                    let networkAddr = '';
-                    let routerIp = '';
-                    let prefix = '29';
+                    let cleanRouterIp = '';
+                    let cleanPrefix = '';
+                    let cleanNetworkAddr = '';
                     let networkCidrForOspf = '';
 
-                    const cidrParts = String(unicornCidr).trim().split('/');
-                    routerIp = cidrParts[0].trim();
-                    prefix = (cidrParts[1] || '29').trim();
-
-                    if (!routerIp || !routerIp.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/)) {
-                        alert('Invalid IP address format. Please enter a valid IP address (e.g., 10.32.5.89)');
-                        return;
-                    }
-
                     try {
-                        if (typeof ipToInt === 'function' && typeof intToIp === 'function') {
-                            const routerIpInt = ipToInt(routerIp);
-                            const networkInt = (routerIpInt - 1) >>> 0;
-                            networkAddr = intToIp(networkInt);
-                            if (!networkAddr || !networkAddr.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/)) {
-                                throw new Error('Invalid network address calculated');
-                            }
-                            networkCidrForOspf = `${networkAddr}/${prefix}`;
-                        } else {
-                            const parts = routerIp.split('.').map(Number);
-                            if (parts.length !== 4 || parts.some(p => isNaN(p) || p < 0 || p > 255)) {
-                                throw new Error('Invalid IP address format');
-                            }
-                            let networkParts = [...parts];
-                            if (networkParts[3] > 0) {
-                                networkParts[3] -= 1;
-                            } else {
-                                networkParts[3] = 255;
-                                if (networkParts[2] > 0) { networkParts[2] -= 1; }
-                                else { networkParts[2] = 255; if (networkParts[1] > 0) { networkParts[1] -= 1; } else { networkParts[1] = 255; networkParts[0] = Math.max(0, networkParts[0] - 1); } }
-                            }
-                            networkAddr = networkParts.join('.');
-                            networkCidrForOspf = `${networkAddr}/${prefix}`;
-                        }
+                        const mgmtInfo = resolveTaranaMgmtCidr(unicornCidr);
+                        cleanRouterIp = mgmtInfo.routerIp;
+                        cleanPrefix = String(mgmtInfo.prefix);
+                        cleanNetworkAddr = mgmtInfo.network;
+                        networkCidrForOspf = `${mgmtInfo.network}/${mgmtInfo.prefix}`;
                     } catch (e) {
-                        alert('Error calculating network address. Please check your IP address format.');
-                        return;
-                    }
-
-                    const cleanRouterIp = String(routerIp).trim();
-                    const cleanPrefix = String(prefix).trim();
-                    const cleanNetworkAddr = String(networkAddr).trim();
-
-                    if (!cleanRouterIp.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/) ||
-                        !cleanNetworkAddr.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/) ||
-                        !cleanPrefix.match(/^\d{1,2}$/)) {
-                        alert('Error: Invalid values calculated for IP address. Please check your input and try again.');
+                        alert(e.message || 'Error calculating Tarana UNICORNMGMT IP values.');
                         return;
                     }
 
@@ -20330,14 +20361,13 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 // Lightweight history tracking
                 const deviceConfig = DEVICE_CONFIGS[device];
                 const sectors = [alpha, beta, gamma].concat(delta ? [delta] : []).map((p, i) => ['ALPHA', 'BETA', 'GAMMA', 'DELTA'][i]).join(', ');
-                const routerosSel = document.getElementById('tarana_routeros_version');
-                const routerosVersion = routerosSel ? routerosSel.value : '7.19.4';
+                const historyRouterosVersion = routerosVersion || '7.19.4';
 
                 saveConfigToHistory({
                     type: 'tarana-config',
                     device: deviceConfig ? deviceConfig.name : device.toUpperCase(),
                     siteName: `Tarana Sectors: ${sectors}`,
-                    routeros: routerosVersion,
+                    routeros: historyRouterosVersion,
                     success: true
                 });
 
@@ -20654,13 +20684,25 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
         function genTaranaBNG2() {
             try {
                 const deviceSel = document.getElementById('tarana_bng2_device');
+                const routerosSel = document.getElementById('tarana_bng2_routeros_version');
                 const device = deviceSel ? deviceSel.value.toLowerCase() : 'ccr2004';
+                const routerosVersion = routerosSel ? routerosSel.value : '';
                 const sectorCount = parseInt(document.getElementById('tarana_bng2_sector_count')?.value || '3', 10);
 
-                const alphaPort = document.getElementById('tarana_bng2_alphaPort')?.value || 'sfp-sfpplus8';
-                const betaPort = document.getElementById('tarana_bng2_betaPort')?.value || 'sfp-sfpplus9';
-                const gammaPort = document.getElementById('tarana_bng2_gammaPort')?.value || 'sfp-sfpplus10';
-                const deltaPort = sectorCount === 4 ? (document.getElementById('tarana_bng2_deltaPort')?.value || 'sfp-sfpplus6') : null;
+                const alphaPort = document.getElementById('tarana_bng2_alphaPort')?.value || '';
+                const betaPort = document.getElementById('tarana_bng2_betaPort')?.value || '';
+                const gammaPort = document.getElementById('tarana_bng2_gammaPort')?.value || '';
+                const deltaPort = sectorCount === 4 ? (document.getElementById('tarana_bng2_deltaPort')?.value || '') : null;
+
+                if (!device) {
+                    alert('Select a RouterBoard device.');
+                    return;
+                }
+
+                if (!routerosVersion) {
+                    alert('Select a RouterOS version.');
+                    return;
+                }
 
                 // Validate required ports
                 if (!alphaPort || !betaPort || !gammaPort) {
@@ -20676,11 +20718,15 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 // Build sector ports array
                 const sectorPorts = [alphaPort, betaPort, gammaPort];
                 if (deltaPort) sectorPorts.push(deltaPort);
+                if (new Set(sectorPorts).size !== sectorPorts.length) {
+                    alert('Each Tarana sector must use a different port.');
+                    return;
+                }
 
                 const sectorNames = ['Alpha', 'Beta', 'Gamma', 'Delta'];
 
                 // Frontend standard for current RouterOS targets.
-                const speedSyntax = '10G-baseSR-LR';
+                const speedSyntax = getTaranaSpeedSyntax(routerosVersion);
 
                 let config = `###################################\n###       TARANA CONFIG         ###\n###################################\n\n`;
 
