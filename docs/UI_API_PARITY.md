@@ -56,7 +56,7 @@ Use API key + HMAC signing + Idempotency-Key (for POST).
 
 **Response for `nokia.defaults`:**
 ```json
-{"snmp_community": "...", "nlroot_pw": "...", "admin_pw": "...", "bgp_auth_key": "..."}
+{"snmp_community": "...", "nlroot_pw": "...", "admin_pw": "...", "bgp_auth_key": "...", "ospf_auth_key": "..."}
 ```
 
 ## Enterprise

@@ -1523,14 +1523,14 @@ ROUTERBOARD_INTERFACES = {
             'ethernet_1g': ['ether1'],
             'sfp28_25g': ['sfp28-1', 'sfp28-2', 'sfp28-3', 'sfp28-4', 'sfp28-5', 'sfp28-6',
                          'sfp28-7', 'sfp28-8', 'sfp28-9', 'sfp28-10', 'sfp28-11', 'sfp28-12'],
-            'qsfp28_100g': ['qsfpplus1-1', 'qsfpplus2-1']
+            'qsfp28_100g': ['qsfp28-1-1', 'qsfp28-2-1']
         },
         'total_ports': 15,
         'management_port': 'ether1',
         'typical_use': {
             'ether1': 'Management',
             'sfp28-1-12': 'High-speed customer/sector connections (25G)',
-            'qsfpplus1-1, qsfpplus2-1': 'Ultra high-speed uplinks (100G)'
+            'qsfp28-1-1, qsfp28-2-1': 'Ultra high-speed uplinks (100G)'
         }
     },
 
@@ -10841,6 +10841,7 @@ def nokia7250_defaults():
         'nlroot_pw':      os.getenv('NOKIA7250_NLROOT_PW', '').strip(),
         'admin_pw':       os.getenv('NOKIA7250_ADMIN_PW', '').strip(),
         'bgp_auth_key':   os.getenv('NOKIA7250_BGP_AUTH_KEY', '').strip(),
+        'ospf_auth_key':  os.getenv('NOKIA7250_OSPF_AUTH_KEY', '').strip() or os.getenv('NOKIA7250_BGP_AUTH_KEY', '').strip(),
     })
 
 
@@ -10855,6 +10856,7 @@ def _get_nokia_configurator_creds():
         'nlroot_pw': os.getenv('NOKIA7250_NLROOT_PW', '').strip(),
         'admin_pw': os.getenv('NOKIA7250_ADMIN_PW', '').strip(),
         'bgp_auth_key': os.getenv('NOKIA7250_BGP_AUTH_KEY', '').strip(),
+        'ospf_auth_key': os.getenv('NOKIA7250_OSPF_AUTH_KEY', '').strip() or os.getenv('NOKIA7250_BGP_AUTH_KEY', '').strip(),
     }
 
 
@@ -11057,6 +11059,12 @@ def generate_nokia7250():
         fiber_ip = data.get('fiber_ip', '').strip()
         backhauls = data.get('backhauls', [])
         
+        creds = _get_nokia_configurator_creds()
+        snmp_community = creds.get('snmp_community') or 'public'
+        nlroot_pw = creds.get('nlroot_pw') or 'changeme'
+        bgp_auth_key = creds.get('bgp_auth_key') or 'changeme'
+        ospf_auth_key = creds.get('ospf_auth_key') or bgp_auth_key
+
         if not system_name or not system_ip:
             return jsonify({'error': 'System name and system IP are required'}), 400
         
@@ -11064,10 +11072,30 @@ def generate_nokia7250():
         if not backhauls or len(backhauls) == 0:
             return jsonify({'error': 'At least one backhaul is required'}), 400
         
-        # Validate each backhaul has name and ip
-        for bh in backhauls:
-            if not bh.get('name') or not bh.get('ip'):
-                return jsonify({'error': 'Each backhaul must have both name and IP/netmask'}), 400
+        # Validate and normalize backhauls.
+        reserved_backhaul_ports = {'1/1/1', '1/1/2'}
+        if enable_fiber and fiber_ip:
+            reserved_backhaul_ports.add('1/1/24')
+        default_backhaul_ports = [f'1/1/{port}' for port in range(3, 24)]
+        used_backhaul_ports = set()
+        normalized_backhauls = []
+        for idx, bh in enumerate(backhauls, start=1):
+            bh_name = str(bh.get('description') or bh.get('name') or '').strip()
+            bh_ip = str(bh.get('ip') or '').strip()
+            if not bh_name or not bh_ip:
+                return jsonify({'error': 'Each backhaul must have a description/name and IP/netmask'}), 400
+            bh_port = str(bh.get('port') or '').strip()
+            if not bh_port:
+                try:
+                    bh_port = next(port for port in default_backhaul_ports if port not in used_backhaul_ports)
+                except StopIteration:
+                    return jsonify({'error': 'No Nokia 7250 backhaul ports remain available for automatic assignment'}), 400
+            if bh_port in reserved_backhaul_ports:
+                return jsonify({'error': f'Backhaul port {bh_port} is reserved by the base Nokia 7250 layout'}), 400
+            if bh_port in used_backhaul_ports:
+                return jsonify({'error': f'Backhaul port {bh_port} is used more than once'}), 400
+            used_backhaul_ports.add(bh_port)
+            normalized_backhauls.append({'name': bh_name, 'ip': bh_ip, 'port': bh_port})
         
         # Extract IP and netmask
         ip_parts = system_ip.split('/')
@@ -11091,7 +11119,7 @@ def generate_nokia7250():
         config_lines.append("")
         config_lines.append("# SNMP")
         config_lines.append("/configure system snmp no shutdown")
-        config_lines.append("/configure system security snmp community \"FBZ1yYdphf\" r version both")
+        config_lines.append(f"/configure system security snmp community \"{snmp_community}\" r version both")
         config_lines.append("")
         config_lines.append("# NTP")
         config_lines.append("/configure system time ntp server 52.128.59.240")
@@ -11105,7 +11133,7 @@ def generate_nokia7250():
         config_lines.append("# USERS")
         config_lines.append("/configure system security user nlroot access ftp snmp console netconf grpc")
         config_lines.append("/configure system security user nlroot console member \"administrative\"")
-        config_lines.append("/configure system security user nlroot password XAgYqY8jig!d")
+        config_lines.append(f"/configure system security user nlroot password {nlroot_pw}")
         config_lines.append("/configure system security no user admin")
         config_lines.append("")
         config_lines.append("# IDLE TIMEOUT")
@@ -11124,7 +11152,7 @@ def generate_nokia7250():
             config_lines.append(f"/configure system security management-access-filter ip-filter entry {idx} src-ip {acl_ip}")
             config_lines.append(f"/configure system security management-access-filter ip-filter entry {idx} dst-port 22 65535")
             config_lines.append(f"/configure system security management-access-filter ip-filter entry {idx} action permit")
-        config_lines.append("/configure system security management-access-filter ip-filter no shut")
+        config_lines.append("/configure system security management-access-filter ip-filter no shutdown")
         config_lines.append("")
         config_lines.append("# CARD CONFIGURATION")
         config_lines.append("/configure card 1 card-type imm24-sfp++8-sfp28+2-qsfp28")
@@ -11140,7 +11168,7 @@ def generate_nokia7250():
         config_lines.append("##################################")
         config_lines.append("# SYSTEM IP")
         config_lines.append(f"/configure router interface \"system\" address {system_ip}")
-        config_lines.append("/configure router interface \"system\" no shut")
+        config_lines.append("/configure router interface \"system\" no shutdown")
         config_lines.append("/configure router autonomous-system 26077")
         config_lines.append(f"/configure router router-id {system_ip_addr}")
         config_lines.append("")
@@ -11167,21 +11195,21 @@ def generate_nokia7250():
         
         if enable_ospf:
             config_lines.append("# OSPF")
-            config_lines.append(f"/configure router ospf 1 {system_ip_addr} area 0.0.0.0 interface \"system\" no shut")
-            config_lines.append("/configure router ospf 1 no shut")
+            config_lines.append(f"/configure router ospf 1 {system_ip_addr} area 0.0.0.0 interface \"system\" no shutdown")
+            config_lines.append("/configure router ospf 1 no shutdown")
             config_lines.append("")
         
         if enable_bgp:
             config_lines.append("# BGP")
             config_lines.append(f"/configure router bgp router-id {system_ip_addr}")
             config_lines.append(f"/configure router bgp group \"{bgp_group}\" description \"{bgp_group}\"")
-            config_lines.append(f"/configure router bgp group \"{bgp_group}\" authentication-key nvla8Z")
+            config_lines.append(f"/configure router bgp group \"{bgp_group}\" authentication-key \"{bgp_auth_key}\"")
             config_lines.append(f"/configure router bgp group \"{bgp_group}\" peer-as 26077")
             config_lines.append(f"/configure router bgp group \"{bgp_group}\" local-address {system_ip_addr}")
             for neighbor in bgp_neighbors:
                 if neighbor and neighbor.strip():
                     config_lines.append(f"/configure router bgp group \"{bgp_group}\" neighbor {neighbor.strip()}")
-            config_lines.append("/configure router bgp no shut")
+            config_lines.append("/configure router bgp no shutdown")
             config_lines.append("")
         
         if vpls_services and sdp_farend1:
@@ -11189,21 +11217,21 @@ def generate_nokia7250():
             config_lines.append("/configure service sdp 101 mpls create")
             config_lines.append(f"/configure service sdp 101 far-end {sdp_farend1}")
             config_lines.append("/configure service sdp 101 ldp")
-            config_lines.append("/configure service sdp 101 no shut")
+            config_lines.append("/configure service sdp 101 no shutdown")
             if sdp_farend2 and sdp_farend2.strip():
                 config_lines.append("/configure service sdp 102 mpls create")
                 config_lines.append(f"/configure service sdp 102 far-end {sdp_farend2}")
                 config_lines.append("/configure service sdp 102 ldp")
-                config_lines.append("/configure service sdp 102 no shut")
+                config_lines.append("/configure service sdp 102 no shutdown")
             else:
                 # SDP 102 without far-end (as shown in example)
                 config_lines.append("/configure service sdp 102 mpls create")
                 config_lines.append("/configure service sdp 102 far-end")
                 config_lines.append("/configure service sdp 102 ldp")
-                config_lines.append("/configure service sdp 102 no shut")
+                config_lines.append("/configure service sdp 102 no shutdown")
             config_lines.append("")
             config_lines.append("#MPLS")
-            config_lines.append("/configure router mpls no shut")
+            config_lines.append("/configure router mpls no shutdown")
             for vpls_id in vpls_services:
                 if vpls_id and str(vpls_id).strip():
                     vpls_num = str(vpls_id).strip()
@@ -11243,7 +11271,7 @@ def generate_nokia7250():
             config_lines.append("# FIBER OSPF CONFIGURATION")
             config_lines.append(f"/configure router ospf 1 area 0.0.0.0 interface \"{fiber_interface}\" interface-type point-to-point")
             config_lines.append(f"/configure router ospf 1 area 0.0.0.0 interface \"{fiber_interface}\" authentication-type message-digest")
-            config_lines.append(f"/configure router ospf 1 area 0.0.0.0 interface \"{fiber_interface}\" message-digest-key 1 md5 \"m8M5JwvdYM\"")
+            config_lines.append(f"/configure router ospf 1 area 0.0.0.0 interface \"{fiber_interface}\" message-digest-key 1 md5 \"{ospf_auth_key}\"")
             config_lines.append(f"/configure router ospf 1 area 0.0.0.0 interface \"{fiber_interface}\" no shutdown")
             config_lines.append("")
         
@@ -11254,25 +11282,26 @@ def generate_nokia7250():
             config_lines.append("##################################")
             config_lines.append("        ")
             config_lines.append("")
-            for backhaul in backhauls:
-                bh_name = backhaul.get('name', '').strip()
-                bh_ip = backhaul.get('ip', '').strip()
+            for backhaul in normalized_backhauls:
+                bh_name = backhaul['name']
+                bh_ip = backhaul['ip']
+                bh_port = backhaul['port']
                 if bh_name and bh_ip:
                     config_lines.append("")
                     config_lines.append(f"# {bh_name}")
-                    config_lines.append(f"/config port 1/1/1 no shut")
-                    config_lines.append(f"/config port 1/1/1 ethernet mode network")
-                    config_lines.append(f"/config port 1/1/1 description \"{bh_name}\"")
-                    config_lines.append(f"/config router interface \"{bh_name}\" address {bh_ip}")
-                    config_lines.append(f"/config router interface \"{bh_name}\" port 1/1/1")
-                    config_lines.append(f"/config router interface \"{bh_name}\" no shut")
-                    config_lines.append(f"/config router mpls interface \"{bh_name}\" no shut")
-                    config_lines.append(f"/config router rsvp interface \"{bh_name}\" no shut")
-                    config_lines.append(f"/config router ldp interface-parameters interface \"{bh_name}\" no shut")
-                    config_lines.append(f"/config router ospf 1 area 0.0.0.0 interface \"{bh_name}\" interface-type point-to-point")
-                    config_lines.append(f"/config router ospf 1 area 0.0.0.0 interface \"{bh_name}\" authentication-type message-digest")
-                    config_lines.append(f"/config router ospf 1 area 0.0.0.0 interface \"{bh_name}\" message-digest-key 1 md5 \"m8M5JwvdYM\"")
-                    config_lines.append(f"/config router ospf 1 area 0.0.0.0 interface \"{bh_name}\" no shut")
+                    config_lines.append(f"/configure port {bh_port} no shutdown")
+                    config_lines.append(f"/configure port {bh_port} ethernet mode network")
+                    config_lines.append(f"/configure port {bh_port} description \"{bh_name}\"")
+                    config_lines.append(f"/configure router interface \"{bh_name}\" address {bh_ip}")
+                    config_lines.append(f"/configure router interface \"{bh_name}\" port {bh_port}")
+                    config_lines.append(f"/configure router interface \"{bh_name}\" no shutdown")
+                    config_lines.append(f"/configure router mpls interface \"{bh_name}\" no shutdown")
+                    config_lines.append(f"/configure router rsvp interface \"{bh_name}\" no shutdown")
+                    config_lines.append(f"/configure router ldp interface-parameters interface \"{bh_name}\" no shutdown")
+                    config_lines.append(f"/configure router ospf 1 area 0.0.0.0 interface \"{bh_name}\" interface-type point-to-point")
+                    config_lines.append(f"/configure router ospf 1 area 0.0.0.0 interface \"{bh_name}\" authentication-type message-digest")
+                    config_lines.append(f"/configure router ospf 1 area 0.0.0.0 interface \"{bh_name}\" message-digest-key 1 md5 \"{ospf_auth_key}\"")
+                    config_lines.append(f"/configure router ospf 1 area 0.0.0.0 interface \"{bh_name}\" no shutdown")
                     config_lines.append("    ")
         
         config_text = '\n'.join(config_lines)

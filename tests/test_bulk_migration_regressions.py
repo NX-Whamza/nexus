@@ -5,6 +5,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def _load_app():
     repo_root = Path(__file__).resolve().parents[1]
@@ -15,6 +17,7 @@ def _load_app():
     os.environ["NOKIA7250_NLROOT_PW"] = "test-nlroot"
     os.environ["NOKIA7250_ADMIN_PW"] = "test-admin"
     os.environ["NOKIA7250_BGP_AUTH_KEY"] = "test-bgp"
+    os.environ["NOKIA7250_OSPF_AUTH_KEY"] = "test-ospf"
     import api_server
 
     app = api_server.app
@@ -22,11 +25,184 @@ def _load_app():
     return app.test_client(), api_server
 
 
+def test_nokia7250_defaults_exposes_distinct_ospf_auth_key() -> None:
+    client, _ = _load_app()
+    response = client.get("/api/nokia7250-defaults")
+    assert response.status_code == 200, response.get_data(as_text=True)
+    data = response.get_json() or {}
+    assert data.get("bgp_auth_key") == "test-bgp"
+    assert data.get("ospf_auth_key") == "test-ospf"
+
+
+def test_generate_nokia7250_uses_env_secrets_and_unique_backhaul_ports() -> None:
+    client, _ = _load_app()
+    response = client.post(
+        "/api/generate-nokia7250",
+        json={
+            "system_name": "NOKIA-7250-TEST-1",
+            "system_ip": "10.42.13.4/32",
+            "location": "Lab",
+            "port1_desc": "Switch-A",
+            "port2_desc": "Switch-B",
+            "backhauls": [
+                {"description": "BH-1", "port": "1/1/3", "ip": "10.0.0.1/30"},
+                {"name": "BH-2", "port": "1/1/4", "ip": "10.0.0.5/30"},
+            ],
+            "enable_fiber": True,
+            "fiber_interface": "FIBERCOMM",
+            "fiber_ip": "10.0.0.9/30",
+        },
+    )
+    assert response.status_code == 200, response.get_data(as_text=True)
+    data = response.get_json() or {}
+    cfg = data.get("config") or ""
+    assert '/configure system security snmp community "test-snmp" r version both' in cfg
+    assert '/configure system security user nlroot password test-nlroot' in cfg
+    assert '/configure router bgp group "DALLAS-RR" authentication-key "test-bgp"' in cfg
+    assert '/configure router ospf 1 area 0.0.0.0 interface "BH-1" message-digest-key 1 md5 "test-ospf"' in cfg
+    assert '/configure router ospf 1 area 0.0.0.0 interface "FIBERCOMM" message-digest-key 1 md5 "test-ospf"' in cfg
+    assert '/configure router interface "BH-1" port 1/1/3' in cfg
+    assert '/configure router interface "BH-2" port 1/1/4' in cfg
+    assert '/configure router interface "BH-2" port 1/1/1' not in cfg
+
+
+def test_generate_nokia7250_rejects_reserved_or_duplicate_backhaul_ports() -> None:
+    client, _ = _load_app()
+    reserved = client.post(
+        "/api/generate-nokia7250",
+        json={
+            "system_name": "NOKIA-7250-TEST-1",
+            "system_ip": "10.42.13.4/32",
+            "backhauls": [{"name": "BH-1", "port": "1/1/1", "ip": "10.0.0.1/30"}],
+        },
+    )
+    assert reserved.status_code == 400, reserved.get_data(as_text=True)
+    assert "reserved" in (reserved.get_json() or {}).get("error", "").lower()
+
+    duplicate = client.post(
+        "/api/generate-nokia7250",
+        json={
+            "system_name": "NOKIA-7250-TEST-1",
+            "system_ip": "10.42.13.4/32",
+            "backhauls": [
+                {"name": "BH-1", "port": "1/1/3", "ip": "10.0.0.1/30"},
+                {"name": "BH-2", "port": "1/1/3", "ip": "10.0.0.5/30"},
+            ],
+        },
+    )
+    assert duplicate.status_code == 400, duplicate.get_data(as_text=True)
+    assert "more than once" in (duplicate.get_json() or {}).get("error", "").lower()
+
+
 def test_build_interface_migration_map_no_local_re_shadow() -> None:
     _, api_server = _load_app()
     result = api_server.build_interface_migration_map("CCR1072-12G-4S+", "CCR2216-1G-12XS-2XQ")
     assert isinstance(result, dict)
     assert result["ether1"] == "ether1"
+
+
+@pytest.mark.parametrize(
+    ("alias", "full_model"),
+    [
+        ("ccr1036", "CCR1036-12G-4S"),
+        ("ccr1072", "CCR1072-12G-4S+"),
+        ("ccr2004", "CCR2004-1G-12S+2XS"),
+        ("ccr2116", "CCR2116-12G-4S+"),
+        ("ccr2216", "CCR2216-1G-12XS-2XQ"),
+        ("rb1009", "RB1009UG+S+"),
+        ("rb2011", "RB2011UiAS"),
+        ("rb5009", "RB5009UG+S+"),
+    ],
+)
+def test_routerboard_aliases_resolve_to_supported_full_models(alias: str, full_model: str) -> None:
+    _, api_server = _load_app()
+    assert api_server.resolve_routerboard_model_key(alias) == full_model
+    assert api_server._all_device_ports(full_model), f"Missing inventory for {full_model}"
+
+
+def test_ccr2216_inventory_uses_qsfp28_names() -> None:
+    _, api_server = _load_app()
+    ports = api_server._all_device_ports("CCR2216-1G-12XS-2XQ")
+    assert "qsfp28-1-1" in ports
+    assert "qsfp28-2-1" in ports
+    assert "qsfpplus1-1" not in ports
+
+
+@pytest.mark.parametrize(
+    ("source_config", "target_device", "expected_any", "unexpected_tokens"),
+    [
+        (
+            "# 2026-03-24 08:00:00 by RouterOS 7.19.4\n"
+            "# model = CCR1072-12G-4S+\n"
+            "/interface ethernet\n"
+            "set [ find default-name=sfp1 ] comment=EAGLEMOUNTAIN-BH-1\n"
+            "/ip address\n"
+            "add address=10.33.0.95/32 interface=loop0 comment=Loopback\n"
+            "add address=10.42.2.57/29 interface=sfp1 comment=BH network=10.42.2.56\n"
+            "/system identity\n"
+            "set name=RTR-MT1072-AR1.EAGLEMOUNTAIN\n",
+            "CCR2216-1G-12XS-2XQ",
+            ["sfp28-"],
+            ["default-name=sfp1", " interface=sfp1 "],
+        ),
+        (
+            "# 2026-03-24 08:00:00 by RouterOS 7.19.4\n"
+            "# model = RB1009UG+S+\n"
+            "/interface ethernet\n"
+            "set [ find default-name=combo1 ] comment=BACKHAUL-A\n"
+            "/ip address\n"
+            "add address=10.55.0.9/30 interface=combo1 comment=BH network=10.55.0.8\n"
+            "/system identity\n"
+            "set name=RTR-MT1009-TESTSITE\n",
+            "CCR2004-1G-12S+2XS",
+            ["sfp-sfpplus1", "sfp-sfpplus"],
+            ["combo1"],
+        ),
+        (
+            "# 2026-03-24 08:00:00 by RouterOS 7.19.4\n"
+            "# model = CCR2216-1G-12XS-2XQ\n"
+            "/interface ethernet\n"
+            "set [ find default-name=qsfp28-1-1 ] disabled=no\n"
+            "set [ find default-name=sfp28-3 ] comment=BACKHAUL-B\n"
+            "/ip address\n"
+            "add address=10.60.0.1/30 interface=sfp28-3 comment=BH network=10.60.0.0\n"
+            "/system identity\n"
+            "set name=RTR-MT2216-TESTSITE\n",
+            "CCR2004-1G-12S+2XS",
+            ["/system identity", "/ip address"],
+            ["qsfp28-1-1"],
+        ),
+    ],
+)
+def test_routerboard_migrations_translate_across_port_families(
+    source_config: str,
+    target_device: str,
+    expected_any: list[str],
+    unexpected_tokens: list[str],
+) -> None:
+    client, _ = _load_app()
+    response = client.post(
+        "/api/migrate-config",
+        data=json.dumps(
+            {
+                "config": source_config,
+                "target_device": target_device,
+                "target_version": "7.19.4",
+                "apply_compliance": False,
+            }
+        ),
+        content_type="application/json",
+    )
+    assert response.status_code == 200, response.get_data(as_text=True)
+    data = response.get_json() or {}
+    assert data.get("success") is True, data
+    translated = data.get("translated_config", "")
+    assert translated
+    assert any(token in translated for token in expected_any), translated
+    for token in unexpected_tokens:
+        assert token not in translated, translated
+    validation = data.get("validation") or {}
+    assert not validation.get("missing_ips"), validation
 
 
 def test_migrate_config_returns_analysis_and_validation() -> None:
