@@ -136,6 +136,24 @@ def test_tower_policy_violation_returns_422():
     assert "policy violation" in detail.lower() or "reserved" in detail.lower()
 
 
+def test_tower_custom_tarana_ports_reserve_matching_backhaul_ports():
+    payload = _tower_payload()
+    payload["is_tarana"] = True
+    payload["tarana_subnet"] = "10.248.249.8/29"
+    payload["tarana_sector_count"] = 3
+    payload["tarana_sector_start"] = 0
+    payload["tarana_sectors"] = [
+        {"name": "Alpha", "port": "sfp-sfpplus10"},
+        {"name": "Beta", "port": "sfp-sfpplus11"},
+        {"name": "Gamma", "port": "sfp-sfpplus12"},
+    ]
+    payload["backhauls"][0]["port"] = "sfp-sfpplus10"
+    r = client.post("/api/mt/tower/config", json=payload)
+    assert r.status_code == 422
+    detail = r.json().get("detail", "")
+    assert "policy violation" in detail.lower() or "reserved" in detail.lower()
+
+
 def test_ido_proxy_blocks_site_checker_paths():
     caps = client.get("/api/ido/capabilities")
     assert caps.status_code == 200
@@ -188,3 +206,55 @@ def test_apply_compliance_endpoint_uses_available_compliance_blocks():
     assert "142.147.112.3" in text
     assert "ntp-pool.nxlink.com" in text
     assert "list=managerIP" in text
+
+
+def test_bng2_custom_tarana_ports_are_rendered_from_flat_fields():
+    payload = _bng2_payload()
+    payload.update(
+        {
+            "is_tarana": True,
+            "tarana_subnet": "10.248.249.8/29",
+            "tarana_sector_count": 3,
+            "tarana_sector_start": 0,
+            "tarana_bng2_alphaPort": "sfp-sfpplus8",
+            "tarana_bng2_betaPort": "sfp-sfpplus9",
+            "tarana_bng2_gammaPort": "sfp-sfpplus10",
+        }
+    )
+    r = client.post("/api/mt/bng2/config", json=payload)
+    assert r.status_code == 200
+    text = r.json()
+    assert 'default-name=sfp-sfpplus8' in text
+    assert 'default-name=sfp-sfpplus9' in text
+    assert 'default-name=sfp-sfpplus10' in text
+    assert 'default-name=sfp-sfpplus11' not in text
+
+
+def test_tarana_validation_corrects_quoted_bridge3000_network_fields():
+    config = """/interface bridge
+add comment="UNICORN MGMT" name=bridge3000
+add comment=STATIC name=bridge2000
+/interface ethernet
+set [ find default-name=sfp-sfpplus8 ] comment="Alpha"
+/interface vlan
+add interface=sfp-sfpplus8 name=vlan1000-sfp-sfpplus8 vlan-id=1000
+add interface=sfp-sfpplus8 name=vlan2000-sfp-sfpplus8 vlan-id=2000
+add interface=sfp-sfpplus8 name=vlan3000-sfp-sfpplus8 vlan-id=3000
+/interface bridge port
+add bridge=bridge3000 ingress-filtering=no interface=vlan3000-sfp-sfpplus8
+add bridge=lan-bridge ingress-filtering=no interface=vlan1000-sfp-sfpplus8
+add bridge=bridge2000 ingress-filtering=no interface=vlan2000-sfp-sfpplus8
+/ip address
+add address=10.246.2.25/29 comment="UNICORN MGMT" interface=bridge3000 network=10.246.2.25
+/routing ospf interface-template add interfaces=bridge3000 cost=10 priority=1 area=backbone type=broadcast comment="UNICORN MGMT" network=10.246.2.25/29
+"""
+    r = client.post(
+        "/api/gen-tarana-config",
+        json={"config": config, "device": "ccr2004", "routeros_version": "7.19.4"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body.get("success") is True
+    corrected = body.get("config", "")
+    assert 'interface=bridge3000 network=10.246.2.24' in corrected
+    assert 'network=10.246.2.24/29' in corrected

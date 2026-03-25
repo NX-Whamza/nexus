@@ -10388,7 +10388,10 @@ def gen_tarana_config():
         # BNG1 MUST use bridge3000 interface (not UNICORNMGMT)
         # Pattern: add address=IP/prefix comment=... interface=bridge3000 network=...
         # ============================================================
-        unicorn_cidr_match = re.search(r'add address=(\d+\.\d+\.\d+\.\d+)/(\d+)\s+comment=([^\s]+)\s+interface=bridge3000\s+network=(\d+\.\d+\.\d+\.\d+)', raw_config)
+        unicorn_cidr_match = re.search(
+            r'add address=(\d+\.\d+\.\d+\.\d+)/(\d+)\s+comment=([^\s"]+|"[^"]+")\s+interface=bridge3000\s+network=(\d+\.\d+\.\d+\.\d+)',
+            raw_config
+        )
         
         # CRITICAL: Reject if UNICORNMGMT interface is found (should be bridge3000)
         if re.search(r'interface=UNICORNMGMT', raw_config):
@@ -10422,7 +10425,7 @@ def gen_tarana_config():
                     # Fix /ip address line - replace only the network parameter
                     raw_config = re.sub(
                         r'(add address=' + re.escape(user_ip) + r'/' + str(prefix_len) + r'\s+comment=' + re.escape(comment) + r'\s+interface=' + re.escape(interface_name) + r'\s+network=)' + re.escape(existing_network),
-                        r'\1' + correct_network,
+                        r'\g<1>' + correct_network,
                         raw_config
                     )
                 else:
@@ -10441,7 +10444,7 @@ def gen_tarana_config():
                         print(f"[TARANA] OSPF network incorrect, fixing from {ospf_network} to {expected_ospf_network}")
                         raw_config = re.sub(
                             r'(/routing ospf interface-template.*?network=)' + re.escape(ospf_network),
-                            r'\1' + expected_ospf_network,
+                            r'\g<1>' + expected_ospf_network,
                             raw_config,
                             flags=re.DOTALL
                         )
@@ -10505,8 +10508,8 @@ Return the corrected configuration with proper network calculations and formatti
                     cleaned = ai_result.replace('```routeros', '').replace('```', '').strip()
                     # Only use AI result if it's substantial and contains the required elements
                     if cleaned and len(cleaned) > 100:
-                        # Verify AI result has the required UNICORNMGMT line
-                        if 'UNICORNMGMT' in cleaned and '/ip address' in cleaned:
+                        # Accept AI output only when it preserves the BNG1 bridge3000 format.
+                        if '/ip address' in cleaned and ('interface=bridge3000' in cleaned or 'interfaces=bridge3000' in cleaned):
                             corrected_config = cleaned
                             print(f"[TARANA] AI validation successful ({len(corrected_config)} chars)")
                         else:
