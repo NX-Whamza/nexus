@@ -6474,6 +6474,12 @@
                         <div class="section">
                             <h2>Tarana Sector Configuration (BNG1)</h2>
 
+                            <!-- Tower Site Name -->
+                            <div style="margin-bottom: 20px;">
+                                <label for="tarana_site_name">Tower Site Name:</label>
+                                <input type="text" id="tarana_site_name" placeholder="e.g. TX-HALLETTSVILLE-NW-1" style="width: 100%; box-sizing: border-box;" />
+                            </div>
+
                             <!-- RouterBoard Device Selection -->
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
                                 <div>
@@ -6549,6 +6555,12 @@
                     <div id="tarana-bng2-section" style="display: none;">
                         <div class="section">
                             <h2>Tarana Sector Configuration (BNG2)</h2>
+
+                            <!-- Tower Site Name -->
+                            <div style="margin-bottom: 20px;">
+                                <label for="tarana_bng2_site_name">Tower Site Name:</label>
+                                <input type="text" id="tarana_bng2_site_name" placeholder="e.g. TX-HALLETTSVILLE-NW-1" style="width: 100%; box-sizing: border-box;" />
+                            </div>
 
                             <!-- RouterBoard Device Selection -->
                             <div
@@ -15202,10 +15214,12 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 window.completeProgressTracker(true);
 
                 // Track activity for analytics (reuse targetDevice and deviceConfig from above - already declared earlier in function)
+                const bng1SiteInput = document.getElementById('tarana_site_name');
+                const bng1SiteName = (bng1SiteInput && bng1SiteInput.value.trim()) || `Tarana ${configuredSectors.length}-sector config`;
                 saveConfigToHistory({
                     type: 'tarana-config',
                     device: deviceConfig ? deviceConfig.name : targetDevice,
-                    siteName: `Tarana Sectors: ${configuredSectors.join(', ')}`,
+                    siteName: bng1SiteName,
                     routeros: '7.19.4', // Default RouterOS for Tarana
                     success: true
                 });
@@ -20412,13 +20426,15 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 // Lightweight history tracking
                 const deviceConfig = DEVICE_CONFIGS[device];
                 const sectors = [alpha, beta, gamma].concat(delta ? [delta] : []).map((p, i) => ['ALPHA', 'BETA', 'GAMMA', 'DELTA'][i]).join(', ');
-                const routerosSel = document.getElementById('tarana_routeros_version');
+                const routerosSel = document.getElementById('tarana_bng2_routeros_version');
                 const routerosVersion = routerosSel ? routerosSel.value : '7.19.4';
+                const siteNameInput = document.getElementById('tarana_bng2_site_name');
+                const siteName = (siteNameInput && siteNameInput.value.trim()) || `Tarana ${sectors.split(', ').length}-sector config`;
 
                 saveConfigToHistory({
                     type: 'tarana-config',
                     device: deviceConfig ? deviceConfig.name : device.toUpperCase(),
-                    siteName: `Tarana Sectors: ${sectors}`,
+                    siteName: siteName,
                     routeros: routerosVersion,
                     success: true
                 });

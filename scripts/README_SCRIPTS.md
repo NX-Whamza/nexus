@@ -21,6 +21,26 @@ URLs:
 - App: `http://localhost:8000/app`
 - Health: `http://localhost:8000/api/health`
 
+### `scripts\\send_weekly_summary.py`
+**Purpose**: Build a weekly activity summary from `secure_data/activity_log.db` and post it to a Microsoft Teams incoming webhook  
+**When to use**: Weekly recap, leadership update, or operational reporting  
+
+Example:
+```bash
+python scripts/send_weekly_summary.py --dry-run
+python scripts/send_weekly_summary.py --webhook-url "https://your-org.webhook.office.com/webhookb2/..."
+```
+
+Env vars:
+- `TEAMS_WEEKLY_SUMMARY_WEBHOOK_URL`
+- `WEEKLY_SUMMARY_DB_PATH`
+- `WEEKLY_SUMMARY_TIMEZONE`
+- `WEEKLY_SUMMARY_DAYS`
+- `WEEKLY_SUMMARY_TOP_N`
+- `WEEKLY_SUMMARY_TITLE`
+- `WEEKLY_SUMMARY_THEME_COLOR`
+- `WEEKLY_SUMMARY_FOOTER`
+
 ### `build_exe.py` (in root folder)
 **Purpose**: Build the distributable EXE  
 **When to use**: After making code changes, rebuild EXE  

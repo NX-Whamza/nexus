@@ -124,6 +124,17 @@ AZURE_CLIENT_SECRET=PASTE_YOUR_CLIENT_SECRET_HERE
 # STARTUP_MAINTENANCE_MODE=background
 # STARTUP_MAINTENANCE_DELAY_SECONDS=2
 
+# Weekly Teams summary sender
+# Used by scripts/send_weekly_summary.py to post a weekly activity recap.
+# TEAMS_WEEKLY_SUMMARY_WEBHOOK_URL=https://your-org.webhook.office.com/webhookb2/...
+# WEEKLY_SUMMARY_DB_PATH=secure_data/activity_log.db
+# WEEKLY_SUMMARY_TIMEZONE=America/Chicago
+# WEEKLY_SUMMARY_DAYS=7
+# WEEKLY_SUMMARY_TOP_N=5
+# WEEKLY_SUMMARY_TITLE=NOC Config Maker Weekly Summary
+# WEEKLY_SUMMARY_THEME_COLOR=0078D7
+# WEEKLY_SUMMARY_FOOTER=If there are any issues, gaps, or feedback on the tool, please let me know so we can tighten it up.
+
 # GitLab dynamic compliance (RFC-09-10-25)
 # When set, compliance rules are pulled live from the GitLab netforge/compliance repo
 # and cached for GITLAB_COMPLIANCE_TTL seconds (default 15 min).
