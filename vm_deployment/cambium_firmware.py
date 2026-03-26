@@ -220,12 +220,34 @@ def update_device(
 
     session = requests.Session()
     session.verify = False
+    # Some Cambium devices enforce HTTP Basic Auth at the web-server level before
+    # accepting the luci form POST.  Setting session.auth sends Basic credentials
+    # on every request; devices that don't require it simply ignore the header.
+    session.auth = (username, password)
+
+    # Prime the session with a GET so any CSRF cookie is set before the login POST.
+    try:
+        session.get(mgmt_url, timeout=REQUEST_TIMEOUT)
+    except requests.RequestException:
+        pass
 
     login_post = session.post(
         f"{mgmt_url}/cgi-bin/luci",
         data={"username": username, "password": password},
         timeout=REQUEST_TIMEOUT,
     )
+    if login_post.status_code == 401 and mgmt_url.startswith("https://"):
+        # HTTPS layer rejected; fall back to plain HTTP (device may redirect HTTPS→HTTP)
+        mgmt_url = "http://" + mgmt_url[len("https://"):]
+        try:
+            session.get(mgmt_url, timeout=REQUEST_TIMEOUT)
+        except requests.RequestException:
+            pass
+        login_post = session.post(
+            f"{mgmt_url}/cgi-bin/luci",
+            data={"username": username, "password": password},
+            timeout=REQUEST_TIMEOUT,
+        )
     login_post.raise_for_status()
 
     try:
