@@ -3051,6 +3051,57 @@
             font-size: 12px;
         }
 
+        /* Device Firmware Updater (shared Aviat/Cambium workspace) */
+        .device-firmware-shell {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .device-firmware-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .device-firmware-tab {
+            background: var(--input-bg);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            border-radius: 999px;
+            padding: 10px 18px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.2px;
+            transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+        }
+
+        .device-firmware-tab:hover,
+        .device-firmware-tab.active {
+            border-color: var(--button-bg);
+            background: rgba(255, 255, 255, 0.06);
+            color: #fff;
+        }
+
+        .device-firmware-section {
+            display: none;
+        }
+
+        .device-firmware-section.active {
+            display: block;
+        }
+
+        .device-firmware-intro {
+            margin-bottom: 16px;
+        }
+
+        .device-firmware-intro p {
+            margin: 6px 0 0 0;
+            color: var(--text-color-secondary);
+            font-size: 13px;
+        }
+
         /* Aviat Backhaul Firmware Updater (NOC themed) */
         .aviat-tool {
             --aviat-card: var(--container-bg);
@@ -3334,7 +3385,7 @@
                 grid-template-columns: 1fr;
             }
 
-            #aviat-backhaul-pane .aviat-card {
+            #device-firmware-updater-pane .aviat-card {
                 padding: 14px;
             }
 
@@ -3349,36 +3400,36 @@
             }
         }
 
-        #aviat-backhaul-pane {
+        #device-firmware-updater-pane {
             overflow-x: hidden;
         }
 
-        #aviat-backhaul-pane * {
+        #device-firmware-updater-pane * {
             box-sizing: border-box;
         }
 
-        #aviat-backhaul-pane .container {
+        #device-firmware-updater-pane .container {
             max-width: 100%;
             width: 100%;
             box-sizing: border-box;
             padding: 24px;
         }
 
-        #aviat-backhaul-pane .aviat-grid,
-        #aviat-backhaul-pane .aviat-card,
-        #aviat-backhaul-pane .aviat-queue-item,
-        #aviat-backhaul-pane .aviat-log {
+        #device-firmware-updater-pane .aviat-grid,
+        #device-firmware-updater-pane .aviat-card,
+        #device-firmware-updater-pane .aviat-queue-item,
+        #device-firmware-updater-pane .aviat-log {
             min-width: 0;
         }
 
-        #aviat-backhaul-pane textarea,
-        #aviat-backhaul-pane input,
-        #aviat-backhaul-pane select {
+        #device-firmware-updater-pane textarea,
+        #device-firmware-updater-pane input,
+        #device-firmware-updater-pane select {
             max-width: 100%;
         }
 
         @media (max-width: 900px) {
-            #aviat-backhaul-pane .container {
+            #device-firmware-updater-pane .container {
                 padding: 18px;
             }
 
@@ -3695,9 +3746,22 @@
                     </div>
                 </div>
 
-                <div class="sb-item" data-sb-tab="aviat-backhaul" data-tooltip="Aviat Backhaul">
-                    <span class="sb-item-icon">&#128225;</span>
-                    <span class="sb-item-label">Aviat Backhaul</span>
+                <div class="sb-group" data-sb-group="firmware-updater">
+                    <div class="sb-item sb-item-header" data-tooltip="Devices Firmware Updater">
+                        <span class="sb-item-icon">&#128225;</span>
+                        <span class="sb-item-label">Devices Firmware Updater</span>
+                        <span class="sb-item-arrow">&#9654;</span>
+                    </div>
+                    <div class="sb-group-children">
+                        <div class="sb-item" data-sb-tab="device-firmware-updater" data-sb-subtab="aviat">
+                            <span class="sb-item-icon">&#128225;</span>
+                            <span class="sb-item-label">Aviat Backhaul</span>
+                        </div>
+                        <div class="sb-item" data-sb-tab="device-firmware-updater" data-sb-subtab="cambium">
+                            <span class="sb-item-icon">&#128246;</span>
+                            <span class="sb-item-label">Cambium Radio</span>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- FTTH group -->
@@ -3862,7 +3926,12 @@
                         <a data-tab="mikrotik-to-nokia">NOKIA MIGRATION</a>
                     </div>
                 </div>
-                <button class="nav-item" data-tab="aviat-backhaul">AVIAT BACKHAUL UPDATER</button>
+                <div class="nav-item dropdown" data-default-tab="device-firmware-updater"><button>DEVICES FIRMWARE UPDATER</button>
+                    <div class="dropdown-menu">
+                        <a data-tab="device-firmware-updater" data-device-firmware-tab="aviat">AVIAT BACKHAUL UPDATER</a>
+                        <a data-tab="device-firmware-updater" data-device-firmware-tab="cambium">CAMBIUM RADIO UPDATER</a>
+                    </div>
+                </div>
                 <div class="nav-item dropdown" data-tab="ftth-home"><button>FTTH CONFIGURATOR</button>
                     <div class="dropdown-menu">
                         <a data-tab="ftth-home" data-ftth-home-tab="olt">OLT CONFIGURATION</a>
@@ -6450,7 +6519,6 @@
                                         <option value="">Select RouterBoard Device</option>
                                         <option value="ccr2004">CCR2004 (RouterOS 7.x)</option>
                                         <option value="ccr2216">CCR2216 (RouterOS 7.x)</option>
-                                        <option value="ccr2116">CCR2116 (RouterOS 7.x)</option>
                                     </select>
                                 </div>
                                 <div>
@@ -6490,9 +6558,9 @@
                             </div>
 
                             <div style="margin-top: 20px;">
-                                <label for="tarana_mgmtSubnet">UNICORNMGMT Subnet (CIDR):</label>
-                                <input type="text" id="tarana_mgmtSubnet" placeholder="e.g. 10.246.21.64/29">
-                                <div class="hint">Router IP = first usable.</div>
+                                <label for="tarana_mgmtSubnet">UNICORNMGMT Gateway or Network (CIDR):</label>
+                                <input type="text" id="tarana_mgmtSubnet" placeholder="e.g. 10.246.21.65/29 or 10.246.21.64/29">
+                                <div class="hint">You can enter the /29 network or the first usable router IP.</div>
                             </div>
 
                             <div style="margin-top: 20px; display: flex; gap: 10px;">
@@ -6832,6 +6900,10 @@
                                     <option value="migration">Migration</option>
                                     <option value="upgrade">Upgrade</option>
                                     <option value="aviat-upgrade">Aviat Backhaul Upgrade</option>
+                                    <option value="cambium-upgrade">Cambium Radio Upgrade</option>
+                                    <option value="field-config">Device Config Studio</option>
+                                    <option value="config-diff">Config Diff Viewer</option>
+                                    <option value="bulk-config">Bulk Operations</option>
                                     <option value="maintenance-scheduled">Maintenance Scheduled</option>
                                     <option value="maintenance-started">Maintenance Started</option>
                                     <option value="maintenance-completed">Maintenance Completed</option>
@@ -8217,13 +8289,15 @@
                 </div>
             </div>
 
-    <!-- AVIAT BACKHAUL TAB -->
-    <div class="content-pane" id="aviat-backhaul-pane">
-        <div class="container aviat-tool">
+    <!-- DEVICE FIRMWARE UPDATER TAB -->
+    <div class="content-pane" id="device-firmware-updater-pane">
+        <div class="container aviat-tool device-firmware-shell">
             <div class="aviat-header">
-                <h1>Aviat Backhaul Firmware Updater</h1>
-                <p>Backhaul firmware upgrades, buffer policy, and SOP checks in one flow.</p>
+                <h1 id="deviceFirmwarePaneTitle">Aviat Backhaul Firmware Updater</h1>
+                <p id="deviceFirmwarePaneDesc">Manage firmware upgrades and maintenance windows for Aviat backhaul radios.</p>
             </div>
+
+            <div id="device-firmware-aviat-section" class="device-firmware-section active">
 
             <div id="maintenanceBanner" class="aviat-maintenance-banner aviat-maintenance-off">
                 OUTSIDE MAINTENANCE WINDOW (2:00 AM - 6:00 AM) | Activation allowed 2:00 AM - 5:00 AM
@@ -8358,6 +8432,164 @@
                 </div>
                 <div id="logBox" class="aviat-log" style="margin-top: 10px;">
                     <div class="aviat-log-entry"><span class="aviat-log-time">[--:--:--]</span> Ready. Add radio IPs to begin.</div>
+                </div>
+            </div>
+
+            </div>
+
+            <div id="device-firmware-cambium-section" class="device-firmware-section">
+                <div class="aviat-card device-firmware-intro">
+                    <h2>Cambium Radio Updater</h2>
+                    <p>Queue ePMP and cnWave radios, select a firmware profile, and run upgrade and verification flows from the same workspace.</p>
+                </div>
+
+                <div class="aviat-grid">
+                    <div class="aviat-card">
+                        <h2>Tasks to Execute</h2>
+                        <label class="checkbox-item">
+                            <input type="checkbox" id="cambiumTaskFirmware" checked>
+                            <div>
+                                <div class="aviat-task-title">
+                                    <span class="aviat-task-name">Push Firmware</span>
+                                    <span class="aviat-task-step">Step 1</span>
+                                </div>
+                                <div class="aviat-task-desc">Download image, stage it, and trigger the upgrade workflow.</div>
+                            </div>
+                        </label>
+                        <label class="checkbox-item">
+                            <input type="checkbox" id="cambiumTaskBackup" checked>
+                            <div>
+                                <div class="aviat-task-title">
+                                    <span class="aviat-task-name">Capture Backup / Health Snapshot</span>
+                                    <span class="aviat-task-step">Step 2</span>
+                                </div>
+                                <div class="aviat-task-desc">Save current state before changing firmware.</div>
+                            </div>
+                        </label>
+                        <label class="checkbox-item">
+                            <input type="checkbox" id="cambiumTaskVerify" checked>
+                            <div>
+                                <div class="aviat-task-title">
+                                    <span class="aviat-task-name">Verify Services After Upgrade</span>
+                                    <span class="aviat-task-step">Step 3</span>
+                                </div>
+                                <div class="aviat-task-desc">Confirm target version, reachability, and management access.</div>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div class="aviat-card">
+                        <h2>Add Radios</h2>
+                        <textarea id="cambiumQueueInput" placeholder="Enter Cambium management IPs (comma or newline separated)&#10;e.g., 10.248.20.17"></textarea>
+                        <div style="display: flex; gap: 10px; margin-top: 10px;">
+                            <button id="cambiumAddBtn" class="aviat-btn">Add</button>
+                            <button id="cambiumReplaceBtn" class="aviat-btn secondary">Replace</button>
+                        </div>
+
+                        <div id="cambiumStatsBar" class="aviat-stat-row" style="margin-top: 14px; display: none;">
+                            <div>Total: <span id="cambiumStatTotal">0</span></div>
+                            <div>Pending: <span id="cambiumStatPending">0</span></div>
+                            <div>Running: <span id="cambiumStatProcessing">0</span></div>
+                            <div>Queued: <span id="cambiumStatQueued">0</span></div>
+                            <div>Done: <span id="cambiumStatSuccess">0</span></div>
+                            <div>Failed: <span id="cambiumStatError">0</span></div>
+                        </div>
+
+                        <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;">
+                            <button id="cambiumClearDoneBtn" class="aviat-btn secondary">Clear Done</button>
+                            <button id="cambiumClearAllBtn" class="aviat-btn secondary">Clear All</button>
+                            <button id="cambiumRefreshBtn" class="aviat-btn secondary">Refresh</button>
+                            <button id="cambiumCheckStatusBtn" class="aviat-btn secondary">Check Status</button>
+                            <button id="cambiumAbortBtn" class="aviat-btn danger" disabled>Abort</button>
+                            <button id="cambiumRunBtn" class="aviat-btn success">Run All</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="aviat-grid" style="margin-top: 16px;">
+                    <div class="aviat-card">
+                        <h2>Firmware Profile</h2>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                            <div>
+                                <label style="display: block; font-size: 12px; margin-bottom: 6px;">Provider</label>
+                                <select id="cambiumProvider">
+                                    <option value="cambium">Cambium</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 12px; margin-bottom: 6px;">Device Type</label>
+                                <select id="cambiumFamily">
+                                    <option value="CNEP3K">ePMP 3000 (CNEP3K)</option>
+                                    <option value="CNEP3KL">ePMP 3000 Lite (CNEP3KL)</option>
+                                    <option value="CN4600">ePMP 4600 (CN4600)</option>
+                                    <option value="F4600C">Force 4600C</option>
+                                    <option value="F300-13">Force 300-13</option>
+                                    <option value="F300-16">Force 300-16</option>
+                                    <option value="F300-25">Force 300-25</option>
+                                    <option value="F300-CSM">Force 300-CSM</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 12px; margin-bottom: 6px;">Firmware Channel</label>
+                                <select id="cambiumFirmwareSource">
+                                    <option value="stable">Stable</option>
+                                    <option value="lts">LTS</option>
+                                    <option value="manual">Manual File / URL</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 12px; margin-bottom: 6px;">Target Version</label>
+                                <input type="text" id="cambiumTargetVersion" placeholder="e.g., 5.9.1 or 4.4.1">
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 12px; margin-bottom: 6px;">Catalog Version</label>
+                                <select id="cambiumCatalogVersion">
+                                    <option value="">Select from catalog</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 12px; margin-bottom: 6px;">Activation Mode</label>
+                                <select id="cambiumActivationMode">
+                                    <option value="immediate">Activate Now</option>
+                                    <option value="scheduled">Scheduled</option>
+                                    <option value="stage-only">Stage Only</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 12px; margin-bottom: 6px;">Activation Time</label>
+                                <input type="time" id="cambiumActivationTime" value="02:00" disabled>
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 12px; margin-bottom: 6px;">API Endpoint</label>
+                                <input type="text" id="cambiumEndpointHint" value="/api/cambium" readonly>
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
+                            <button id="cambiumReloadProvidersBtn" class="aviat-btn secondary" type="button">Reload Providers</button>
+                            <button id="cambiumReloadCatalogBtn" class="aviat-btn secondary" type="button">Reload Catalog</button>
+                            <span id="cambiumCatalogMeta" class="aviat-pill">Catalog not loaded</span>
+                        </div>
+                    </div>
+
+                    <div class="aviat-card" id="cambiumRadioListCard" style="display: none;">
+                        <h2>Radio Queue</h2>
+                        <div id="cambiumRadioList" class="aviat-queue"></div>
+                    </div>
+                </div>
+
+                <div class="aviat-card" style="margin-top: 16px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                        <h2 style="margin: 0;">Activity Log</h2>
+                        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                            <button id="cambiumLogRefreshBtn" class="aviat-btn secondary">Refresh</button>
+                            <button id="cambiumLogStatusBtn" class="aviat-btn secondary">Check Status</button>
+                            <button id="cambiumReloadUiBtn" class="aviat-btn secondary">Reload UI</button>
+                            <button id="cambiumClearLogBtn" class="aviat-btn secondary">Clear</button>
+                        </div>
+                    </div>
+                    <div id="cambiumLogBox" class="aviat-log" style="margin-top: 10px;">
+                        <div class="aviat-log-entry"><span class="aviat-log-time">[--:--:--]</span> Ready. Add Cambium radio IPs to begin.</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -10197,7 +10429,11 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             'field-config-studio': { tabId: 'field-config-studio', label: 'Device Config Studio', desc: 'Field device configuration workspace' },
             'nokia7250-maker': { tabId: 'nokia7250-maker', label: 'Nokia Configurator', desc: 'Unified Nokia configuration workspace' },
             'mikrotik-to-nokia': { tabId: 'mikrotik-to-nokia', label: 'Nokia Migration', desc: 'MikroTik to Nokia conversion' },
-            'aviat-backhaul': { tabId: 'aviat-backhaul', label: 'Aviat Backhaul Updater', desc: 'Firmware upgrade and maintenance workflow' },
+            'device-firmware-updater': { tabId: 'device-firmware-updater', label: 'Devices Firmware Updater', desc: 'Firmware workflows for Aviat backhaul and Cambium radios' },
+            'device-firmware-updater:aviat': { tabId: 'device-firmware-updater', subtab: 'aviat', label: 'Aviat Backhaul Updater', desc: 'Firmware upgrade and maintenance workflow' },
+            'device-firmware-updater:cambium': { tabId: 'device-firmware-updater', subtab: 'cambium', label: 'Cambium Radio Updater', desc: 'Cambium radio firmware staging and verification' },
+            'aviat-backhaul': { tabId: 'device-firmware-updater', subtab: 'aviat', label: 'Aviat Backhaul Updater', desc: 'Firmware upgrade and maintenance workflow' },
+            'cambium-upgrade': { tabId: 'device-firmware-updater', subtab: 'cambium', label: 'Cambium Radio Updater', desc: 'Cambium radio firmware staging and verification' },
             'ftth-home': { tabId: 'ftth-home', label: 'FTTH Configurator', desc: 'FTTH OLT and BNG workspaces' },
             'ftth-home:olt': { tabId: 'ftth-home', subtab: 'olt', label: 'FTTH OLT Configuration', desc: 'OLT configuration workspace' },
             'ftth-home:bng': { tabId: 'ftth-home', subtab: 'bng', label: 'FTTH BNG Configuration', desc: 'BNG configuration workspace' },
@@ -10225,7 +10461,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             'mpls-enterprise': TOOL_ROUTE_DEFINITIONS['enterprise-mpls'],
             'tarana': TOOL_ROUTE_DEFINITIONS['tarana'],
             'switch-config': TOOL_ROUTE_DEFINITIONS['switch-maker'],
-            'upgrade': TOOL_ROUTE_DEFINITIONS['aviat-backhaul'],
+            'upgrade': TOOL_ROUTE_DEFINITIONS['device-firmware-updater:aviat'],
             'migration': TOOL_ROUTE_DEFINITIONS['mikrotik-to-nokia'],
             'nokia-7250': TOOL_ROUTE_DEFINITIONS['nokia7250-maker'],
             'ftth-bng': TOOL_ROUTE_DEFINITIONS['ftth-home:bng'],
@@ -10238,7 +10474,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
 
         const ACTIVITY_TYPE_ROUTE_MAP = {
             'migration': TOOL_ROUTE_DEFINITIONS['mikrotik-to-nokia'],
-            'upgrade': TOOL_ROUTE_DEFINITIONS['aviat-backhaul'],
+            'upgrade': TOOL_ROUTE_DEFINITIONS['device-firmware-updater:aviat'],
             'new-config': TOOL_ROUTE_DEFINITIONS['completed-configs'],
             'tower': TOOL_ROUTE_DEFINITIONS['tower'],
             'bng2': TOOL_ROUTE_DEFINITIONS['tower'],
@@ -10255,7 +10491,11 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             'tarana-config': TOOL_ROUTE_DEFINITIONS['tarana'],
             'enterprise-feeding-config': TOOL_ROUTE_DEFINITIONS['enterprise-feeding'],
             'enterprise-feeding-outstate-config': TOOL_ROUTE_DEFINITIONS['enterprise-feeding'],
-            'aviat-upgrade': TOOL_ROUTE_DEFINITIONS['aviat-backhaul'],
+            'aviat-upgrade': TOOL_ROUTE_DEFINITIONS['device-firmware-updater:aviat'],
+            'cambium-upgrade': TOOL_ROUTE_DEFINITIONS['device-firmware-updater:cambium'],
+            'field-config': TOOL_ROUTE_DEFINITIONS['field-config-studio'],
+            'config-diff': TOOL_ROUTE_DEFINITIONS['config-diff'],
+            'bulk-config': TOOL_ROUTE_DEFINITIONS['bulk-config'],
             'nokia-7250-config': TOOL_ROUTE_DEFINITIONS['nokia7250-maker'],
             'ftth-bng': TOOL_ROUTE_DEFINITIONS['ftth-home:bng'],
             'ftth-fiber-customer': TOOL_ROUTE_DEFINITIONS['ftth-home:fiber'],
@@ -10317,6 +10557,9 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             if (route.tabId === 'command-vault' && route.subtab && typeof window.showCommandVaultSubTab === 'function') {
                 window.showCommandVaultSubTab(route.subtab);
             }
+            if (route.tabId === 'device-firmware-updater' && route.subtab && typeof window.showDeviceFirmwareUpdaterSubTab === 'function') {
+                window.showDeviceFirmwareUpdaterSubTab(route.subtab);
+            }
             return true;
         }
         window.navigateToToolRoute = navigateToToolRoute;
@@ -10339,6 +10582,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 'enterprise-feeding-config': { icon: '\u{1F3E2}', label: 'Enterprise Feeding Config' },
                 'enterprise-feeding-outstate-config': { icon: '\u{1F3E2}', label: 'Enterprise Feeding Out-of-State' },
                 'aviat-upgrade':        { icon: '\u{2B06}', label: 'Aviat Backhaul Upgrade' },
+                'cambium-upgrade':      { icon: '\u{1F4F6}', label: 'Cambium Radio Upgrade' },
                 'ftth-bng':             { icon: '\u{1F310}', label: 'FTTH BNG Config' },
                 'ftth-fiber-customer':  { icon: '\u{1F9F5}', label: 'FTTH Fiber Customer' },
                 'ftth-fiber-site':      { icon: '\u{1F3D7}', label: 'FTTH Fiber Site' },
@@ -10348,6 +10592,9 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 'generated enterprise config': { icon: '\u{1F3E2}', label: 'Non-MPLS Enterprise' },
                 'generated mpls enterprise config': { icon: '\u{1F4C8}', label: 'MPLS Enterprise' },
                 'switch':               { icon: '\u{1F5A7}', label: 'Switch Config' },
+                'field-config':         { icon: '\u{1F527}', label: 'Device Config Studio' },
+                'config-diff':          { icon: '\u{1F4CB}', label: 'Config Diff Viewer' },
+                'bulk-config':          { icon: '\u26A1',    label: 'Bulk Operations' },
                 'maintenance-scheduled':{ icon: '\u{1F4C5}', label: 'Maintenance Scheduled' },
                 'maintenance-started':  { icon: '\u{26A0}',  label: 'Maintenance Started' },
                 'maintenance-completed':{ icon: '\u2705',     label: 'Maintenance Completed' },
@@ -11724,91 +11971,280 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             }
         }
 
+        function normalizeTaranaDeviceKey(deviceKey, fallbackKey = '') {
+            if (typeof getNormalizedDeviceKey === 'function') {
+                return getNormalizedDeviceKey(deviceKey, fallbackKey);
+            }
+
+            const raw = String(deviceKey || '').trim().toLowerCase();
+            if (!raw) return fallbackKey || '';
+            if (raw.includes('ccr2004') || raw.includes('mt2004')) return 'ccr2004';
+            if (raw.includes('ccr2116')) return 'ccr2116';
+            if (raw.includes('ccr2216') || raw.includes('mt2216')) return 'ccr2216';
+            if (raw.includes('ccr1036') || raw.includes('mt1036')) return 'ccr1036';
+            if (raw.includes('ccr1072')) return 'ccr1072';
+            if (raw.includes('rb5009')) return 'rb5009';
+            if (raw.includes('rb1009') || raw.includes('mt1009')) return 'rb1009';
+            if (raw.includes('rb2011')) return 'rb2011';
+            return raw || fallbackKey || '';
+        }
+
+        function getTaranaRecommendedPorts(deviceValue) {
+            if (typeof getTaranaRecommendedPortsForDevice === 'function') {
+                return getTaranaRecommendedPortsForDevice(deviceValue);
+            }
+
+            const deviceKey = normalizeTaranaDeviceKey(deviceValue, 'ccr2004');
+            if (deviceKey === 'ccr2216') {
+                return {
+                    alpha: 'sfp28-8',
+                    beta: 'sfp28-9',
+                    gamma: 'sfp28-10',
+                    delta: 'sfp28-11',
+                    speed: '10G-baseSR-LR',
+                    mtu: 1500
+                };
+            }
+            if (deviceKey === 'ccr1036' || deviceKey === 'ccr1072') {
+                return {
+                    alpha: 'sfp1',
+                    beta: 'sfp2',
+                    gamma: 'sfp3',
+                    delta: 'sfp4',
+                    speed: '1G-baseT-full',
+                    mtu: 1500
+                };
+            }
+            if (deviceKey === 'rb5009') {
+                return {
+                    alpha: 'sfp-sfpplus6',
+                    beta: 'sfp-sfpplus7',
+                    gamma: 'sfp-sfpplus8',
+                    delta: '',
+                    speed: '10G-baseSR-LR',
+                    mtu: 1500
+                };
+            }
+            if (deviceKey === 'rb1009') {
+                return {
+                    alpha: 'ether7',
+                    beta: 'ether8',
+                    gamma: 'ether9',
+                    delta: '',
+                    speed: '1G-baseT-full',
+                    mtu: 1500
+                };
+            }
+            return {
+                alpha: 'sfp-sfpplus8',
+                beta: 'sfp-sfpplus9',
+                gamma: 'sfp-sfpplus10',
+                delta: 'sfp-sfpplus11',
+                speed: '10G-baseSR-LR',
+                mtu: 1500
+            };
+        }
+
+        function getTaranaDeviceConfig(deviceKey) {
+            const normalized = normalizeTaranaDeviceKey(deviceKey, '');
+            if (!normalized || typeof DEVICE_CONFIGS === 'undefined') return null;
+            if (typeof getDeviceConfig === 'function') {
+                return getDeviceConfig(normalized, '') || null;
+            }
+            return DEVICE_CONFIGS[normalized] || null;
+        }
+
+        function getTaranaPortOptions(deviceKey) {
+            const normalized = normalizeTaranaDeviceKey(deviceKey, '');
+            if (!normalized) return [];
+
+            const config = getTaranaDeviceConfig(normalized);
+            const configPorts = config
+                ? [
+                    ...(Array.isArray(config.ports) ? config.ports : []),
+                    ...(Array.isArray(config.sfpPorts) ? config.sfpPorts : [])
+                ].filter(Boolean)
+                : [];
+            if (configPorts.length) {
+                return [...new Set(configPorts)];
+            }
+
+            const hardcodedPorts = {
+                ccr2004: [
+                    'ether1',
+                    'sfp-sfpplus1', 'sfp-sfpplus2', 'sfp-sfpplus3', 'sfp-sfpplus4',
+                    'sfp-sfpplus5', 'sfp-sfpplus6', 'sfp-sfpplus7', 'sfp-sfpplus8',
+                    'sfp-sfpplus9', 'sfp-sfpplus10', 'sfp-sfpplus11', 'sfp-sfpplus12',
+                    'sfp28-1', 'sfp28-2'
+                ],
+                ccr2116: [
+                    'ether1', 'ether2', 'ether3', 'ether4', 'ether5', 'ether6',
+                    'ether7', 'ether8', 'ether9', 'ether10', 'ether11', 'ether12',
+                    'sfp-sfpplus1', 'sfp-sfpplus2', 'sfp-sfpplus3', 'sfp-sfpplus4'
+                ],
+                ccr2216: [
+                    'ether1',
+                    'qsfp28-1-1', 'qsfp28-1-2', 'qsfp28-1-3', 'qsfp28-1-4',
+                    'qsfp28-2-1', 'qsfp28-2-2', 'qsfp28-2-3', 'qsfp28-2-4',
+                    'sfp28-1', 'sfp28-2', 'sfp28-3', 'sfp28-4', 'sfp28-5', 'sfp28-6',
+                    'sfp28-7', 'sfp28-8', 'sfp28-9', 'sfp28-10', 'sfp28-11', 'sfp28-12'
+                ]
+            };
+            if (hardcodedPorts[normalized]) {
+                return [...hardcodedPorts[normalized]];
+            }
+
+            if (typeof getDevicePortOptions === 'function') {
+                const fallbackPorts = getDevicePortOptions(normalized);
+                if (Array.isArray(fallbackPorts) && fallbackPorts.length) {
+                    return [...new Set(fallbackPorts.filter(Boolean))];
+                }
+            }
+            return [];
+        }
+
+        function populateTaranaPortSelects(options) {
+            const settings = options || {};
+            const selectIds = Array.isArray(settings.selectIds) ? settings.selectIds : [];
+            const placeholder = settings.placeholder || 'Select Port';
+            const defaults = settings.defaults || {};
+            const preserveSelection = settings.preserveSelection !== false;
+            const deviceKey = normalizeTaranaDeviceKey(settings.deviceKey, '');
+            const deviceConfig = getTaranaDeviceConfig(deviceKey);
+            const allPorts = getTaranaPortOptions(deviceKey);
+            const deviceLabel = deviceConfig ? ` (${deviceConfig.name})` : '';
+
+            selectIds.forEach((selectId) => {
+                const select = document.getElementById(selectId);
+                if (!select) return;
+
+                const previousValue = preserveSelection ? select.value : '';
+                select.innerHTML = '';
+
+                const placeholderOption = document.createElement('option');
+                placeholderOption.value = '';
+                placeholderOption.textContent = allPorts.length ? placeholder : `${placeholder} (Choose Device First)`;
+                select.appendChild(placeholderOption);
+
+                allPorts.forEach((port) => {
+                    const option = document.createElement('option');
+                    option.value = port;
+                    option.textContent = `${port}${deviceLabel}`;
+                    select.appendChild(option);
+                });
+
+                const defaultValue = defaults[selectId];
+                if (preserveSelection && previousValue && allPorts.includes(previousValue)) {
+                    select.value = previousValue;
+                } else if (defaultValue && allPorts.includes(defaultValue)) {
+                    select.value = defaultValue;
+                } else {
+                    select.value = '';
+                }
+            });
+
+            return { deviceConfig, allPorts };
+        }
+
+        function getTaranaSpeedSyntax(routerosVersion) {
+            const version = String(routerosVersion || '').trim();
+            if (typeof getRouterOSVersionType === 'function') {
+                return getRouterOSVersionType(version) === 'new' ? '10G-baseSR-LR' : '10Gbps';
+            }
+            return version === '7.11.2' ? '10Gbps' : '10G-baseSR-LR';
+        }
+
+        function resolveTaranaMgmtCidr(cidrInput) {
+            const parsed = parseCidr(cidrInput);
+            if (!parsed) {
+                throw new Error('Enter a valid CIDR such as 10.246.21.65/29 or 10.246.21.64/29.');
+            }
+            if (parsed.prefix < 8 || parsed.prefix > 30) {
+                throw new Error('Tarana UNICORNMGMT CIDR must use a prefix between /8 and /30.');
+            }
+
+            const enteredIpInt = ipToInt(parsed.ip);
+            const canonicalNetworkInt = enteredIpInt & parsed.mask;
+            const broadcastInt = canonicalNetworkInt | (~parsed.mask >>> 0);
+            const firstHostInt = canonicalNetworkInt + 1;
+            const lastHostInt = broadcastInt - 1;
+
+            if (firstHostInt > lastHostInt) {
+                throw new Error('Tarana UNICORNMGMT CIDR does not contain usable host addresses.');
+            }
+
+            if (enteredIpInt === canonicalNetworkInt) {
+                return {
+                    routerIp: intToIp(firstHostInt),
+                    network: intToIp(canonicalNetworkInt),
+                    prefix: parsed.prefix
+                };
+            }
+
+            if (enteredIpInt === firstHostInt) {
+                return {
+                    routerIp: intToIp(enteredIpInt),
+                    network: intToIp((enteredIpInt - 1) >>> 0),
+                    prefix: parsed.prefix
+                };
+            }
+
+            throw new Error('Enter either the Tarana network address or the first usable router IP for UNICORNMGMT.');
+        }
+
         // TARANA SECTORS BNG2 - Critical function - must always work
         // This function is isolated and protected with multiple fallbacks
         function handleTaranaBNG2DeviceChange() {
             console.log('[BNG2] handleTaranaBNG2DeviceChange called');
             const deviceSelect = document.getElementById('tarana_bng2_device');
-            const portSelects = [
-                document.getElementById('tarana_bng2_alphaPort'),
-                document.getElementById('tarana_bng2_betaPort'),
-                document.getElementById('tarana_bng2_gammaPort'),
-                document.getElementById('tarana_bng2_deltaPort')
-            ];
-
             if (!deviceSelect) {
                 console.error('[BNG2] Device select element not found!');
                 return;
             }
 
             const selectedDevice = deviceSelect.value;
-
-            // If no device selected, clear all ports
-            if (!selectedDevice) {
-                portSelects.forEach(ps => {
-                    if (ps) {
-                        ps.innerHTML = '<option value="">Select Port (Choose Device First)</option>';
-                    }
-                });
-                return;
-            }
-
-            // Get device config
-            const deviceConfig = getDeviceConfig(selectedDeviceKey, '');
-            if (!deviceConfig) {
-                console.error('[BNG2] No device configuration found for:', selectedDevice);
-                portSelects.forEach(ps => {
-                    if (ps) ps.innerHTML = '<option value="">Select Port (Choose Device First)</option>';
-                });
-                return;
-            }
-
-            // Get all available ports
-            let allPorts = [];
-            if (deviceConfig.ports && deviceConfig.sfpPorts) {
-                allPorts = [...deviceConfig.ports, ...deviceConfig.sfpPorts];
-            } else if (typeof getDevicePortOptions === 'function') {
-                allPorts = getDevicePortOptions(selectedDevice) || [];
-            } else {
-                // Fallback: hardcoded ports for common devices
-                if (selectedDeviceKey === 'ccr2004') {
-                    allPorts = ['sfp-sfpplus1', 'sfp-sfpplus2', 'sfp-sfpplus3', 'sfp-sfpplus4', 'sfp-sfpplus5', 'sfp-sfpplus6', 'sfp-sfpplus7', 'sfp-sfpplus8', 'sfp-sfpplus9', 'sfp-sfpplus10', 'sfp-sfpplus11', 'sfp-sfpplus12'];
-                } else if (selectedDeviceKey === 'ccr2216') {
-                    allPorts = ['sfp28-1', 'sfp28-2', 'sfp28-3', 'sfp28-4', 'sfp28-5', 'sfp28-6', 'sfp28-7', 'sfp28-8', 'sfp28-9', 'sfp28-10', 'sfp28-11', 'sfp28-12'];
-                } else if (selectedDeviceKey === 'ccr2116') {
-                    allPorts = ['ether1', 'ether2', 'ether3', 'ether4', 'ether5', 'ether6', 'ether7', 'ether8', 'ether9', 'ether10', 'ether11', 'ether12', 'sfp-sfpplus1', 'sfp-sfpplus2', 'sfp-sfpplus3', 'sfp-sfpplus4'];
+            const selectedDeviceKey = normalizeTaranaDeviceKey(selectedDevice, '');
+            const defaultPorts = getTaranaRecommendedPorts(selectedDeviceKey);
+            const defaultsByDevice = {
+                ccr2004: {
+                    tarana_bng2_alphaPort: defaultPorts.alpha,
+                    tarana_bng2_betaPort: defaultPorts.beta,
+                    tarana_bng2_gammaPort: defaultPorts.gamma,
+                    tarana_bng2_deltaPort: 'sfp-sfpplus6'
+                },
+                ccr2116: {
+                    tarana_bng2_alphaPort: 'ether9',
+                    tarana_bng2_betaPort: 'ether10',
+                    tarana_bng2_gammaPort: 'ether11',
+                    tarana_bng2_deltaPort: 'ether12'
+                },
+                ccr2216: {
+                    tarana_bng2_alphaPort: defaultPorts.alpha,
+                    tarana_bng2_betaPort: defaultPorts.beta,
+                    tarana_bng2_gammaPort: defaultPorts.gamma,
+                    tarana_bng2_deltaPort: defaultPorts.delta
                 }
-            }
+            };
 
-            // Clear existing options and populate with available ports
-            portSelects.forEach((portSelect, index) => {
-                if (portSelect) {
-                    portSelect.innerHTML = '<option value="">Select Port</option>';
-
-                    // Add all available ports
-                    allPorts.forEach(port => {
-                        const option = document.createElement('option');
-                        option.value = port;
-                        option.textContent = `${port} (${deviceConfig.name})`;
-                        portSelect.appendChild(option);
-                    });
-
-                    // Auto-select recommended ports for BNG2 (but allow user to change)
-                    const taranaDefaults = getTaranaRecommendedPortsForDevice(selectedDeviceKey);
-                    const recommendedPorts = [
-                        taranaDefaults.alpha,
-                        taranaDefaults.beta,
-                        taranaDefaults.gamma,
-                        taranaDefaults.delta
-                    ];
-
-                    if (recommendedPorts[index] && allPorts.includes(recommendedPorts[index])) {
-                        portSelect.value = recommendedPorts[index];
-                    }
-                }
+            const { deviceConfig, allPorts } = populateTaranaPortSelects({
+                deviceKey: selectedDeviceKey,
+                selectIds: [
+                    'tarana_bng2_alphaPort',
+                    'tarana_bng2_betaPort',
+                    'tarana_bng2_gammaPort',
+                    'tarana_bng2_deltaPort'
+                ],
+                placeholder: 'Select Port',
+                defaults: defaultsByDevice[selectedDeviceKey] || {},
+                preserveSelection: true
             });
 
-            console.log('[BNG2] Ports populated for device:', deviceConfig.name);
+            if (!selectedDevice || !allPorts.length) {
+                console.warn('[BNG2] No ports available for device:', selectedDevice || '(none)');
+                return;
+            }
+
+            console.log('[BNG2] Ports populated for device:', deviceConfig ? deviceConfig.name : selectedDevice, allPorts);
         }
 
         // MPLS Enterprise Device Name Updater
@@ -11928,135 +12364,64 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             console.log('[TARANA] handleTaranaDeviceChange called');
             try {
                 const deviceSelect = document.getElementById('tarana_routerboard_device');
-                const portSelects = [
-                    document.getElementById('tarana_alphaPort'),
-                    document.getElementById('tarana_betaPort'),
-                    document.getElementById('tarana_gammaPort'),
-                    document.getElementById('tarana_deltaPort')
-                ];
-
-                console.log('[TARANA] deviceSelect:', deviceSelect);
-                console.log('[TARANA] portSelects:', portSelects);
-                console.log('[TARANA] DEVICE_CONFIGS available:', typeof DEVICE_CONFIGS !== 'undefined');
-
                 if (!deviceSelect) {
                     console.error('[TARANA] Device select element not found!');
                     return;
                 }
 
-                // Check if port selects exist
-                const missingPorts = portSelects.filter(ps => !ps);
-                if (missingPorts.length > 0) {
-                    console.error('[TARANA] Missing port select elements:', missingPorts.length);
-                }
-
                 const selectedDevice = deviceSelect.value;
-                const selectedDeviceKey = getNormalizedDeviceKey(selectedDevice, '');
-                console.log('[TARANA] Selected device value:', selectedDevice);
-
-                // If no device selected, clear all ports
+                const selectedDeviceKey = normalizeTaranaDeviceKey(selectedDevice, '');
                 if (!selectedDevice) {
-                    portSelects.forEach(ps => {
-                        if (ps) {
-                            ps.innerHTML = '<option value="">None</option>';
-                        }
+                    populateTaranaPortSelects({
+                        deviceKey: '',
+                        selectIds: ['tarana_alphaPort', 'tarana_betaPort', 'tarana_gammaPort', 'tarana_deltaPort'],
+                        placeholder: 'None',
+                        preserveSelection: false
                     });
                     return;
                 }
 
-                // Hard restrict Tarana to CCR2004/CCR2216 only
                 if (!['ccr2004', 'ccr2216'].includes(selectedDeviceKey)) {
                     deviceSelect.value = '';
-                    alert('Tarana sectors are supported only on CCR2004 and CCR2216.');
-                    portSelects.forEach(ps => { if (ps) ps.innerHTML = '<option value="">None</option>'; });
-                    return;
-                }
-
-                // Get device config or use fallback
-                let allPorts = [];
-                let deviceConfig = null;
-
-                // Try DEVICE_CONFIGS first
-                if (typeof DEVICE_CONFIGS !== 'undefined' && DEVICE_CONFIGS[selectedDeviceKey]) {
-                    deviceConfig = DEVICE_CONFIGS[selectedDeviceKey];
-                    console.log('[TARANA] Found device config:', deviceConfig);
-                    if (deviceConfig.ports && deviceConfig.sfpPorts) {
-                        allPorts = [...deviceConfig.ports, ...deviceConfig.sfpPorts];
-                        console.log('[TARANA] Ports from DEVICE_CONFIGS:', allPorts.length);
-                    }
-                } else {
-                    console.warn('[TARANA] DEVICE_CONFIGS not available or device not found, using fallback');
-                }
-
-                // Fallback: use getDevicePortOptions if DEVICE_CONFIGS structure is missing or incomplete
-                if (!allPorts || allPorts.length === 0) {
-                    if (typeof getDevicePortOptions !== 'undefined') {
-                        allPorts = getDevicePortOptions(selectedDeviceKey);
-                        console.log('[TARANA] Ports from getDevicePortOptions:', allPorts ? allPorts.length : 0);
-                    } else {
-                        // Hardcoded fallback for CCR2004 and CCR2216
-                        if (selectedDeviceKey === 'ccr2004') {
-                            allPorts = ['sfp-sfpplus1', 'sfp-sfpplus2', 'sfp-sfpplus3', 'sfp-sfpplus4', 'sfp-sfpplus5', 'sfp-sfpplus6', 'sfp-sfpplus7', 'sfp-sfpplus8', 'sfp-sfpplus9', 'sfp-sfpplus10', 'sfp-sfpplus11', 'sfp-sfpplus12', 'ether1'];
-                            console.log('[TARANA] Using hardcoded fallback for ccr2004');
-                        } else if (selectedDeviceKey === 'ccr2216') {
-                            allPorts = ['sfp28-1', 'sfp28-2', 'sfp28-3', 'sfp28-4', 'sfp28-5', 'sfp28-6', 'sfp28-7', 'sfp28-8', 'sfp28-9', 'sfp28-10', 'sfp28-11', 'sfp28-12', 'ether1'];
-                            console.log('[TARANA] Using hardcoded fallback for ccr2216');
-                        }
-                    }
-                }
-
-                if (!allPorts || allPorts.length === 0) {
-                    console.error('[TARANA] No ports found for device:', selectedDevice);
-                    portSelects.forEach(portSelect => {
-                        if (portSelect) {
-                            portSelect.innerHTML = '<option value="">None</option>';
-                        }
+                    populateTaranaPortSelects({
+                        deviceKey: '',
+                        selectIds: ['tarana_alphaPort', 'tarana_betaPort', 'tarana_gammaPort', 'tarana_deltaPort'],
+                        placeholder: 'None',
+                        preserveSelection: false
                     });
+                    alert('Tarana BNG1 supports only CCR2004 and CCR2216.');
                     return;
                 }
 
-                // Get deviceConfig if not already set
-                if (!deviceConfig && typeof DEVICE_CONFIGS !== 'undefined') {
-                    deviceConfig = DEVICE_CONFIGS[selectedDeviceKey] || null;
-                }
-
-                // Clear existing options and populate with available ports
-                console.log('[TARANA] Populating ports:', allPorts.length, 'ports found');
-                portSelects.forEach((portSelect, index) => {
-                    if (portSelect) {
-                        console.log(`[TARANA] Populating ${portSelect.id} with ${allPorts.length} ports`);
-                        portSelect.innerHTML = '<option value="">None</option>';
-
-                        // Add all available ports
-                        allPorts.forEach(port => {
-                            const option = document.createElement('option');
-                            option.value = port;
-                            const displayName = deviceConfig ? `${port} (${deviceConfig.name})` : port;
-                            option.textContent = displayName;
-                            portSelect.appendChild(option);
-                        });
-
-                        // Preselect recommended Tarana ports when device is CCR2004/CCR2216
-                        const defaults = getTaranaRecommendedPortsForDevice(selectedDeviceKey);
-                        const defaultMap = {
-                            tarana_alphaPort: defaults.alpha,
-                            tarana_betaPort: defaults.beta,
-                            tarana_gammaPort: defaults.gamma,
-                            tarana_deltaPort: defaults.delta
-                        };
-                        if (defaultMap[portSelect.id] && allPorts.includes(defaultMap[portSelect.id])) {
-                            portSelect.value = defaultMap[portSelect.id];
-                            console.log('[TARANA] Auto-selected', portSelect.id, defaultMap[portSelect.id]);
-                        }
-                        console.log(`[TARANA] ${portSelect.id} now has ${portSelect.options.length} options, selected: ${portSelect.value}`);
-                    } else {
-                        console.error(`[TARANA] Port select ${index} is null!`);
+                const defaultPorts = getTaranaRecommendedPorts(selectedDeviceKey);
+                const defaultsByDevice = {
+                    ccr2004: {
+                        tarana_alphaPort: defaultPorts.alpha,
+                        tarana_betaPort: defaultPorts.beta,
+                        tarana_gammaPort: defaultPorts.gamma,
+                        tarana_deltaPort: defaultPorts.delta
+                    },
+                    ccr2216: {
+                        tarana_alphaPort: defaultPorts.alpha,
+                        tarana_betaPort: defaultPorts.beta,
+                        tarana_gammaPort: defaultPorts.gamma,
+                        tarana_deltaPort: defaultPorts.delta
                     }
+                };
+
+                const { deviceConfig, allPorts } = populateTaranaPortSelects({
+                    deviceKey: selectedDeviceKey,
+                    selectIds: ['tarana_alphaPort', 'tarana_betaPort', 'tarana_gammaPort', 'tarana_deltaPort'],
+                    placeholder: 'None',
+                    defaults: defaultsByDevice[selectedDeviceKey] || {},
+                    preserveSelection: true
                 });
 
-                const deviceName = deviceConfig ? deviceConfig.name : selectedDevice.toUpperCase();
-                console.log(`[TARANA] Device selected: ${deviceName}`);
-                console.log(`[TARANA] Ports updated:`, allPorts);
+                if (!allPorts.length) {
+                    throw new Error(`No ports found for ${selectedDevice}.`);
+                }
+
+                console.log('[TARANA] Ports updated for device:', deviceConfig ? deviceConfig.name : selectedDevice, allPorts);
             } catch (error) {
                 console.error('[TARANA] Error in handleTaranaDeviceChange:', error);
                 alert('Error populating ports. Please check the browser console for details.');
@@ -13412,6 +13777,15 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
 
             // Navigation helper function (GLOBAL) - Define BEFORE initializeEventHandlers
             window.navigateToTab = async function (tabId) {
+                let requestedSubtab = null;
+                if (tabId === 'aviat-backhaul') {
+                    tabId = 'device-firmware-updater';
+                    requestedSubtab = 'aviat';
+                } else if (tabId === 'cambium-upgrade') {
+                    tabId = 'device-firmware-updater';
+                    requestedSubtab = 'cambium';
+                }
+
                 const contentPanes = document.querySelectorAll('.content-pane');
                 const navItems = document.querySelectorAll('.nav-item');
                 const dropdownLinks = document.querySelectorAll('.dropdown-menu a');
@@ -13444,13 +13818,19 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     window.scrollTo(0, 0);
                 }
 
+                if (tabId === 'device-firmware-updater' && typeof window.showDeviceFirmwareUpdaterSubTab === 'function') {
+                    window.showDeviceFirmwareUpdaterSubTab(requestedSubtab || 'aviat');
+                }
+
                 // Highlight the active nav item
                 const activeNavItem = document.querySelector(`.nav-item[data-tab="${tabId}"]`);
                 if (activeNavItem) {
                     activeNavItem.classList.add('active');
                 } else {
                     // Check if it's in a dropdown
-                    const activeDropdownLink = document.querySelector(`.dropdown-menu a[data-tab="${tabId}"]`);
+                    const activeDropdownLink = requestedSubtab
+                        ? document.querySelector(`.dropdown-menu a[data-tab="${tabId}"][data-device-firmware-tab="${requestedSubtab}"]`)
+                        : document.querySelector(`.dropdown-menu a[data-tab="${tabId}"]`);
                     if (activeDropdownLink) {
                         activeDropdownLink.classList.add('active');
                         // Highlight the dropdown button (Mikrotik Config) when a sub-tab is selected
@@ -13673,17 +14053,17 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                             // Calculate ACTUAL success rate from ALL activities
                             const successCount = allActivities.filter(e => e.success === true || e.success === 1).length;
                             const failCount = allActivities.filter(e => e.success === false || e.success === 0).length;
-                            const nonAviatActivities = allActivities.filter(entry =>
+                            const nonFirmwareActivities = allActivities.filter(entry =>
                                 entry.countsTowardMetrics !== false &&
-                                entry.type !== 'aviat-upgrade' &&
+                                !['aviat-upgrade', 'cambium-upgrade'].includes(entry.type) &&
                                 !(entry.type || '').startsWith('maintenance')
                             );
-                            const totalCount = nonAviatActivities.length;
-                            const successCountFiltered = nonAviatActivities.filter(e => e.success === true).length;
+                            const totalCount = nonFirmwareActivities.length;
+                            const successCountFiltered = nonFirmwareActivities.filter(e => e.success === true).length;
                             const successRate = totalCount > 0 ?
                                 Math.round((successCountFiltered / totalCount) * 100) : 100;
                             const firmwareUpgradeCount = allActivities.filter(entry =>
-                                entry.type === 'aviat-upgrade'
+                                ['aviat-upgrade', 'cambium-upgrade'].includes(entry.type)
                             ).length;
 
                             // Update UI elements
@@ -13698,12 +14078,12 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                             if (migrationsEl) migrationsEl.textContent = migrationCount;
                             if (firmwareEl) firmwareEl.textContent = firmwareUpgradeCount;
                             if (successEl) successEl.textContent = successRate + '%';
-                            if (todayEl) todayEl.textContent = nonAviatActivities.filter(entry => {
+                            if (todayEl) todayEl.textContent = nonFirmwareActivities.filter(entry => {
                                 const entryDate = new Date(entry.timestamp);
                                 return entryDate >= todayStart;
                             }).length;
 
-                            console.log(`[METRICS]  Backend: Total=${totalCount} (ALL TIME), Today=${nonAviatActivities.filter(entry => {
+                            console.log(`[METRICS]  Backend: Total=${totalCount} (ALL TIME), Today=${nonFirmwareActivities.filter(entry => {
                                 const entryDate = new Date(entry.timestamp);
                                 return entryDate >= todayStart;
                             }).length}, Success=${successCountFiltered}/${totalCount} (${successRate}%), Migrations=${migrationCount}, FirmwareUpgrades=${firmwareUpgradeCount}`);
@@ -13726,12 +14106,12 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
                 // Calculate TODAY's configs (since midnight) - resets every 24 hours
-                const nonAviatHistory = history.filter(entry =>
+                const nonFirmwareHistory = history.filter(entry =>
                     entry.countsTowardMetrics !== false &&
-                    entry.type !== 'aviat-upgrade' &&
+                    !['aviat-upgrade', 'cambium-upgrade'].includes(entry.type) &&
                     !(entry.type || '').startsWith('maintenance')
                 );
-                const todayCount = nonAviatHistory.filter(entry => {
+                const todayCount = nonFirmwareHistory.filter(entry => {
                     const entryDate = new Date(entry.timestamp);
                     return entryDate >= todayStart;
                 }).length;
@@ -13742,12 +14122,12 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 ).length;
 
                 // Calculate success rate from ALL activities
-                const successCount = nonAviatHistory.filter(e => e.success === true).length;
-                const totalCount = nonAviatHistory.length;
+                const successCount = nonFirmwareHistory.filter(e => e.success === true).length;
+                const totalCount = nonFirmwareHistory.length;
                 const successRate = totalCount > 0 ?
                     Math.round((successCount / totalCount) * 100) : 100;
                 const firmwareUpgradeCount = history.filter(entry =>
-                    entry.type === 'aviat-upgrade'
+                    ['aviat-upgrade', 'cambium-upgrade'].includes(entry.type)
                 ).length;
 
                 // Update UI elements
@@ -14296,12 +14676,16 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                             const tabId = link.getAttribute('data-tab');
                             const ftthHomeTab = link.getAttribute('data-ftth-home-tab');
                             const commandVaultTab = link.getAttribute('data-command-vault-tab');
+                            const deviceFirmwareTab = link.getAttribute('data-device-firmware-tab');
                             navigateToTab(tabId);
                             if (tabId === 'ftth-home' && ftthHomeTab && typeof window.showFtthHomeSubTab === 'function') {
                                 window.showFtthHomeSubTab(ftthHomeTab);
                             }
                             if (tabId === 'command-vault' && commandVaultTab && typeof window.showCommandVaultSubTab === 'function') {
                                 window.showCommandVaultSubTab(commandVaultTab);
+                            }
+                            if (tabId === 'device-firmware-updater' && deviceFirmwareTab && typeof window.showDeviceFirmwareUpdaterSubTab === 'function') {
+                                window.showDeviceFirmwareUpdaterSubTab(deviceFirmwareTab);
                             }
                         }
                     });
@@ -16478,6 +16862,14 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     setFieldConfigStatus(`Completed ${tool.label} -> ${actionKey} | Reboot still required on device`);
                 } else {
                     setFieldConfigStatus(`Completed ${tool.label} -> ${actionKey}`);
+                }
+                if (typeof window.sendActivityToBackend === 'function') {
+                    window.sendActivityToBackend({
+                        type: 'field-config',
+                        device: inputs.ip || '',
+                        siteName: `${tool.label} \u2014 ${actionKey}`,
+                        success: true
+                    });
                 }
             }
 
@@ -20161,6 +20553,9 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     bng2Btn.style.background = '#6c757d';
                     bng2Btn.classList.remove('active');
                 }
+                if (typeof handleTaranaDeviceChange === 'function') {
+                    handleTaranaDeviceChange();
+                }
             } else if (tab === 'bng2') {
                 if (bng1Section) bng1Section.style.display = 'none';
                 if (bng2Section) bng2Section.style.display = 'block';
@@ -20171,6 +20566,9 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 if (bng2Btn) {
                     bng2Btn.style.background = '#2196F3';
                     bng2Btn.classList.add('active');
+                }
+                if (typeof handleTaranaBNG2DeviceChange === 'function') {
+                    handleTaranaBNG2DeviceChange();
                 }
             }
         }
@@ -20184,17 +20582,30 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 const delta = (document.getElementById('tarana_deltaPort') || document.getElementById('tower_tarana_delta'))?.value || '';
                 const unicornCidr = (document.getElementById('tarana_mgmtSubnet') || document.getElementById('tarana_unicornmgmt_subnet') || document.getElementById('tower_unicornmgmt_subnet'))?.value?.trim() || '';
                 const deviceSel = (document.getElementById('tarana_routerboard_device') || document.getElementById('tarana_device') || document.getElementById('upgradeTargetDevice'));
+                const routerosSel = document.getElementById('tarana_routeros_version');
                 const device = deviceSel ? deviceSel.value.toLowerCase() : 'ccr2004';
+                const routerosVersion = routerosSel ? routerosSel.value : '';
 
                 // BNG1 Format constants
                 const mgmtBridgeName = 'bridge3000';
                 const mgmtBridgeComment = '"UNICORN MGMT"';
                 const ipComment = '"UNICORN MGMT"';
                 const ethernetComments = ['Alpha', 'Beta', 'Gamma', 'Delta'];
+                const speedSyntax = getTaranaSpeedSyntax(routerosVersion);
 
                 // Restrict to CCR2004/CCR2216
                 if (deviceSel && !(device === 'ccr2004' || device === 'ccr2216')) {
                     alert('Tarana sectors are only supported on CCR2004 and CCR2216.');
+                    return;
+                }
+
+                if (!device) {
+                    alert('Select a RouterBoard device.');
+                    return;
+                }
+
+                if (!routerosVersion) {
+                    alert('Select a RouterOS version.');
                     return;
                 }
 
@@ -20204,13 +20615,17 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 }
 
                 const sectorPorts = [alpha, beta, gamma].concat(delta ? [delta] : []);
+                if (new Set(sectorPorts).size !== sectorPorts.length) {
+                    alert('Each Tarana sector must use a different port.');
+                    return;
+                }
                 let config = '';
 
                 // SECTION 1: INTERFACE ETHERNET
                 config += `/interface ethernet\n\n`;
                 sectorPorts.forEach((p, i) => {
                     const comment = ethernetComments[i] || 'Sector';
-                    config += `set [ find default-name=${p} ] comment="${comment}"\n`;
+                    config += `set [ find default-name=${p} ] auto-negotiation=no comment="${comment}" speed=${speedSyntax}\n`;
                 });
                 config += `\n`;
 
@@ -20221,58 +20636,19 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
 
                 // IP Address + VLANs + Bridge Ports + OSPF (only if subnet provided)
                 if (unicornCidr) {
-                    let networkAddr = '';
-                    let routerIp = '';
-                    let prefix = '29';
+                    let cleanRouterIp = '';
+                    let cleanPrefix = '';
+                    let cleanNetworkAddr = '';
                     let networkCidrForOspf = '';
 
-                    const cidrParts = String(unicornCidr).trim().split('/');
-                    routerIp = cidrParts[0].trim();
-                    prefix = (cidrParts[1] || '29').trim();
-
-                    if (!routerIp || !routerIp.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/)) {
-                        alert('Invalid IP address format. Please enter a valid IP address (e.g., 10.32.5.89)');
-                        return;
-                    }
-
                     try {
-                        if (typeof ipToInt === 'function' && typeof intToIp === 'function') {
-                            const routerIpInt = ipToInt(routerIp);
-                            const networkInt = (routerIpInt - 1) >>> 0;
-                            networkAddr = intToIp(networkInt);
-                            if (!networkAddr || !networkAddr.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/)) {
-                                throw new Error('Invalid network address calculated');
-                            }
-                            networkCidrForOspf = `${networkAddr}/${prefix}`;
-                        } else {
-                            const parts = routerIp.split('.').map(Number);
-                            if (parts.length !== 4 || parts.some(p => isNaN(p) || p < 0 || p > 255)) {
-                                throw new Error('Invalid IP address format');
-                            }
-                            let networkParts = [...parts];
-                            if (networkParts[3] > 0) {
-                                networkParts[3] -= 1;
-                            } else {
-                                networkParts[3] = 255;
-                                if (networkParts[2] > 0) { networkParts[2] -= 1; }
-                                else { networkParts[2] = 255; if (networkParts[1] > 0) { networkParts[1] -= 1; } else { networkParts[1] = 255; networkParts[0] = Math.max(0, networkParts[0] - 1); } }
-                            }
-                            networkAddr = networkParts.join('.');
-                            networkCidrForOspf = `${networkAddr}/${prefix}`;
-                        }
+                        const mgmtInfo = resolveTaranaMgmtCidr(unicornCidr);
+                        cleanRouterIp = mgmtInfo.routerIp;
+                        cleanPrefix = String(mgmtInfo.prefix);
+                        cleanNetworkAddr = mgmtInfo.network;
+                        networkCidrForOspf = `${mgmtInfo.network}/${mgmtInfo.prefix}`;
                     } catch (e) {
-                        alert('Error calculating network address. Please check your IP address format.');
-                        return;
-                    }
-
-                    const cleanRouterIp = String(routerIp).trim();
-                    const cleanPrefix = String(prefix).trim();
-                    const cleanNetworkAddr = String(networkAddr).trim();
-
-                    if (!cleanRouterIp.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/) ||
-                        !cleanNetworkAddr.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/) ||
-                        !cleanPrefix.match(/^\d{1,2}$/)) {
-                        alert('Error: Invalid values calculated for IP address. Please check your input and try again.');
+                        alert(e.message || 'Error calculating Tarana UNICORNMGMT IP values.');
                         return;
                     }
 
@@ -20330,14 +20706,13 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 // Lightweight history tracking
                 const deviceConfig = DEVICE_CONFIGS[device];
                 const sectors = [alpha, beta, gamma].concat(delta ? [delta] : []).map((p, i) => ['ALPHA', 'BETA', 'GAMMA', 'DELTA'][i]).join(', ');
-                const routerosSel = document.getElementById('tarana_routeros_version');
-                const routerosVersion = routerosSel ? routerosSel.value : '7.19.4';
+                const historyRouterosVersion = routerosVersion || '7.19.4';
 
                 saveConfigToHistory({
                     type: 'tarana-config',
                     device: deviceConfig ? deviceConfig.name : device.toUpperCase(),
                     siteName: `Tarana Sectors: ${sectors}`,
-                    routeros: routerosVersion,
+                    routeros: historyRouterosVersion,
                     success: true
                 });
 
@@ -20654,13 +21029,25 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
         function genTaranaBNG2() {
             try {
                 const deviceSel = document.getElementById('tarana_bng2_device');
+                const routerosSel = document.getElementById('tarana_bng2_routeros_version');
                 const device = deviceSel ? deviceSel.value.toLowerCase() : 'ccr2004';
+                const routerosVersion = routerosSel ? routerosSel.value : '';
                 const sectorCount = parseInt(document.getElementById('tarana_bng2_sector_count')?.value || '3', 10);
 
-                const alphaPort = document.getElementById('tarana_bng2_alphaPort')?.value || 'sfp-sfpplus8';
-                const betaPort = document.getElementById('tarana_bng2_betaPort')?.value || 'sfp-sfpplus9';
-                const gammaPort = document.getElementById('tarana_bng2_gammaPort')?.value || 'sfp-sfpplus10';
-                const deltaPort = sectorCount === 4 ? (document.getElementById('tarana_bng2_deltaPort')?.value || 'sfp-sfpplus6') : null;
+                const alphaPort = document.getElementById('tarana_bng2_alphaPort')?.value || '';
+                const betaPort = document.getElementById('tarana_bng2_betaPort')?.value || '';
+                const gammaPort = document.getElementById('tarana_bng2_gammaPort')?.value || '';
+                const deltaPort = sectorCount === 4 ? (document.getElementById('tarana_bng2_deltaPort')?.value || '') : null;
+
+                if (!device) {
+                    alert('Select a RouterBoard device.');
+                    return;
+                }
+
+                if (!routerosVersion) {
+                    alert('Select a RouterOS version.');
+                    return;
+                }
 
                 // Validate required ports
                 if (!alphaPort || !betaPort || !gammaPort) {
@@ -20676,11 +21063,15 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 // Build sector ports array
                 const sectorPorts = [alphaPort, betaPort, gammaPort];
                 if (deltaPort) sectorPorts.push(deltaPort);
+                if (new Set(sectorPorts).size !== sectorPorts.length) {
+                    alert('Each Tarana sector must use a different port.');
+                    return;
+                }
 
                 const sectorNames = ['Alpha', 'Beta', 'Gamma', 'Delta'];
 
                 // Frontend standard for current RouterOS targets.
-                const speedSyntax = '10G-baseSR-LR';
+                const speedSyntax = getTaranaSpeedSyntax(routerosVersion);
 
                 let config = `###################################\n###       TARANA CONFIG         ###\n###################################\n\n`;
 
@@ -22062,6 +22453,14 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             const panel = document.getElementById('upgradeMigrationAnalysis');
             const body = document.getElementById('upgradeMigrationAnalysisBody');
             if (!panel || !body) return;
+            const escapeHtml = (typeof window !== 'undefined' && typeof window.escHtml === 'function')
+                ? window.escHtml
+                : function (value) {
+                    return String(value ?? '')
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;');
+                };
 
             const analysis = data?.migration_analysis || {};
             const summary = data?.migration_summary || {};
@@ -22080,7 +22479,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 mapHtml = `<div style="margin-top:12px"><strong style="color:var(--accent-color)">Interface Migration Map</strong>
                     <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px">
                         <thead><tr><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border-color)">Source Port</th><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border-color)">Target Port</th></tr></thead>
-                        <tbody>${Object.entries(imap).map(([s, t]) => `<tr><td style="padding:3px 8px;font-family:'JetBrains Mono',monospace">${escHtml(s)}</td><td style="padding:3px 8px;font-family:'JetBrains Mono',monospace">${escHtml(t)}</td></tr>`).join('')}</tbody>
+                        <tbody>${Object.entries(imap).map(([s, t]) => `<tr><td style="padding:3px 8px;font-family:'JetBrains Mono',monospace">${escapeHtml(s)}</td><td style="padding:3px 8px;font-family:'JetBrains Mono',monospace">${escapeHtml(t)}</td></tr>`).join('')}</tbody>
                     </table></div>`;
             }
 
@@ -22088,7 +22487,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             if (warnings.length) {
                 warningsHtml = `<div style="margin-top:12px;padding:8px 12px;background:#fff3cd;border-left:4px solid #ff9800;border-radius:4px">
                     <strong style="color:#e65100">Warnings</strong>
-                    <div style="margin-top:4px">${warnings.map(w => `<div>${escHtml(w)}</div>`).join('')}</div>
+                    <div style="margin-top:4px">${warnings.map(w => `<div>${escapeHtml(w)}</div>`).join('')}</div>
                 </div>`;
             }
 
@@ -22096,11 +22495,11 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             if (portAnalysis.length) {
                 portTableHtml = `<div style="margin-top:12px"><strong style="color:var(--accent-color)">Port Role Analysis</strong>
                     <div style="font-size:12px;color:var(--text-color-secondary);margin:4px 0 6px">
-                        Management: ${escHtml((policySummary.management_port || 'ether1'))} |
-                        Switch: ${escHtml((policySummary.switch_ports || []).join(', ') || 'n/a')} |
-                        Reserved: ${escHtml((policySummary.reserved_ports || []).join(', ') || 'n/a')} |
-                        Backhaul: ${escHtml((policySummary.backhaul_ports || []).join(', ') || 'n/a')} |
-                        Radio: ${escHtml((policySummary.radio_ports || []).join(', ') || 'n/a')}
+                        Management: ${escapeHtml((policySummary.management_port || 'ether1'))} |
+                        Switch: ${escapeHtml((policySummary.switch_ports || []).join(', ') || 'n/a')} |
+                        Reserved: ${escapeHtml((policySummary.reserved_ports || []).join(', ') || 'n/a')} |
+                        Backhaul: ${escapeHtml((policySummary.backhaul_ports || []).join(', ') || 'n/a')} |
+                        Radio: ${escapeHtml((policySummary.radio_ports || []).join(', ') || 'n/a')}
                     </div>
                     <table style="width:100%;border-collapse:collapse;font-size:12px">
                         <thead><tr>
@@ -22110,10 +22509,10 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                             <th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border-color)">Evidence</th>
                         </tr></thead>
                         <tbody>${portAnalysis.map(row => `<tr>
-                            <td style="padding:4px 8px;font-family:'JetBrains Mono',monospace">${escHtml(row.source_port || '')}${row.policy_conflict ? ' <span style="color:#e74c3c;font-weight:700">!</span>' : ''}</td>
-                            <td style="padding:4px 8px">${escHtml(row.detected_role || 'unknown')} (${escHtml(row.confidence || 'low')})</td>
-                            <td style="padding:4px 8px;font-family:'JetBrains Mono',monospace">${escHtml(row.target_port || 'manual review')}</td>
-                            <td style="padding:4px 8px">${escHtml((row.role_evidence || []).join(', ') || row.policy_slot || '')}</td>
+                            <td style="padding:4px 8px;font-family:'JetBrains Mono',monospace">${escapeHtml(row.source_port || '')}${row.policy_conflict ? ' <span style="color:#e74c3c;font-weight:700">!</span>' : ''}</td>
+                            <td style="padding:4px 8px">${escapeHtml(row.detected_role || 'unknown')} (${escapeHtml(row.confidence || 'low')})</td>
+                            <td style="padding:4px 8px;font-family:'JetBrains Mono',monospace">${escapeHtml(row.target_port || 'manual review')}</td>
+                            <td style="padding:4px 8px">${escapeHtml((row.role_evidence || []).join(', ') || row.policy_slot || '')}</td>
                         </tr>`).join('')}</tbody>
                     </table></div>`;
             }
@@ -22124,9 +22523,9 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     <div>
                         <strong style="color:var(--accent-color)">Migration Breakdown</strong>
                         <div style="margin-top:6px">
-                            <strong>Type:</strong> ${escHtml(analysis.migration_type || 'config-audit')}<br>
-                            <strong>Device Migration:</strong> ${data?.device_migrated ? `Yes (${escHtml(sourceDevice)} → ${escHtml(targetDevice)})` : 'No'}<br>
-                            <strong>Version Migration:</strong> ${data?.syntax_migrated ? `Yes (ROS ${escHtml(sourceVersion)} → ${escHtml(targetVersion)})` : 'No'}<br>
+                            <strong>Type:</strong> ${escapeHtml(analysis.migration_type || 'config-audit')}<br>
+                            <strong>Device Migration:</strong> ${data?.device_migrated ? `Yes (${escapeHtml(sourceDevice)} → ${escapeHtml(targetDevice)})` : 'No'}<br>
+                            <strong>Version Migration:</strong> ${data?.syntax_migrated ? `Yes (ROS ${escapeHtml(sourceVersion)} → ${escapeHtml(targetVersion)})` : 'No'}<br>
                             <strong>Interfaces Remapped:</strong> ${data?.interfaces_mapped || 0}<br>
                             <strong>ether1 Preserved:</strong> ${summary.ether1_preserved ? 'Yes' : 'No'}
                         </div>
@@ -27352,6 +27751,26 @@ Ready for translation!`);
             setCommandVaultSubTabState(tabKey);
         };
 
+        function setDeviceFirmwareUpdaterSubTabState(tabKey) {
+            const resolvedTab = tabKey === 'cambium' ? 'cambium' : 'aviat';
+            const sections = document.querySelectorAll('#device-firmware-updater-pane .device-firmware-section');
+            sections.forEach(section => {
+                const isActive = section.id === `device-firmware-${resolvedTab}-section`;
+                section.classList.toggle('active', isActive);
+                section.style.display = isActive ? 'block' : 'none';
+            });
+            const titleEl = document.getElementById('deviceFirmwarePaneTitle');
+            const descEl = document.getElementById('deviceFirmwarePaneDesc');
+            if (titleEl) titleEl.textContent = resolvedTab === 'cambium' ? 'Cambium Radio Updater' : 'Aviat Backhaul Firmware Updater';
+            if (descEl) descEl.textContent = resolvedTab === 'cambium'
+                ? 'Stage, verify, and activate firmware for Cambium radio devices.'
+                : 'Manage firmware upgrades and maintenance windows for Aviat backhaul radios.';
+        }
+
+        window.showDeviceFirmwareUpdaterSubTab = function (tabKey) {
+            setDeviceFirmwareUpdaterSubTabState(tabKey);
+        };
+
         window.filterNokiaVaultCommands = function () {
             const query = (document.getElementById('nokiaCommandSearch')?.value || '').trim().toLowerCase();
             const cards = document.querySelectorAll('#command-vault-nokia-section .nokia-command-card');
@@ -30346,6 +30765,8 @@ Ready for translation!`);
         })();
     </script>
 
+    <script src="cambium-firmware-updater.js"></script>
+
     <!-- ═══════════════════════════════════════════════════════════════
          POWER TOOLS: Toast, Command Palette, Config Diff, Bulk Gen,
                       Scheduled Maintenance
@@ -30384,7 +30805,8 @@ Ready for translation!`);
             { cat: 'Navigate', icon: '', label: 'Device Config Studio', desc: 'AP/SM/Switch/UPS/RPC/Aviat/Wave/7250', action: () => window.navigateToTab('field-config-studio') },
             { cat: 'Navigate', icon: '', label: 'Nokia Configurator', desc: 'Unified Nokia configuration workspace', action: () => window.navigateToTab('nokia7250-maker') },
             { cat: 'Navigate', icon: '', label: 'Nokia Migration', desc: 'MikroTik → Nokia conversion', action: () => window.navigateToTab('mikrotik-to-nokia') },
-            { cat: 'Navigate', icon: '', label: 'Aviat Backhaul Updater', desc: 'Firmware upgrade for WTM4200', action: () => window.navigateToTab('aviat-backhaul') },
+            { cat: 'Navigate', icon: '', label: 'Devices Firmware Updater', desc: 'Firmware workspace for Aviat and Cambium', action: () => window.navigateToTab('device-firmware-updater') },
+            { cat: 'Navigate', icon: '', label: 'Cambium Radio Updater', desc: 'Firmware staging for Cambium radios', action: () => window.navigateToTab('cambium-upgrade') },
             { cat: 'Navigate', icon: '', label: 'FTTH Configurator', desc: 'FTTH OLT and BNG workspaces', action: () => window.navigateToTab('ftth-home') },
             { cat: 'Navigate', icon: '', label: 'Command Vault', desc: 'Nokia/Cisco/MikroTik quick commands', action: () => window.navigateToTab('command-vault') },
             { cat: 'Navigate', icon: '', label: 'Cisco Port Setup', desc: 'Cisco port and OSPF handoff generator', action: () => window.navigateToTab('cisco-config') },
@@ -30658,6 +31080,9 @@ Ready for translation!`);
                     const lineCount = data.config.split('\n').length;
                     if (statusEl) { statusEl.style.background = 'rgba(39,174,96,.1)'; statusEl.style.color = '#27ae60'; statusEl.style.border = '1px solid rgba(39,174,96,.3)'; statusEl.innerHTML = ` Config fetched via port ${data.port || '?'} — ${lineCount} lines`; }
                     nocToast(`Config fetched from ${ip}:${data.port || '?'} (${lineCount} lines)`, 'success');
+                    if (typeof window.sendActivityToBackend === 'function') {
+                        window.sendActivityToBackend({ type: 'config-diff', device: ip, siteName: `SSH Fetch Side ${side} \u2014 ${lineCount} lines`, success: true, countsTowardMetrics: false });
+                    }
                 } else {
                     const errMsg = data.error || 'No config returned from device';
                     if (statusEl) { statusEl.style.background = 'rgba(231,76,60,.1)'; statusEl.style.color = '#e74c3c'; statusEl.style.border = '1px solid rgba(231,76,60,.3)'; statusEl.innerHTML = ` ${errMsg}`; }
@@ -30715,6 +31140,12 @@ Ready for translation!`);
             renderDiff(diff, linesA, linesB);
             document.getElementById('diffOutput').style.display = '';
             nocToast(`Diff complete: ${diff.added} added, ${diff.removed} removed`, 'success');
+            if (typeof window.sendActivityToBackend === 'function') {
+                const ipA = (document.getElementById('diffSshIpA')?.value || '').trim();
+                const ipB = (document.getElementById('diffSshIpB')?.value || '').trim();
+                const device = [ipA, ipB].filter(Boolean).join(' vs ') || 'pasted';
+                window.sendActivityToBackend({ type: 'config-diff', device, siteName: `Diff \u2014 ${diff.added} added, ${diff.removed} removed`, success: true, countsTowardMetrics: false });
+            }
         };
 
         function computeDiff(a, b) {
@@ -31146,6 +31577,9 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
                 bulkRenderTable();
                 const sc = data.succeeded || 0;
                 nocToast(`Bulk generation: ${sc}/${data.total} succeeded`, sc === data.total ? 'success' : 'warning');
+                if (typeof window.sendActivityToBackend === 'function') {
+                    window.sendActivityToBackend({ type: 'bulk-config', device: configType, siteName: `Bulk Generate \u2014 ${sc}/${data.total} sites`, success: sc === data.total, countsTowardMetrics: false });
+                }
 
                 if (sc > 0) {
                     document.getElementById('bulkDownloadBtn').disabled = false;
@@ -31251,6 +31685,10 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
                 bulkSshRenderTable();
                 document.getElementById('bulkSshResults').style.display = '';
                 nocToast(`Bulk SSH: ${data.succeeded}/${data.total} devices fetched`, data.failed === 0 ? 'success' : 'warning');
+                if (typeof window.sendActivityToBackend === 'function') {
+                    const sample = hosts.slice(0, 3).join(', ') + (hosts.length > 3 ? ` +${hosts.length - 3} more` : '');
+                    window.sendActivityToBackend({ type: 'bulk-config', device: sample, siteName: `Bulk SSH Fetch \u2014 ${data.succeeded}/${data.total} devices`, success: data.failed === 0, countsTowardMetrics: false });
+                }
             } catch (err) {
                 nocToast('Bulk SSH fetch failed: ' + err.message, 'error');
                 document.getElementById('bulkSshProgressText').textContent = 'Failed: ' + err.message;
@@ -32501,6 +32939,10 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
                 subtab = document.querySelector('#command-vault-pane .command-vault-tab.active')?.dataset.commandVaultTab
                     || document.querySelector('#command-vault-pane .command-vault-section.active')?.id?.replace('command-vault-', '').replace('-section', '')
                     || 'nokia';
+            } else if (tabId === 'device-firmware-updater') {
+                subtab = document.querySelector('#device-firmware-updater-pane .device-firmware-tab.active')?.dataset.deviceFirmwareTab
+                    || document.querySelector('#device-firmware-updater-pane .device-firmware-section.active')?.id?.replace('device-firmware-', '').replace('-section', '')
+                    || 'aviat';
             }
 
             return { tabId, subtab };
@@ -32560,6 +33002,9 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
             if (tabId === 'command-vault' && subtab && typeof window.showCommandVaultSubTab === 'function') {
                 window.showCommandVaultSubTab(subtab);
             }
+            if (tabId === 'device-firmware-updater' && subtab && typeof window.showDeviceFirmwareUpdaterSubTab === 'function') {
+                window.showDeviceFirmwareUpdaterSubTab(subtab);
+            }
             updateSidebarActive(tabId, subtab);
         }
 
@@ -32613,9 +33058,12 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
         if (typeof origNavigateToTab === 'function' && !origNavigateToTab.__sidebarSyncWrapped) {
             const wrappedNavigateToTab = async function(tabId) {
                 const result = await origNavigateToTab(tabId);
-                updateSidebarActive(tabId);
-                if (tabId && tabId !== 'ftth-home' && tabId !== 'command-vault') {
-                    storeLastRoute(tabId);
+                const route = getToolRouteDefinition(tabId) || { tabId, subtab: null };
+                updateSidebarActive(route.tabId, route.subtab || null);
+                if (route.tabId === 'ftth-home' || route.tabId === 'command-vault' || route.tabId === 'device-firmware-updater') {
+                    storeLastRoute(route.tabId, route.subtab || null);
+                } else if (route.tabId) {
+                    storeLastRoute(route.tabId);
                 }
                 return result;
             };
@@ -32645,6 +33093,18 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
             };
             wrappedCommandVaultSubTab.__sidebarSyncWrapped = true;
             window.showCommandVaultSubTab = wrappedCommandVaultSubTab;
+        }
+
+        const origShowDeviceFirmwareUpdaterSubTab = window.showDeviceFirmwareUpdaterSubTab;
+        if (typeof origShowDeviceFirmwareUpdaterSubTab === 'function' && !origShowDeviceFirmwareUpdaterSubTab.__sidebarSyncWrapped) {
+            const wrappedDeviceFirmwareUpdaterSubTab = function(tabKey) {
+                const result = origShowDeviceFirmwareUpdaterSubTab(tabKey);
+                updateSidebarActive('device-firmware-updater', tabKey);
+                storeLastRoute('device-firmware-updater', tabKey);
+                return result;
+            };
+            wrappedDeviceFirmwareUpdaterSubTab.__sidebarSyncWrapped = true;
+            window.showDeviceFirmwareUpdaterSubTab = wrappedDeviceFirmwareUpdaterSubTab;
         }
 
         window.addEventListener('hashchange', () => updateSidebarActive());

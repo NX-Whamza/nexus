@@ -11,6 +11,7 @@ repo_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(repo_root))
 
 UI_FILE = repo_root / 'vm_deployment' / 'NOC-configMaker.html'
+CAMBIUM_UI_FILE = repo_root / 'vm_deployment' / 'cambium-firmware-updater.js'
 
 
 def test_ftth_modal_exists():
@@ -143,6 +144,23 @@ def test_enterprise_uses_single_routerboard_source_of_truth():
     assert "type: 'generated mpls enterprise config'" in content, 'Missing MPLS enterprise activity logging in NOC-configMaker.html'
 
 
+def test_tarana_tab_uses_shared_port_population_and_validates_bng1_inputs():
+    content = UI_FILE.read_text(encoding='utf-8')
+    assert 'function normalizeTaranaDeviceKey(deviceKey, fallbackKey = \'\')' in content, 'Missing Tarana-local device normalization helper in NOC-configMaker.html'
+    assert 'function getTaranaRecommendedPorts(deviceValue)' in content, 'Missing Tarana-local recommended port helper in NOC-configMaker.html'
+    assert 'function getTaranaPortOptions(deviceKey)' in content, 'Missing shared Tarana port inventory helper in NOC-configMaker.html'
+    assert 'function populateTaranaPortSelects(options)' in content, 'Missing shared Tarana port select population helper in NOC-configMaker.html'
+    assert 'function resolveTaranaMgmtCidr(cidrInput)' in content, 'Missing Tarana BNG1 CIDR normalization helper in NOC-configMaker.html'
+    assert 'function getTaranaSpeedSyntax(routerosVersion)' in content, 'Missing Tarana RouterOS speed helper in NOC-configMaker.html'
+    assert 'Gateway or Network (CIDR)' in content, 'Missing Tarana BNG1 gateway/network guidance in NOC-configMaker.html'
+    assert 'You can enter the /29 network or the first usable router IP.' in content, 'Missing Tarana BNG1 CIDR hint in NOC-configMaker.html'
+    assert "preserveSelection: true" in content, 'Tarana port dropdowns should preserve user selections during repopulation'
+    assert 'Each Tarana sector must use a different port.' in content, 'Missing Tarana duplicate-port validation in NOC-configMaker.html'
+    assert 'const speedSyntax = getTaranaSpeedSyntax(routerosVersion);' in content, 'Missing Tarana RouterOS-aware speed syntax wiring in NOC-configMaker.html'
+    assert 'Tarana BNG1 supports only CCR2004 and CCR2216.' in content, 'Missing explicit Tarana BNG1 device guard in NOC-configMaker.html'
+    assert "const selectedDeviceKey = normalizeTaranaDeviceKey(selectedDevice, '');" in content, 'Tarana handlers should use the local device normalization fallback'
+
+
 def test_nokia_configurator_is_truly_unified():
     content = UI_FILE.read_text(encoding='utf-8')
     assert 'id="nokiaPlatformModel"' in content, 'Missing Nokia platform model selector in NOC-configMaker.html'
@@ -199,6 +217,33 @@ def test_mikrotik_migration_target_device_change_handler_exists():
     assert 'onchange="updateInterfacesForMigration()"' in content, 'Missing MikroTik migration target-device onchange hook'
     assert 'window.updateInterfacesForMigration = function () {' in content, 'Missing MikroTik migration onchange handler implementation'
     assert 'updateDevicePorts();' in content, 'Missing MikroTik migration device-port refresh delegation'
+    assert "const escapeHtml = (typeof window !== 'undefined' && typeof window.escHtml === 'function')" in content, 'Missing local HTML escaping fallback for Upgrade Existing migration preview'
+    assert '${escapeHtml(analysis.migration_type || \'config-audit\')}' in content, 'Migration preview should use the local escapeHtml fallback instead of raw escHtml'
+
+
+def test_device_firmware_updater_wraps_aviat_and_cambium():
+    content = UI_FILE.read_text(encoding='utf-8')
+    cambium_js = CAMBIUM_UI_FILE.read_text(encoding='utf-8')
+    assert 'DEVICES FIRMWARE UPDATER' in content, 'Missing top-level Devices Firmware Updater navigation label'
+    assert 'id="device-firmware-updater-pane"' in content, 'Missing shared device firmware content pane'
+    assert 'data-device-firmware-tab="aviat"' in content, 'Missing Aviat firmware subtab button/dropdown wiring'
+    assert 'data-device-firmware-tab="cambium"' in content, 'Missing Cambium firmware subtab button/dropdown wiring'
+    assert 'window.showDeviceFirmwareUpdaterSubTab = function (tabKey)' in content, 'Missing device firmware subtab controller'
+    assert 'id="device-firmware-cambium-section"' in content, 'Missing Cambium firmware section in shared pane'
+    assert '<script src="cambium-firmware-updater.js"></script>' in content, 'Missing external Cambium firmware updater bundle'
+    assert 'function getCambiumApiBase()' in cambium_js, 'Missing Cambium API base helper'
+    assert "return `${getApiRoot()}/cambium`;" in cambium_js, 'Cambium updater should point at the dedicated /api/cambium namespace'
+    assert "/firmware-updater/providers" in cambium_js, 'Cambium updater should load shared firmware providers'
+    assert "cambiumFetch('/catalog')" in cambium_js, 'Cambium updater should load the Cambium catalog'
+    assert "cambiumFetch('/device-info'" in cambium_js, 'Cambium updater should query Cambium device info'
+    assert "cambiumFetch('/queue'" in cambium_js, 'Cambium updater should queue Cambium radios through the backend'
+    assert "cambiumFetch('/run'" in cambium_js, 'Cambium updater should start Cambium runs through the backend'
+    assert "cambiumFetch(`/status/${taskId}`)" in cambium_js, 'Cambium updater should poll Cambium task status'
+    assert "new EventSource(`${getCambiumApiBase()}/stream/${encodeURIComponent(taskId)}`)" in cambium_js, 'Cambium updater should open per-task Cambium SSE streams'
+    assert "new EventSource(`${getCambiumApiBase()}/stream/global`)" in cambium_js, 'Cambium updater should open the Cambium global SSE stream'
+    assert "cambiumFetch('/check-status'" not in cambium_js, 'Cambium updater should not call the removed check-status endpoint'
+    assert "cambiumFetch('/abort/" not in cambium_js, 'Cambium updater should not call the unsupported abort endpoint'
+    assert "'cambium-upgrade': TOOL_ROUTE_DEFINITIONS['device-firmware-updater:cambium']" in content, 'Missing activity-route mapping for Cambium upgrades'
 
 
 def test_vpls_helpers_are_not_shadowed_by_duplicate_definitions():
@@ -234,6 +279,7 @@ if __name__ == '__main__':
         test_ftth_fiber_customer_and_cisco_generator_exist()
         test_routerboard_identity_prefixes_are_normalized()
         test_enterprise_uses_single_routerboard_source_of_truth()
+        test_tarana_tab_uses_shared_port_population_and_validates_bng1_inputs()
         test_nokia_configurator_is_truly_unified()
         test_sidebar_and_nokia_7250_layout_updates_exist()
         print('[OK] test_ftth_modal_exists')
