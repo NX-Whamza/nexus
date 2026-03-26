@@ -20,7 +20,7 @@ if sys.platform == 'win32':
         # If wrapping fails (e.g., in PyInstaller), just continue
         pass
 
-from flask import Flask, request, jsonify, send_file, send_from_directory
+from flask import Flask, request, jsonify, send_file, send_from_directory, stream_with_context
 from flask import make_response, abort, Response
 from flask_cors import CORS
 import os
@@ -454,6 +454,17 @@ try:
 except Exception:
     HAS_AVIAT = False
 
+try:
+    from cambium_firmware import (
+        list_firmware_catalog as cambium_list_firmware_catalog,
+        get_device_info as cambium_get_device_info,
+        update_device as cambium_update_device,
+        resolve_device_type as cambium_resolve_device_type,
+    )
+    HAS_CAMBIUM = True
+except Exception:
+    HAS_CAMBIUM = False
+
 # Safe print function for PyInstaller compatibility (defined early for use throughout)
 def safe_print(*args, **kwargs):
     """Print with error handling for PyInstaller compatibility"""
@@ -502,6 +513,42 @@ AVIAT_LOADING_MAX_WAIT = int(os.getenv("AVIAT_LOADING_MAX_WAIT", "5400"))
 AVIAT_LOADING_UNKNOWN_MAX_CHECKS = int(os.getenv("AVIAT_LOADING_UNKNOWN_MAX_CHECKS", "6"))
 _aviat_background_threads_started = False
 _aviat_background_threads_lock = threading.Lock()
+
+# ========================================
+# CAMBIUM FIRMWARE UPDATER STATE
+# ========================================
+cambium_tasks = {}
+cambium_log_queues = {}
+cambium_global_log_queues = set()
+cambium_global_log_history = []
+cambium_shared_queue = []
+CAMBIUM_SHARED_QUEUE_STORE = Path(__file__).resolve().parent / "cambium_shared_queue.json"
+CAMBIUM_GLOBAL_LOG_LIMIT = 2000
+CAMBIUM_MAX_WORKERS = int(os.getenv("CAMBIUM_MAX_WORKERS", "4"))
+
+
+def _cambium_load_shared_queue():
+    if not CAMBIUM_SHARED_QUEUE_STORE.exists():
+        return
+    try:
+        with CAMBIUM_SHARED_QUEUE_STORE.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        if isinstance(data, list):
+            cambium_shared_queue.clear()
+            cambium_shared_queue.extend([entry for entry in data if isinstance(entry, dict) and entry.get("ip")])
+    except Exception:
+        pass
+
+
+def _cambium_save_shared_queue():
+    try:
+        with CAMBIUM_SHARED_QUEUE_STORE.open("w", encoding="utf-8") as handle:
+            json.dump(cambium_shared_queue, handle)
+    except Exception:
+        pass
+
+
+_cambium_load_shared_queue()
 
 
 def _aviat_dedupe_queue(entries):
@@ -15770,6 +15817,7 @@ def _build_activity_message(display_user, activity_type, site_name, device=''):
         'enterprise-feeding-config':        'generated Enterprise Feeding config for',
         'enterprise-feeding-outstate-config': 'generated Enterprise Feeding Out-of-State config for',
         'aviat-upgrade':                    'performed Aviat backhaul upgrade on',
+        'cambium-upgrade':                  'performed Cambium radio upgrade on',
         'ftth-bng':                         'generated FTTH BNG config for',
         'maintenance-scheduled':            'scheduled maintenance:',
         'maintenance-started':              'started maintenance:',
@@ -16840,6 +16888,534 @@ def aviat_get_status(task_id):
     if task_id not in aviat_tasks:
         return jsonify({'error': 'Task not found'}), 404
     return jsonify(aviat_tasks[task_id])
+
+
+# ========================================
+# CAMBIUM RADIO FIRMWARE UPDATER API
+# ========================================
+
+def _cambium_queue_find(ip):
+    for entry in cambium_shared_queue:
+        if entry.get("ip") == ip:
+            return entry
+    return None
+
+
+def _cambium_queue_upsert(ip, updates=None):
+    entry = _cambium_queue_find(ip)
+    if entry is None:
+        entry = {"ip": ip}
+        cambium_shared_queue.append(entry)
+    if isinstance(updates, dict):
+        entry.update(updates)
+    entry["updated_at"] = get_utc_timestamp()
+    return entry
+
+
+def _cambium_queue_remove(ip):
+    cambium_shared_queue[:] = [entry for entry in cambium_shared_queue if entry.get("ip") != ip]
+
+
+def _cambium_extract_firmware(info):
+    if not isinstance(info, dict):
+        return None
+    for item in info.get("test_results") or []:
+        if str(item.get("name", "")).strip().lower() == "firmware version":
+            actual = item.get("actual")
+            return str(actual).strip() if actual else None
+    return None
+
+
+def _cambium_broadcast_log(message, level="info", task_id=None, ip=None):
+    entry = {
+        "timestamp": get_utc_timestamp(),
+        "message": str(message),
+        "level": level,
+        "task_id": task_id,
+        "ip": ip,
+    }
+    cambium_global_log_history.append(entry)
+    del cambium_global_log_history[:-CAMBIUM_GLOBAL_LOG_LIMIT]
+    for q in list(cambium_global_log_queues):
+        try:
+            q.put(entry)
+        except Exception:
+            pass
+    if task_id in cambium_log_queues:
+        try:
+            cambium_log_queues[task_id].put(entry)
+        except Exception:
+            pass
+
+
+def _log_cambium_activity(result):
+    conn = None
+    try:
+        if not isinstance(result, dict) or result.get("status") not in {"success", "error"}:
+            return
+        init_activity_db()
+        secure_dir = 'secure_data'
+        db_path = os.path.join(secure_dir, 'activity_log.db')
+        conn = sqlite3.connect(db_path)
+        c = conn.cursor()
+        ts_unix = get_unix_timestamp()
+        ts_iso = get_utc_timestamp()
+        username = _short_username(result.get('username') or 'cambium-tool')
+        c.execute('''INSERT INTO activities
+                     (username, activity_type, device, site_name, routeros_version, success, timestamp, timestamp_unix)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                  (
+                      username,
+                      'cambium-upgrade',
+                      'Cambium Radio',
+                      result.get('ip') or 'Unknown',
+                      result.get('firmware_version_after') or result.get('target_version') or '',
+                      1 if result.get('status') == 'success' else 0,
+                      ts_iso,
+                      ts_unix,
+                  ))
+        conn.commit()
+    except Exception as e:
+        safe_print(f"[CAMBIUM] Failed to log activity: {e}")
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def _cambium_update_queue_from_result(result, username=None):
+    if not isinstance(result, dict):
+        return
+    status = result.get("status") or ("success" if result.get("success") else "error")
+    _cambium_queue_upsert(
+        result.get("ip"),
+        {
+            "status": status,
+            "firmwareStatus": status,
+            "deviceType": result.get("device_type"),
+            "targetVersion": result.get("target_version"),
+            "firmwareVersion": result.get("firmware_version_after") or result.get("firmware_version_before"),
+            "selectedImage": result.get("selected_image"),
+            "lastError": result.get("error"),
+            "username": result.get("username") or username or "cambium-tool",
+        },
+    )
+
+
+def _cambium_expand_radios(data):
+    radios = data.get("radios")
+    if isinstance(radios, list) and radios:
+        expanded = []
+        for item in radios:
+            if not isinstance(item, dict):
+                continue
+            ip = str(item.get("ip") or item.get("ip_address") or "").strip()
+            if not ip:
+                continue
+            expanded.append(
+                {
+                    "ip": ip,
+                    "device_type": item.get("device_type") or item.get("deviceType") or data.get("device_type"),
+                    "update_version": item.get("update_version") or item.get("target_version") or data.get("update_version"),
+                    "username": (
+                        item.get("device_username")
+                        or item.get("username")
+                        or data.get("device_username")
+                        or data.get("username")
+                    ),
+                    "password": item.get("password") or data.get("password"),
+                }
+            )
+        return expanded
+
+    ips = data.get("ips") or []
+    if not isinstance(ips, list):
+        return []
+    return [
+        {
+            "ip": str(ip).strip(),
+            "device_type": data.get("device_type"),
+            "update_version": data.get("update_version"),
+            "username": data.get("device_username") or data.get("username"),
+            "password": data.get("password"),
+        }
+        for ip in ips if str(ip).strip()
+    ]
+
+
+def _cambium_check_single(ip, device_type, password=None, run_tests=True):
+    info = cambium_get_device_info(ip, device_type, password=password, run_tests=run_tests)
+    return {
+        "ip": ip,
+        "device_type": cambium_resolve_device_type(device_type),
+        "reachable": bool(info.get("success")),
+        "firmware_version": _cambium_extract_firmware(info),
+        "info": info,
+        "error": str(info.get("message")) if not info.get("success") and info.get("message") else None,
+    }
+
+
+def _cambium_run_single(radio, username):
+    ip = radio["ip"]
+    canonical = cambium_resolve_device_type(radio.get("device_type"))
+    password = radio.get("password")
+    device_username = radio.get("username")
+    update_version = radio.get("update_version")
+
+    before_info = None
+    after_info = None
+    before_fw = None
+    after_fw = None
+
+    def log_cb(message):
+        _cambium_broadcast_log(message, "info", ip=ip)
+
+    try:
+        _cambium_queue_upsert(ip, {
+            "status": "processing",
+            "firmwareStatus": "processing",
+            "deviceType": canonical,
+            "targetVersion": update_version,
+            "username": username or "cambium-tool",
+        })
+        try:
+            before_info = cambium_get_device_info(ip, canonical, password=password, run_tests=True)
+            before_fw = _cambium_extract_firmware(before_info)
+            if before_fw:
+                log_cb(f"[{ip}] Current firmware: {before_fw}")
+        except Exception as exc:
+            _cambium_broadcast_log(f"[{ip}] Precheck info unavailable: {exc}", "warning", ip=ip)
+
+        update_result = cambium_update_device(
+            ip,
+            canonical,
+            username=device_username,
+            password=password,
+            update_version=update_version,
+            callback=log_cb,
+        )
+
+        try:
+            after_info = cambium_get_device_info(ip, canonical, password=password, run_tests=True)
+            after_fw = _cambium_extract_firmware(after_info)
+        except Exception as exc:
+            _cambium_broadcast_log(f"[{ip}] Post-upgrade verification unavailable: {exc}", "warning", ip=ip)
+
+        return {
+            "ip": ip,
+            "success": True,
+            "status": "success",
+            "device_type": canonical,
+            "target_version": update_result.get("target_version") or update_version,
+            "selected_image": update_result.get("selected_image"),
+            "firmware_version_before": before_fw,
+            "firmware_version_after": after_fw,
+            "before_info": before_info,
+            "after_info": after_info,
+            "error": None,
+            "username": username or "cambium-tool",
+        }
+    except Exception as exc:
+        return {
+            "ip": ip,
+            "success": False,
+            "status": "error",
+            "device_type": canonical,
+            "target_version": update_version,
+            "selected_image": None,
+            "firmware_version_before": before_fw,
+            "firmware_version_after": after_fw,
+            "before_info": before_info,
+            "after_info": after_info,
+            "error": str(exc),
+            "username": username or "cambium-tool",
+        }
+
+
+def _cambium_background_task(task_id, radios, username):
+    results = []
+    cambium_tasks[task_id]["status"] = "running"
+    max_workers = max(1, min(CAMBIUM_MAX_WORKERS, len(radios)))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_cambium_run_single, radio, username): radio for radio in radios}
+        for future in as_completed(futures):
+            result = future.result()
+            results.append(result)
+            _cambium_update_queue_from_result(result, username=username)
+            _log_cambium_activity(result)
+            if result.get("success"):
+                _cambium_broadcast_log(
+                    f"[{result['ip']}] Cambium upgrade completed successfully.",
+                    "success",
+                    task_id=task_id,
+                    ip=result["ip"],
+                )
+            else:
+                _cambium_broadcast_log(
+                    f"[{result['ip']}] Cambium upgrade failed: {result.get('error')}",
+                    "error",
+                    task_id=task_id,
+                    ip=result["ip"],
+                )
+            _cambium_save_shared_queue()
+
+    cambium_tasks[task_id]["status"] = "completed"
+    cambium_tasks[task_id]["results"] = results
+    cambium_tasks[task_id]["completed_at"] = get_utc_timestamp()
+    if task_id in cambium_log_queues:
+        cambium_log_queues[task_id].put(None)
+
+
+@app.route('/api/firmware-updater/providers', methods=['GET'])
+def firmware_updater_providers():
+    cambium_catalog = None
+    if HAS_CAMBIUM:
+        try:
+            cambium_catalog = cambium_list_firmware_catalog()
+        except Exception as exc:
+            cambium_catalog = {"error": str(exc)}
+    return jsonify({
+        "success": True,
+        "providers": {
+            "aviat": {
+                "available": HAS_AVIAT,
+                "label": "Aviat Backhaul Firmware Updater",
+            },
+            "cambium": {
+                "available": HAS_CAMBIUM,
+                "label": "Cambium Radio Firmware Updater",
+                "catalog": cambium_catalog,
+            },
+        },
+    })
+
+
+@app.route('/api/cambium/catalog', methods=['GET'])
+def cambium_catalog():
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    return jsonify({"success": True, **cambium_list_firmware_catalog()})
+
+
+@app.route('/api/cambium/device-info', methods=['POST'])
+def cambium_device_info():
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    data = request.get_json(force=True) or {}
+    ip = str(data.get("ip") or data.get("ip_address") or "").strip()
+    device_type = data.get("device_type")
+    password = data.get("password")
+    run_tests = str(data.get("run_tests", "true")).lower() != "false"
+    if not ip or not device_type:
+        return jsonify({'error': 'ip and device_type are required'}), 400
+    try:
+        info = _cambium_check_single(ip, device_type, password=password, run_tests=run_tests)
+        _cambium_queue_upsert(ip, {
+            "status": "pending" if info["reachable"] else "error",
+            "firmwareStatus": "pending" if info["reachable"] else "error",
+            "deviceType": info["device_type"],
+            "firmwareVersion": info["firmware_version"],
+            "lastError": info["error"],
+        })
+        _cambium_save_shared_queue()
+        return jsonify({"success": True, **info})
+    except Exception as exc:
+        return jsonify({'error': str(exc)}), 400
+
+
+@app.route('/api/cambium/check-status', methods=['POST'])
+def cambium_check_status():
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    data = request.get_json(force=True) or {}
+    radios = _cambium_expand_radios(data)
+    if not radios:
+        return jsonify({'error': 'No radios provided'}), 400
+
+    results = []
+    with ThreadPoolExecutor(max_workers=max(1, min(CAMBIUM_MAX_WORKERS, len(radios)))) as executor:
+        futures = {
+            executor.submit(
+                _cambium_check_single,
+                radio["ip"],
+                radio.get("device_type"),
+                password=radio.get("password"),
+                run_tests=True,
+            ): radio for radio in radios
+        }
+        for future in as_completed(futures):
+            result = future.result()
+            results.append(result)
+            _cambium_queue_upsert(result["ip"], {
+                "status": "pending" if result["reachable"] else "error",
+                "firmwareStatus": "pending" if result["reachable"] else "error",
+                "deviceType": result["device_type"],
+                "firmwareVersion": result["firmware_version"],
+                "lastError": result["error"],
+            })
+    _cambium_save_shared_queue()
+    return jsonify({"success": True, "results": results})
+
+
+@app.route('/api/cambium/queue', methods=['GET', 'POST'])
+def cambium_queue_state():
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    if request.method == 'GET':
+        return jsonify({"radios": cambium_shared_queue})
+
+    data = request.get_json(force=True) or {}
+    mode = str(data.get("mode") or "replace").strip().lower()
+    actor_username = (
+        data.get("requested_by")
+        or data.get("actor_username")
+        or data.get("submitted_by")
+        or "cambium-tool"
+    )
+    radios = _cambium_expand_radios(data)
+
+    if mode == "replace":
+        cambium_shared_queue.clear()
+        for radio in radios:
+            canonical = cambium_resolve_device_type(radio.get("device_type"))
+            _cambium_queue_upsert(radio["ip"], {
+                "status": "pending",
+                "firmwareStatus": "pending",
+                "deviceType": canonical,
+                "targetVersion": radio.get("update_version"),
+                "username": actor_username,
+            })
+    elif mode == "add":
+        for radio in radios:
+            canonical = cambium_resolve_device_type(radio.get("device_type"))
+            _cambium_queue_upsert(radio["ip"], {
+                "status": "pending",
+                "firmwareStatus": "pending",
+                "deviceType": canonical,
+                "targetVersion": radio.get("update_version"),
+                "username": actor_username,
+            })
+    elif mode == "remove":
+        for radio in radios:
+            _cambium_queue_remove(radio["ip"])
+    else:
+        return jsonify({'error': f'Unsupported mode: {mode}'}), 400
+
+    _cambium_save_shared_queue()
+    return jsonify({"radios": cambium_shared_queue})
+
+
+@app.route('/api/cambium/run', methods=['POST'])
+def cambium_run_tasks():
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    data = request.get_json(force=True) or {}
+    radios = _cambium_expand_radios(data)
+    actor_username = (
+        data.get("requested_by")
+        or data.get("actor_username")
+        or data.get("submitted_by")
+        or "cambium-tool"
+    )
+    if not radios:
+        return jsonify({'error': 'No radios provided'}), 400
+
+    normalized = []
+    for radio in radios:
+        if not radio.get("device_type"):
+            return jsonify({'error': f"device_type is required for {radio['ip']}"}), 400
+        canonical = cambium_resolve_device_type(radio.get("device_type"))
+        normalized.append(
+            {
+                "ip": radio["ip"],
+                "device_type": canonical,
+                "update_version": radio.get("update_version"),
+                "username": radio.get("username"),
+                "password": radio.get("password"),
+            }
+        )
+        _cambium_queue_upsert(radio["ip"], {
+            "status": "processing",
+            "firmwareStatus": "processing",
+            "deviceType": canonical,
+            "targetVersion": radio.get("update_version"),
+            "username": actor_username,
+        })
+    _cambium_save_shared_queue()
+
+    task_id = str(uuid.uuid4())
+    cambium_tasks[task_id] = {
+        "status": "queued",
+        "task_id": task_id,
+        "username": actor_username,
+        "radios": normalized,
+        "started_at": get_utc_timestamp(),
+        "results": [],
+    }
+    cambium_log_queues[task_id] = queue.Queue()
+    threading.Thread(
+        target=_cambium_background_task,
+        args=(task_id, normalized, actor_username),
+        daemon=True,
+    ).start()
+    return jsonify({"success": True, "task_id": task_id, "count": len(normalized)})
+
+
+@app.route('/api/cambium/stream/<task_id>')
+def cambium_stream_logs(task_id):
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    if task_id not in cambium_log_queues:
+        return jsonify({'error': 'Task not found'}), 404
+
+    @stream_with_context
+    def generate():
+        q = cambium_log_queues[task_id]
+        while True:
+            item = q.get()
+            if item is None:
+                break
+            yield f"data: {json.dumps(item)}\n\n"
+
+    response = Response(generate(), mimetype='text/event-stream')
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['X-Accel-Buffering'] = 'no'
+    return response
+
+
+@app.route('/api/cambium/stream/global')
+def cambium_stream_global():
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    q = queue.Queue()
+    cambium_global_log_queues.add(q)
+
+    @stream_with_context
+    def generate():
+        for entry in cambium_global_log_history[-200:]:
+            yield f"data: {json.dumps(entry)}\n\n"
+        try:
+            while True:
+                item = q.get()
+                yield f"data: {json.dumps(item)}\n\n"
+        finally:
+            cambium_global_log_queues.discard(q)
+
+    response = Response(generate(), mimetype='text/event-stream')
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['X-Accel-Buffering'] = 'no'
+    return response
+
+
+@app.route('/api/cambium/status/<task_id>')
+def cambium_get_status(task_id):
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    if task_id not in cambium_tasks:
+        return jsonify({'error': 'Task not found'}), 404
+    return jsonify(cambium_tasks[task_id])
 
 
 FTTH_FIBER_DEVICE_PROFILES = {
