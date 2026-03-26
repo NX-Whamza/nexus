@@ -430,6 +430,7 @@
             target_version: (document.getElementById('cambiumCatalogVersion')?.value || '').trim(),
             activation_mode: document.getElementById('cambiumActivationMode')?.value || 'immediate',
             activation_time: document.getElementById('cambiumActivationTime')?.value || '',
+            password: (document.getElementById('cambiumDevicePassword')?.value || '').trim(),
             tasks: selectedTasks()
         };
     }
@@ -469,7 +470,7 @@
                 const response = await cambiumFetch('/device-info', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ip, device_type: deviceType, username: cambiumGetUsername() })
+                    body: JSON.stringify({ ip, device_type: deviceType, username: cambiumGetUsername(), password: selectedProfile().password || '' })
                 });
                 const data = await parseJson(response);
                 if (!response.ok) throw new Error(data.error || `Device info failed (${response.status})`);
@@ -735,7 +736,8 @@
                     tasks: profile.tasks,
                     ips,
                     devices: ips,
-                    username: cambiumGetUsername()
+                    username: cambiumGetUsername(),
+                    password: profile.password || ''
                 })
             });
             const data = await parseJson(response);
