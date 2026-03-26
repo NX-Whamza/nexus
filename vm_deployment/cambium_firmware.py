@@ -220,80 +220,112 @@ def update_device(
 
     session = requests.Session()
     session.verify = False
-    # Some Cambium devices enforce HTTP Basic Auth at the web-server level before
-    # accepting the luci form POST.  Setting session.auth sends Basic credentials
-    # on every request; devices that don't require it simply ignore the header.
-    session.auth = (username, password)
 
-    # Prime the session with a GET so any CSRF cookie is set before the login POST.
-    try:
-        session.get(mgmt_url, timeout=REQUEST_TIMEOUT)
-    except requests.RequestException:
-        pass
-
-    login_post = session.post(
-        f"{mgmt_url}/cgi-bin/luci",
-        data={"username": username, "password": password},
-        timeout=REQUEST_TIMEOUT,
-    )
-    if login_post.status_code == 401 and mgmt_url.startswith("https://"):
-        # HTTPS layer rejected; fall back to plain HTTP (device may redirect HTTPS→HTTP)
-        mgmt_url = "http://" + mgmt_url[len("https://"):]
+    def _try_login(base_url: str, use_basic_auth: bool) -> "requests.Response":
+        s = requests.Session()
+        s.verify = False
+        if use_basic_auth:
+            s.auth = (username, password)
+        # Prime the session so any CSRF cookie arrives before the POST.
         try:
-            session.get(mgmt_url, timeout=REQUEST_TIMEOUT)
+            s.get(base_url, timeout=REQUEST_TIMEOUT)
         except requests.RequestException:
             pass
-        login_post = session.post(
-            f"{mgmt_url}/cgi-bin/luci",
+        # Use allow_redirects=False so we can read the 302 Location header
+        # directly — newer ePMP firmware puts the stok in the redirect URL.
+        resp = s.post(
+            f"{base_url}/cgi-bin/luci",
             data={"username": username, "password": password},
             timeout=REQUEST_TIMEOUT,
+            allow_redirects=False,
         )
-    login_post.raise_for_status()
+        # If the redirect leads somewhere, follow it manually to populate cookies
+        if resp.status_code in (301, 302, 303, 307, 308):
+            location = resp.headers.get("Location", "")
+            if location and not location.startswith("http"):
+                location = base_url.rstrip("/") + "/" + location.lstrip("/")
+            if location:
+                try:
+                    s.get(location, timeout=REQUEST_TIMEOUT)
+                except requests.RequestException:
+                    pass
+        # Re-attach session cookies to resp for unified cookie scanning below
+        resp._session = s  # type: ignore[attr-defined]
+        return resp
 
-    # Extract stok token — two patterns depending on firmware version:
-    # 1. JSON body: {"stok": "abc123", ...}  (older/some firmwares)
-    # 2. Redirect URL: /cgi-bin/luci/;stok=abc123/  (newer firmwares)
+    # Attempt 1: plain form auth (no Basic Auth) — works for most ePMP devices
+    login_resp = _try_login(mgmt_url, use_basic_auth=False)
+
+    # Attempt 2: if HTTP-level auth required, retry with Basic Auth
+    if login_resp.status_code == 401:
+        login_resp = _try_login(mgmt_url, use_basic_auth=True)
+
+    # Attempt 3: fall back from HTTPS to HTTP
+    if login_resp.status_code == 401 and mgmt_url.startswith("https://"):
+        mgmt_url = "http://" + mgmt_url[len("https://"):]
+        login_resp = _try_login(mgmt_url, use_basic_auth=True)
+
+    login_resp.raise_for_status()
+
+    # -----------------------------------------------------------------------
+    # Extract stok token — checked in priority order:
+    #  1. 302 Location header (newer ePMP: redirect to /;stok=TOKEN/)
+    #  2. JSON body {"stok": "..."}  (some older firmwares)
+    #  3. Final response URL after redirect
+    #  4. Raw response text scan
+    # -----------------------------------------------------------------------
     token = None
-    try:
-        login_json = login_post.json()
-        if login_json.get("msg"):
-            raise PermissionError(f"Login failed: {login_json.get('msg')}")
-        token = login_json.get("stok")
-    except PermissionError:
-        raise
-    except Exception:
-        login_json = {}
+    location_hdr = login_resp.headers.get("Location", "") or ""
+    stok_match = re.search(r";stok=([a-f0-9]+)", location_hdr)
+    if stok_match:
+        token = stok_match.group(1)
 
     if not token:
-        # Try extracting stok from the final URL after any redirect
-        stok_match = re.search(r";stok=([a-f0-9]+)", login_post.url or "")
-        if stok_match:
-            token = stok_match.group(1)
+        try:
+            login_json = login_resp.json()
+            if login_json.get("msg"):
+                raise PermissionError(f"Login failed: {login_json['msg']}")
+            token = login_json.get("stok") or None
+        except PermissionError:
+            raise
+        except Exception:
+            pass
 
     if not token:
-        # Try extracting from response body as plain text or Location header
-        for source in [login_post.headers.get("Location", ""), login_post.text]:
-            m = re.search(r";stok=([a-f0-9]+)", source or "")
+        for src in [login_resp.url or "", login_resp.text or ""]:
+            m = re.search(r";stok=([a-f0-9]+)", src)
             if m:
                 token = m.group(1)
                 break
 
+    # Gather sysauth cookie from both the response and the primed session
+    sess_obj = getattr(login_resp, "_session", session)
+    all_cookies = list(login_resp.cookies) + list(sess_obj.cookies)
     sysauth = None
-    for cookie in list(login_post.cookies) + list(session.cookies):
+    for cookie in all_cookies:
         if "sysauth" in cookie.name:
             sysauth = cookie.value
             break
 
     if not token:
+        _log(
+            f"[{ip_address}] Login diagnostic: status={login_resp.status_code} "
+            f"url={login_resp.url!r} location={location_hdr!r} "
+            f"cookies={[c.name for c in all_cookies]} "
+            f"body_preview={login_resp.text[:120]!r}",
+            callback,
+        )
         raise ConnectionError(
             "Cambium login succeeded (HTTP 200) but no stok token found. "
-            "Check username/password or device firmware version."
+            "Check the log for diagnostic details."
         )
     if not sysauth:
         raise ConnectionError(
-            "Cambium login succeeded but no sysauth cookie returned. "
-            "Check username/password or device firmware version."
+            "Cambium login succeeded but no sysauth cookie returned."
         )
+
+    # Carry forward the authenticated session for subsequent requests
+    session = sess_obj
 
     cookies = {
         f"sysauth_{ip_address}_44443": sysauth,
