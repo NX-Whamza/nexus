@@ -106,6 +106,7 @@ services:
       RPC_STANDARD_PW: ${RPC_STANDARD_PW:-CHANGE_ME}
       CNMATRIX_STANDARD_PW: ${CNMATRIX_STANDARD_PW:-CHANGE_ME}
       WAVE_AP_PASS: ${WAVE_AP_PASS:-CHANGE_ME}
+      FIRMWARE_PATH: /opt/firmware
       # IDO module enforcement
       IDO_REQUIRE_FULL_MODULES: ${IDO_REQUIRE_FULL_MODULES:-false}
       # GitLab dynamic compliance (RFC-09-10-25)
@@ -135,6 +136,7 @@ services:
       NEXUS_APP_GIT_SHA: ${NEXUS_APP_GIT_SHA:-}
     volumes:
       - ./secure_data:/app/secure_data
+      - ./firmware:/opt/firmware:ro
     depends_on:
       ido-backend:
         condition: service_healthy
