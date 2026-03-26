@@ -164,9 +164,15 @@
         if (meta) meta.textContent = message;
     }
 
+    const _recentLogKeys = new Set();
     function addLog(message, type = 'info', meta = {}) {
         const logBox = document.getElementById('cambiumLogBox');
         if (!logBox) return;
+        // Deduplicate messages arriving from both global + task SSE streams within 500ms
+        const dedupeKey = `${type}:${message}`;
+        if (_recentLogKeys.has(dedupeKey)) return;
+        _recentLogKeys.add(dedupeKey);
+        setTimeout(() => _recentLogKeys.delete(dedupeKey), 500);
         const date = meta && meta.ts ? new Date(meta.ts) : new Date();
         const time = Number.isNaN(date.getTime()) ? '--:--:--' : date.toLocaleTimeString();
         const entry = document.createElement('div');
