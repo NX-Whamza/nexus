@@ -250,22 +250,50 @@ def update_device(
         )
     login_post.raise_for_status()
 
+    # Extract stok token — two patterns depending on firmware version:
+    # 1. JSON body: {"stok": "abc123", ...}  (older/some firmwares)
+    # 2. Redirect URL: /cgi-bin/luci/;stok=abc123/  (newer firmwares)
+    token = None
     try:
         login_json = login_post.json()
-    except Exception as exc:
-        raise ConnectionError(f"Login returned invalid JSON: {exc}") from exc
+        if login_json.get("msg"):
+            raise PermissionError(f"Login failed: {login_json.get('msg')}")
+        token = login_json.get("stok")
+    except PermissionError:
+        raise
+    except Exception:
+        login_json = {}
 
-    if login_json.get("msg"):
-        raise PermissionError(f"Login failed: {login_json.get('msg')}")
+    if not token:
+        # Try extracting stok from the final URL after any redirect
+        stok_match = re.search(r";stok=([a-f0-9]+)", login_post.url or "")
+        if stok_match:
+            token = stok_match.group(1)
 
-    token = login_json.get("stok")
+    if not token:
+        # Try extracting from response body as plain text or Location header
+        for source in [login_post.headers.get("Location", ""), login_post.text]:
+            m = re.search(r";stok=([a-f0-9]+)", source or "")
+            if m:
+                token = m.group(1)
+                break
+
     sysauth = None
-    for cookie in login_post.cookies:
+    for cookie in list(login_post.cookies) + list(session.cookies):
         if "sysauth" in cookie.name:
             sysauth = cookie.value
             break
-    if not token or not sysauth:
-        raise ConnectionError("Cambium login did not return stok/sysauth cookies")
+
+    if not token:
+        raise ConnectionError(
+            "Cambium login succeeded (HTTP 200) but no stok token found. "
+            "Check username/password or device firmware version."
+        )
+    if not sysauth:
+        raise ConnectionError(
+            "Cambium login succeeded but no sysauth cookie returned. "
+            "Check username/password or device firmware version."
+        )
 
     cookies = {
         f"sysauth_{ip_address}_44443": sysauth,
