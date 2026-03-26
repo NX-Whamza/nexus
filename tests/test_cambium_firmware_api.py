@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+import pytest
 
 
 repo_root = Path(__file__).resolve().parents[1]
@@ -19,7 +20,7 @@ os.environ.setdefault("NEXTLINK_RADIUS_SECRET", "TEST_RADIUS_SECRET")
 
 from fastapi_server import app  # noqa: E402
 import api_server  # noqa: E402
-from cambium_firmware import list_firmware_catalog, resolve_firmware_image  # noqa: E402
+from cambium_firmware import list_firmware_catalog, resolve_firmware_image, resolve_device_type  # noqa: E402
 
 
 client = TestClient(app)
@@ -151,3 +152,143 @@ def test_cambium_run_completes_and_updates_status(monkeypatch):
     assert queue_body["radios"][0]["status"] == "success"
     assert queue_body["radios"][0]["targetVersion"] == "5.10.4"
     assert queue_body["radios"][0]["username"] == "frontend-user"
+
+
+def test_cambium_resolve_device_type_aliases():
+    assert resolve_device_type("CNF300-13") == "F300-13"
+    assert resolve_device_type("CNF300-16") == "F300-16"
+    assert resolve_device_type("CNF300-25") == "F300-25"
+    assert resolve_device_type("CNF300-CSM") == "F300-CSM"
+    # canonical names pass through unchanged
+    assert resolve_device_type("CNEP3K") == "CNEP3K"
+    assert resolve_device_type("F4600C") == "F4600C"
+    # unsupported type raises
+    with pytest.raises(ValueError, match="Unsupported Cambium device_type"):
+        resolve_device_type("BOGUS")
+    with pytest.raises(ValueError, match="device_type is required"):
+        resolve_device_type("")
+
+
+def test_cambium_catalog_endpoint(monkeypatch):
+    monkeypatch.setattr(api_server, "HAS_CAMBIUM", True)
+    monkeypatch.setattr(
+        api_server,
+        "cambium_list_firmware_catalog",
+        lambda: {
+            "firmware_root": "/fake",
+            "default_username": "admin",
+            "default_password_configured": True,
+            "devices": {
+                "CNEP3K": {
+                    "device_type": "CNEP3K",
+                    "family": "EP3K",
+                    "label": "Cambium ePMP 3000",
+                    "default_version": "5.10.4",
+                    "available_versions": ["5.10.4"],
+                    "images": [],
+                }
+            },
+        },
+    )
+    r = client.get("/api/cambium/catalog")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["success"] is True
+    assert "CNEP3K" in body["devices"]
+    assert body["devices"]["CNEP3K"]["default_version"] == "5.10.4"
+
+
+def test_cambium_check_status_updates_queue(monkeypatch):
+    monkeypatch.setattr(api_server, "HAS_CAMBIUM", True)
+    api_server.cambium_shared_queue.clear()
+
+    def fake_device_info(ip, device_type, password=None, run_tests=True):
+        return {
+            "success": True,
+            "test_results": [
+                {"name": "Firmware Version", "actual": "5.10.1", "expected": "5.10.4", "pass": False}
+            ],
+        }
+
+    monkeypatch.setattr(api_server, "cambium_get_device_info", fake_device_info)
+    monkeypatch.setattr(api_server, "cambium_resolve_device_type", lambda value: "CNEP3K")
+
+    r = client.post(
+        "/api/cambium/check-status",
+        json={"ips": ["10.1.1.1", "10.1.1.2"], "device_type": "CNEP3K", "password": "secret"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["success"] is True
+    assert len(body["results"]) == 2
+    ips_returned = {res["ip"] for res in body["results"]}
+    assert ips_returned == {"10.1.1.1", "10.1.1.2"}
+
+    # Both IPs should appear in the shared queue
+    queue_ips = {entry["ip"] for entry in api_server.cambium_shared_queue}
+    assert "10.1.1.1" in queue_ips
+    assert "10.1.1.2" in queue_ips
+
+
+def test_cambium_check_status_rejects_empty(monkeypatch):
+    monkeypatch.setattr(api_server, "HAS_CAMBIUM", True)
+    r = client.post("/api/cambium/check-status", json={})
+    assert r.status_code == 400
+
+
+def test_cambium_queue_post_replace_add_remove(monkeypatch):
+    monkeypatch.setattr(api_server, "HAS_CAMBIUM", True)
+    monkeypatch.setattr(api_server, "cambium_resolve_device_type", lambda value: "CNEP3K")
+    api_server.cambium_shared_queue.clear()
+
+    # replace mode — clears and rebuilds
+    r = client.post(
+        "/api/cambium/queue",
+        json={
+            "mode": "replace",
+            "ips": ["10.0.0.1", "10.0.0.2"],
+            "device_type": "CNEP3K",
+            "update_version": "5.10.4",
+            "requested_by": "test-user",
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["radios"]) == 2
+    assert all(e["deviceType"] == "CNEP3K" for e in body["radios"])
+
+    # add mode — preserves existing and appends new
+    r = client.post(
+        "/api/cambium/queue",
+        json={
+            "mode": "add",
+            "ips": ["10.0.0.3"],
+            "device_type": "CNEP3K",
+            "update_version": "5.10.4",
+            "requested_by": "test-user",
+        },
+    )
+    assert r.status_code == 200
+    queue_ips = {e["ip"] for e in r.json()["radios"]}
+    assert {"10.0.0.1", "10.0.0.2", "10.0.0.3"} == queue_ips
+
+    # remove mode — deletes specific IP
+    r = client.post(
+        "/api/cambium/queue",
+        json={
+            "mode": "remove",
+            "ips": ["10.0.0.2"],
+            "device_type": "CNEP3K",
+        },
+    )
+    assert r.status_code == 200
+    queue_ips = {e["ip"] for e in r.json()["radios"]}
+    assert "10.0.0.2" not in queue_ips
+    assert "10.0.0.1" in queue_ips
+    assert "10.0.0.3" in queue_ips
+
+
+def test_cambium_run_rejects_missing_radios(monkeypatch):
+    monkeypatch.setattr(api_server, "HAS_CAMBIUM", True)
+    r = client.post("/api/cambium/run", json={"device_type": "CNEP3K"})
+    assert r.status_code == 400
