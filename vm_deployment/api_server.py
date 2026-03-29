@@ -16999,9 +16999,21 @@ def _cambium_update_queue_from_result(result, username=None):
             "firmwareVersion": result.get("firmware_version_after") or result.get("firmware_version_before"),
             "selectedImage": result.get("selected_image"),
             "lastError": result.get("error"),
+            "backupStatus": result.get("backup_status"),
+            "verifyStatus": result.get("verify_status"),
+            "backupPath": result.get("backup_path"),
             "username": result.get("username") or username or "cambium-tool",
         },
     )
+
+
+def _cambium_expand_tasks(task_values):
+    tasks = []
+    for task in task_values or []:
+        value = str(task or "").strip().lower()
+        if value and value not in tasks:
+            tasks.append(value)
+    return tasks or ["firmware"]
 
 
 def _cambium_expand_radios(data):
@@ -17026,6 +17038,7 @@ def _cambium_expand_radios(data):
                         or data.get("username")
                     ),
                     "password": item.get("password") or data.get("password"),
+                    "tasks": _cambium_expand_tasks(item.get("tasks") or data.get("tasks")),
                 }
             )
         return expanded
@@ -17040,6 +17053,7 @@ def _cambium_expand_radios(data):
             "update_version": data.get("update_version"),
             "username": data.get("device_username") or data.get("username"),
             "password": data.get("password"),
+            "tasks": _cambium_expand_tasks(data.get("tasks")),
         }
         for ip in ips if str(ip).strip()
     ]
@@ -17057,25 +17071,59 @@ def _cambium_check_single(ip, device_type, password=None, run_tests=True):
     }
 
 
-def _cambium_run_single(radio, username):
+def _cambium_write_backup(ip, running_config):
+    backup_dir = Path(__file__).resolve().parent / "secure_data" / "cambium_backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    backup_path = backup_dir / f"{str(ip).replace('.', '_')}_{timestamp}.json"
+    text = running_config if isinstance(running_config, str) else json.dumps(running_config, indent=2, sort_keys=True)
+    backup_path.write_text(text, encoding="utf-8")
+    return str(backup_path)
+
+
+def _cambium_run_single(radio, username, should_abort=None):
     ip = radio["ip"]
     canonical = cambium_resolve_device_type(radio.get("device_type"))
     password = radio.get("password")
     device_username = radio.get("username")
     update_version = radio.get("update_version")
+    tasks = _cambium_expand_tasks(radio.get("tasks"))
 
     before_info = None
     after_info = None
     before_fw = None
     after_fw = None
+    backup_status = None
+    verify_status = None
+    backup_path = None
 
     def log_cb(message):
         _cambium_broadcast_log(message, "info", ip=ip)
 
     try:
+        if callable(should_abort) and should_abort():
+            return {
+                "ip": ip,
+                "success": False,
+                "status": "aborted",
+                "device_type": canonical,
+                "target_version": update_version,
+                "selected_image": None,
+                "firmware_version_before": None,
+                "firmware_version_after": None,
+                "before_info": None,
+                "after_info": None,
+                "backup_status": None,
+                "verify_status": None,
+                "backup_path": None,
+                "error": "Aborted",
+                "username": username or "cambium-tool",
+            }
         _cambium_queue_upsert(ip, {
             "status": "processing",
-            "firmwareStatus": "processing",
+            "firmwareStatus": "processing" if "firmware" in tasks else "pending",
+            "backupStatus": "processing" if "backup" in tasks else "pending",
+            "verifyStatus": "processing" if "verify" in tasks else "pending",
             "deviceType": canonical,
             "targetVersion": update_version,
             "username": username or "cambium-tool",
@@ -17088,20 +17136,66 @@ def _cambium_run_single(radio, username):
         except Exception as exc:
             _cambium_broadcast_log(f"[{ip}] Precheck info unavailable: {exc}", "warning", ip=ip)
 
-        update_result = cambium_update_device(
-            ip,
-            canonical,
-            username=device_username,
-            password=password,
-            update_version=update_version,
-            callback=log_cb,
-        )
+        if "backup" in tasks:
+            running_config = (before_info or {}).get("running_config")
+            if not running_config:
+                raise RuntimeError("Backup failed: running config was not returned by the device")
+            backup_path = _cambium_write_backup(ip, running_config)
+            backup_status = "success"
+            log_cb(f"[{ip}] Backup saved to {backup_path}")
+        else:
+            backup_status = "pending"
 
-        try:
-            after_info = cambium_get_device_info(ip, canonical, password=password, run_tests=True)
-            after_fw = _cambium_extract_firmware(after_info)
-        except Exception as exc:
-            _cambium_broadcast_log(f"[{ip}] Post-upgrade verification unavailable: {exc}", "warning", ip=ip)
+        if callable(should_abort) and should_abort():
+            return {
+                "ip": ip,
+                "success": False,
+                "status": "aborted",
+                "device_type": canonical,
+                "target_version": update_version,
+                "selected_image": None,
+                "firmware_version_before": before_fw,
+                "firmware_version_after": None,
+                "before_info": before_info,
+                "after_info": None,
+                "backup_status": backup_status,
+                "verify_status": verify_status,
+                "backup_path": backup_path,
+                "error": "Aborted",
+                "username": username or "cambium-tool",
+            }
+
+        update_result = {"target_version": update_version, "selected_image": None}
+        if "firmware" in tasks:
+            update_result = cambium_update_device(
+                ip,
+                canonical,
+                username=device_username,
+                password=password,
+                update_version=update_version,
+                callback=log_cb,
+            )
+
+        if "verify" in tasks or "firmware" in tasks:
+            try:
+                after_info = cambium_get_device_info(ip, canonical, password=password, run_tests=True)
+                after_fw = _cambium_extract_firmware(after_info)
+            except Exception as exc:
+                _cambium_broadcast_log(f"[{ip}] Post-upgrade verification unavailable: {exc}", "warning", ip=ip)
+                if "verify" in tasks:
+                    raise RuntimeError(f"Verification failed: {exc}") from exc
+
+        if "verify" in tasks:
+            actual_fw = after_fw or before_fw
+            verify_status = "success" if actual_fw and (
+                not update_version or str(actual_fw).strip() == str(update_version).strip()
+            ) else "error"
+            if verify_status != "success":
+                raise RuntimeError(
+                    f"Verification failed: expected {update_version or 'selected target'}, found {actual_fw or 'unknown'}"
+                )
+        else:
+            verify_status = "pending"
 
         return {
             "ip": ip,
@@ -17114,6 +17208,9 @@ def _cambium_run_single(radio, username):
             "firmware_version_after": after_fw,
             "before_info": before_info,
             "after_info": after_info,
+            "backup_status": backup_status,
+            "verify_status": verify_status,
+            "backup_path": backup_path,
             "error": None,
             "username": username or "cambium-tool",
         }
@@ -17129,6 +17226,9 @@ def _cambium_run_single(radio, username):
             "firmware_version_after": after_fw,
             "before_info": before_info,
             "after_info": after_info,
+            "backup_status": backup_status,
+            "verify_status": verify_status,
+            "backup_path": backup_path,
             "error": str(exc),
             "username": username or "cambium-tool",
         }
@@ -17137,9 +17237,11 @@ def _cambium_run_single(radio, username):
 def _cambium_background_task(task_id, radios, username):
     results = []
     cambium_tasks[task_id]["status"] = "running"
+    def should_abort():
+        return cambium_tasks.get(task_id, {}).get("abort") is True
     max_workers = max(1, min(CAMBIUM_MAX_WORKERS, len(radios)))
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(_cambium_run_single, radio, username): radio for radio in radios}
+        futures = {executor.submit(_cambium_run_single, radio, username, should_abort): radio for radio in radios}
         for future in as_completed(futures):
             result = future.result()
             results.append(result)
@@ -17147,21 +17249,28 @@ def _cambium_background_task(task_id, radios, username):
             _log_cambium_activity(result)
             if result.get("success"):
                 _cambium_broadcast_log(
-                    f"[{result['ip']}] Cambium upgrade completed successfully.",
+                    f"[{result['ip']}] Cambium tasks completed successfully.",
                     "success",
+                    task_id=task_id,
+                    ip=result["ip"],
+                )
+            elif result.get("status") == "aborted":
+                _cambium_broadcast_log(
+                    f"[{result['ip']}] Cambium task aborted.",
+                    "warning",
                     task_id=task_id,
                     ip=result["ip"],
                 )
             else:
                 _cambium_broadcast_log(
-                    f"[{result['ip']}] Cambium upgrade failed: {result.get('error')}",
+                    f"[{result['ip']}] Cambium task failed: {result.get('error')}",
                     "error",
                     task_id=task_id,
                     ip=result["ip"],
                 )
             _cambium_save_shared_queue()
 
-    cambium_tasks[task_id]["status"] = "completed"
+    cambium_tasks[task_id]["status"] = "aborted" if should_abort() else "completed"
     cambium_tasks[task_id]["results"] = results
     cambium_tasks[task_id]["completed_at"] = get_utc_timestamp()
     if task_id in cambium_log_queues:
@@ -17334,11 +17443,15 @@ def cambium_run_tasks():
                 "update_version": radio.get("update_version"),
                 "username": radio.get("username"),
                 "password": radio.get("password"),
+                "tasks": _cambium_expand_tasks(radio.get("tasks")),
             }
         )
+        selected_tasks = _cambium_expand_tasks(radio.get("tasks"))
         _cambium_queue_upsert(radio["ip"], {
             "status": "processing",
-            "firmwareStatus": "processing",
+            "firmwareStatus": "processing" if "firmware" in selected_tasks else "pending",
+            "backupStatus": "processing" if "backup" in selected_tasks else "pending",
+            "verifyStatus": "processing" if "verify" in selected_tasks else "pending",
             "deviceType": canonical,
             "targetVersion": radio.get("update_version"),
             "username": actor_username,
@@ -17348,9 +17461,11 @@ def cambium_run_tasks():
     task_id = str(uuid.uuid4())
     cambium_tasks[task_id] = {
         "status": "queued",
+        "abort": False,
         "task_id": task_id,
         "username": actor_username,
         "radios": normalized,
+        "tasks": _cambium_expand_tasks(data.get("tasks")),
         "started_at": get_utc_timestamp(),
         "results": [],
     }
@@ -17416,6 +17531,49 @@ def cambium_get_status(task_id):
     if task_id not in cambium_tasks:
         return jsonify({'error': 'Task not found'}), 404
     return jsonify(cambium_tasks[task_id])
+
+
+@app.route('/api/cambium/abort/<task_id>', methods=['POST'])
+def cambium_abort_task(task_id):
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    if task_id not in cambium_tasks:
+        return jsonify({'error': 'Task not found'}), 404
+    cambium_tasks[task_id]['abort'] = True
+    cambium_tasks[task_id]['status'] = 'aborting'
+    return jsonify({'status': 'aborting'})
+
+
+@app.route('/api/cambium/backup', methods=['GET'])
+def cambium_download_backup():
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    ip = str(request.args.get("ip") or "").strip()
+    requested_path = str(request.args.get("path") or "").strip()
+    if not ip and not requested_path:
+        return jsonify({'error': 'ip or path is required'}), 400
+
+    backup_root = (Path(__file__).resolve().parent / "secure_data" / "cambium_backups").resolve()
+    backup_root.mkdir(parents=True, exist_ok=True)
+
+    target = None
+    if requested_path:
+        candidate = Path(requested_path).resolve()
+        try:
+            candidate.relative_to(backup_root)
+        except ValueError:
+            return jsonify({'error': 'Backup path is outside Cambium backup storage'}), 400
+        if not candidate.is_file():
+            return jsonify({'error': 'Backup file not found'}), 404
+        target = candidate
+    else:
+        prefix = f"{ip.replace('.', '_')}_"
+        matches = sorted(backup_root.glob(f"{prefix}*.json"), key=lambda path: path.stat().st_mtime, reverse=True)
+        if not matches:
+            return jsonify({'error': f'No backup found for {ip}'}), 404
+        target = matches[0]
+
+    return send_file(str(target), as_attachment=True, download_name=target.name, mimetype='application/json')
 
 
 FTTH_FIBER_DEVICE_PROFILES = {
