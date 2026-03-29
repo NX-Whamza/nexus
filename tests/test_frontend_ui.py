@@ -251,7 +251,12 @@ def test_device_firmware_updater_wraps_aviat_and_cambium():
     assert "backupPath: radio.backupPath || radio.backup_path || ''" in cambium_js, 'Cambium updater should preserve backup paths from backend results'
     assert "onclick=\"cambiumDownloadBackup(" in cambium_js, 'Cambium updater should expose a per-row backup download action'
     assert "window.cambiumDownloadBackup = async function (ip)" in cambium_js, 'Cambium updater should define a backup download handler'
-    assert "/backup?ip=${encodeURIComponent(ip)}&path=${encodeURIComponent(radio.backupPath)}" in cambium_js, 'Cambium updater should call the dedicated Cambium backup download endpoint'
+    assert "abortBtn.disabled = !cambiumState.isProcessing;" in cambium_js, 'Cambium abort button should be clickable whenever a Cambium task is active'
+    assert "const backupAvailable = backupStatus === 'success' || !!radio.backupPath;" in cambium_js, 'Cambium backup button should enable from successful backup status even if the path is stale in UI state'
+    assert "const query = radio.backupPath" in cambium_js, 'Cambium backup download should fall back to IP-based lookup when only backup status is available'
+    assert "function clearPersistedRadios()" in cambium_js, 'Cambium updater should clear stale browser-side queue state on reload'
+    assert "await loadQueueState({ quiet: true });" in cambium_js, 'Cambium updater should reload queue state from the backend during initialization'
+    assert "localStorage.setItem(CAMBIUM_STORAGE_KEY" not in cambium_js, 'Cambium updater should not repopulate stale local queue state from browser storage'
     assert "'cambium-upgrade': TOOL_ROUTE_DEFINITIONS['device-firmware-updater:cambium']" in content, 'Missing activity-route mapping for Cambium upgrades'
 
 
