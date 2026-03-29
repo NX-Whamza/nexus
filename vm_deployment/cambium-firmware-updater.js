@@ -454,7 +454,7 @@
                 action: mode,
                 radios,
                 devices: radios,
-                username: cambiumGetUsername()
+                requested_by: cambiumGetUsername()
             })
         });
         const data = await parseJson(response);
@@ -476,7 +476,12 @@
                 const response = await cambiumFetch('/device-info', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ip, device_type: deviceType, username: cambiumGetUsername(), password: selectedProfile().password || '' })
+                    body: JSON.stringify({
+                        ip,
+                        device_type: deviceType,
+                        requested_by: cambiumGetUsername(),
+                        password: selectedProfile().password || ''
+                    })
                 });
                 const data = await parseJson(response);
                 if (!response.ok) throw new Error(data.error || `Device info failed (${response.status})`);
@@ -507,7 +512,7 @@
             firmwareStatus: 'pending',
             backupStatus: 'pending',
             verifyStatus: 'pending',
-            username: cambiumGetUsername()
+            requested_by: cambiumGetUsername()
         }));
         cambiumState.radios = cambiumState.radios.concat(radios.map(normalizeRadio));
         updateUI();
@@ -536,7 +541,7 @@
             firmwareStatus: 'pending',
             backupStatus: 'pending',
             verifyStatus: 'pending',
-            username: cambiumGetUsername()
+            requested_by: cambiumGetUsername()
         }));
         cambiumState.radios = radios.map(normalizeRadio);
         updateUI();
@@ -742,7 +747,7 @@
                     tasks: profile.tasks,
                     ips,
                     devices: ips,
-                    username: cambiumGetUsername(),
+                    requested_by: cambiumGetUsername(),
                     password: profile.password || ''
                 })
             });

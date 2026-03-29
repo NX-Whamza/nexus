@@ -154,6 +154,60 @@ def test_cambium_run_completes_and_updates_status(monkeypatch):
     assert queue_body["radios"][0]["username"] == "frontend-user"
 
 
+def test_cambium_run_requested_by_does_not_override_device_login_username(monkeypatch):
+    monkeypatch.setattr(api_server, "HAS_CAMBIUM", True)
+    api_server.cambium_shared_queue.clear()
+    api_server.cambium_tasks.clear()
+    api_server.cambium_log_queues.clear()
+    captured = {}
+
+    def fake_device_info(ip, device_type, password=None, run_tests=True):
+        return {"success": True, "test_results": []}
+
+    def fake_update_device(ip, device_type, username=None, password=None, update_version=None, callback=None):
+        captured["username"] = username
+        captured["password"] = password
+        return {
+            "success": True,
+            "ip": ip,
+            "device_type": device_type,
+            "target_version": update_version or "5.10.4",
+            "selected_image": "ePMP-AC-v5.10.4.img",
+        }
+
+    monkeypatch.setattr(api_server, "cambium_get_device_info", fake_device_info)
+    monkeypatch.setattr(api_server, "cambium_update_device", fake_update_device)
+    monkeypatch.setattr(api_server, "cambium_resolve_device_type", lambda value: "CNEP3K")
+
+    r = client.post(
+        "/api/cambium/run",
+        json={
+            "ips": ["10.20.30.41"],
+            "device_type": "CNEP3K",
+            "update_version": "5.10.4",
+            "password": "secret",
+            "requested_by": "frontend-user",
+        },
+    )
+    assert r.status_code == 200
+    task_id = r.json()["task_id"]
+
+    deadline = time.time() + 3
+    final_status = None
+    while time.time() < deadline:
+        status_resp = client.get(f"/api/cambium/status/{task_id}")
+        assert status_resp.status_code == 200
+        final_status = status_resp.json()
+        if final_status["status"] == "completed":
+            break
+        time.sleep(0.05)
+
+    assert final_status is not None
+    assert final_status["status"] == "completed"
+    assert final_status["username"] == "frontend-user"
+    assert captured == {"username": None, "password": "secret"}
+
+
 def test_cambium_resolve_device_type_aliases():
     # Only AP types — canonical names pass through unchanged
     assert resolve_device_type("CNEP3K") == "CNEP3K"

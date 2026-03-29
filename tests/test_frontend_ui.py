@@ -243,6 +243,8 @@ def test_device_firmware_updater_wraps_aviat_and_cambium():
     assert "new EventSource(`${getCambiumApiBase()}/stream/global`)" in cambium_js, 'Cambium updater should open the Cambium global SSE stream'
     assert "cambiumFetch('/check-status'" not in cambium_js, 'Cambium updater should not call the removed check-status endpoint'
     assert "cambiumFetch('/abort/" not in cambium_js, 'Cambium updater should not call the unsupported abort endpoint'
+    assert "requested_by: cambiumGetUsername()" in cambium_js, 'Cambium updater should send the operator as requested_by, not as the radio login username'
+    assert "body: JSON.stringify({ ip, device_type: deviceType, username: cambiumGetUsername(), password: selectedProfile().password || '' })" not in cambium_js, 'Cambium device-info requests should not send the signed-in app user as the device username'
     assert "'cambium-upgrade': TOOL_ROUTE_DEFINITIONS['device-firmware-updater:cambium']" in content, 'Missing activity-route mapping for Cambium upgrades'
 
 
