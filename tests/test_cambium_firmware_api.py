@@ -208,6 +208,173 @@ def test_cambium_run_requested_by_does_not_override_device_login_username(monkey
     assert captured == {"username": None, "password": "secret"}
 
 
+def test_cambium_run_backup_and_verify_update_statuses(monkeypatch):
+    monkeypatch.setattr(api_server, "HAS_CAMBIUM", True)
+    api_server.cambium_shared_queue.clear()
+    api_server.cambium_tasks.clear()
+    api_server.cambium_log_queues.clear()
+    called = {"update": 0}
+
+    def fake_device_info(ip, device_type, password=None, run_tests=True):
+        return {
+            "success": True,
+            "running_config": '{"device_props":{"name":"demo"}}',
+            "test_results": [
+                {"name": "Firmware Version", "actual": "5.10.4", "expected": "5.10.4", "pass": True}
+            ],
+        }
+
+    def fake_update_device(*args, **kwargs):
+        called["update"] += 1
+        return {}
+
+    backup_dir = repo_root / "tests_artifacts" / "cambium-backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+
+    def fake_write_backup(ip, running_config):
+        backup_path = backup_dir / f"{ip.replace('.', '_')}.json"
+        backup_path.write_text(running_config, encoding="utf-8")
+        return str(backup_path)
+
+    monkeypatch.setattr(api_server, "cambium_get_device_info", fake_device_info)
+    monkeypatch.setattr(api_server, "cambium_update_device", fake_update_device)
+    monkeypatch.setattr(api_server, "_cambium_write_backup", fake_write_backup)
+    monkeypatch.setattr(api_server, "cambium_resolve_device_type", lambda value: "CNEP3K")
+
+    r = client.post(
+        "/api/cambium/run",
+        json={
+            "ips": ["10.20.30.42"],
+            "device_type": "CNEP3K",
+            "update_version": "5.10.4",
+            "password": "secret",
+            "tasks": ["backup", "verify"],
+            "requested_by": "frontend-user",
+        },
+    )
+    assert r.status_code == 200
+    task_id = r.json()["task_id"]
+
+    deadline = time.time() + 3
+    final_status = None
+    while time.time() < deadline:
+        status_resp = client.get(f"/api/cambium/status/{task_id}")
+        assert status_resp.status_code == 200
+        final_status = status_resp.json()
+        if final_status["status"] == "completed":
+            break
+        time.sleep(0.05)
+
+    assert final_status is not None
+    assert final_status["status"] == "completed"
+    result = final_status["results"][0]
+    assert result["backup_status"] == "success"
+    assert result["verify_status"] == "success"
+    assert result["backup_path"].endswith(".json")
+    assert called["update"] == 0
+
+    queue_body = client.get("/api/cambium/queue").json()
+    assert queue_body["radios"][0]["backupStatus"] == "success"
+    assert queue_body["radios"][0]["verifyStatus"] == "success"
+
+
+def test_cambium_abort_endpoint_marks_task_aborting(monkeypatch):
+    monkeypatch.setattr(api_server, "HAS_CAMBIUM", True)
+    api_server.cambium_shared_queue.clear()
+    api_server.cambium_tasks.clear()
+    api_server.cambium_log_queues.clear()
+
+    def fake_run_single(radio, username, should_abort=None):
+        deadline = time.time() + 2
+        while time.time() < deadline:
+            if callable(should_abort) and should_abort():
+                return {
+                    "ip": radio["ip"],
+                    "success": False,
+                    "status": "aborted",
+                    "device_type": radio["device_type"],
+                    "target_version": radio.get("update_version"),
+                    "selected_image": None,
+                    "firmware_version_before": None,
+                    "firmware_version_after": None,
+                    "before_info": None,
+                    "after_info": None,
+                    "backup_status": None,
+                    "verify_status": None,
+                    "backup_path": None,
+                    "error": "Aborted",
+                    "username": username,
+                }
+            time.sleep(0.05)
+        return {
+            "ip": radio["ip"],
+            "success": True,
+            "status": "success",
+            "device_type": radio["device_type"],
+            "target_version": radio.get("update_version"),
+            "selected_image": None,
+            "firmware_version_before": None,
+            "firmware_version_after": None,
+            "before_info": None,
+            "after_info": None,
+            "backup_status": None,
+            "verify_status": None,
+            "backup_path": None,
+            "error": None,
+            "username": username,
+        }
+
+    monkeypatch.setattr(api_server, "_cambium_run_single", fake_run_single)
+    monkeypatch.setattr(api_server, "cambium_resolve_device_type", lambda value: "CNEP3K")
+
+    r = client.post(
+        "/api/cambium/run",
+        json={
+            "ips": ["10.20.30.43"],
+            "device_type": "CNEP3K",
+            "update_version": "5.10.4",
+            "requested_by": "frontend-user",
+        },
+    )
+    assert r.status_code == 200
+    task_id = r.json()["task_id"]
+
+    abort_resp = client.post(f"/api/cambium/abort/{task_id}")
+    assert abort_resp.status_code == 200
+    assert abort_resp.json()["status"] == "aborting"
+
+    deadline = time.time() + 3
+    final_status = None
+    while time.time() < deadline:
+        status_resp = client.get(f"/api/cambium/status/{task_id}")
+        assert status_resp.status_code == 200
+        final_status = status_resp.json()
+        if final_status["status"] == "aborted":
+            break
+        time.sleep(0.05)
+
+    assert final_status is not None
+    assert final_status["status"] == "aborted"
+    assert final_status["results"][0]["status"] == "aborted"
+
+
+def test_cambium_backup_download_by_path_and_ip(monkeypatch):
+    monkeypatch.setattr(api_server, "HAS_CAMBIUM", True)
+    backup_dir = repo_root / "vm_deployment" / "secure_data" / "cambium_backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    backup_file = backup_dir / "10_20_30_44_20260329T000000Z.json"
+    backup_file.write_text('{"device_props":{"name":"demo"}}', encoding="utf-8")
+
+    by_path = client.get("/api/cambium/backup", params={"path": str(backup_file)})
+    assert by_path.status_code == 200
+    assert by_path.headers["content-type"].startswith("application/json")
+    assert "attachment" in by_path.headers["content-disposition"].lower()
+
+    by_ip = client.get("/api/cambium/backup", params={"ip": "10.20.30.44"})
+    assert by_ip.status_code == 200
+    assert by_ip.headers["content-type"].startswith("application/json")
+
+
 def test_cambium_resolve_device_type_aliases():
     # Only AP types — canonical names pass through unchanged
     assert resolve_device_type("CNEP3K") == "CNEP3K"

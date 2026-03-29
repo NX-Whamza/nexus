@@ -242,9 +242,16 @@ def test_device_firmware_updater_wraps_aviat_and_cambium():
     assert "new EventSource(`${getCambiumApiBase()}/stream/${encodeURIComponent(taskId)}`)" in cambium_js, 'Cambium updater should open per-task Cambium SSE streams'
     assert "new EventSource(`${getCambiumApiBase()}/stream/global`)" in cambium_js, 'Cambium updater should open the Cambium global SSE stream'
     assert "cambiumFetch('/check-status'" not in cambium_js, 'Cambium updater should not call the removed check-status endpoint'
-    assert "cambiumFetch('/abort/" not in cambium_js, 'Cambium updater should not call the unsupported abort endpoint'
+    assert "cambiumFetch(`/abort/${encodeURIComponent(cambiumState.taskId)}`" in cambium_js, 'Cambium updater should request abort through the Cambium backend'
     assert "requested_by: cambiumGetUsername()" in cambium_js, 'Cambium updater should send the operator as requested_by, not as the radio login username'
     assert "body: JSON.stringify({ ip, device_type: deviceType, username: cambiumGetUsername(), password: selectedProfile().password || '' })" not in cambium_js, 'Cambium device-info requests should not send the signed-in app user as the device username'
+    assert "function syncInteractiveState()" in cambium_js, 'Cambium updater should centralize UI lockout while a run is active'
+    assert "if (cambiumState.isProcessing) return;" in cambium_js, 'Cambium updater row actions should no-op while a run is active'
+    assert "syncInteractiveState();" in cambium_js and "updateUI();" in cambium_js, 'Cambium updater should refresh disabled button state when processing starts or ends'
+    assert "backupPath: radio.backupPath || radio.backup_path || ''" in cambium_js, 'Cambium updater should preserve backup paths from backend results'
+    assert "onclick=\"cambiumDownloadBackup(" in cambium_js, 'Cambium updater should expose a per-row backup download action'
+    assert "window.cambiumDownloadBackup = async function (ip)" in cambium_js, 'Cambium updater should define a backup download handler'
+    assert "/backup?ip=${encodeURIComponent(ip)}&path=${encodeURIComponent(radio.backupPath)}" in cambium_js, 'Cambium updater should call the dedicated Cambium backup download endpoint'
     assert "'cambium-upgrade': TOOL_ROUTE_DEFINITIONS['device-firmware-updater:cambium']" in content, 'Missing activity-route mapping for Cambium upgrades'
 
 
