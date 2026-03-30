@@ -22,6 +22,7 @@ import httpx
 import requests
 from pathlib import Path
 from typing import Any, Dict, Type
+from fastapi.openapi.utils import get_openapi
 
 from a2wsgi import WSGIMiddleware
 from fastapi import Body, FastAPI, HTTPException, Request
@@ -57,7 +58,44 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="NEXUS API", version="2.6.0", lifespan=lifespan)
+API_DESCRIPTION = """
+API-first contract for OMNI and future tenant-facing integrations.
+
+Use the `/api/v2/omni/*` routes documented here as the stable external surface.
+Legacy Flask routes remain mounted for backward compatibility, but they are not the primary integration contract.
+""".strip()
+
+OPENAPI_TAGS = [
+    {
+        "name": "OMNI Health",
+        "description": "Availability and health endpoints for OMNI and external integrations.",
+    },
+    {
+        "name": "OMNI Discovery",
+        "description": "Identity, actions, bootstrap, and workflow discovery endpoints.",
+    },
+    {
+        "name": "OMNI Jobs",
+        "description": "Async job submission, job inspection, events, and cancellation endpoints.",
+    },
+]
+
+
+app = FastAPI(
+    title="NEXUS API",
+    version="2.6.0",
+    description=API_DESCRIPTION,
+    lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url=None,
+    openapi_url="/docs/openapi.json",
+    openapi_tags=OPENAPI_TAGS,
+    swagger_ui_parameters={
+        "persistAuthorization": True,
+        "displayRequestDuration": True,
+        "docExpansion": "list",
+    },
+)
 
 # Match current permissive CORS behavior from Flask setup.
 app.add_middleware(
@@ -68,6 +106,43 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(api_v2_router)
+
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+        tags=OPENAPI_TAGS,
+    )
+    schema.setdefault("components", {}).setdefault("securitySchemes", {})
+    schema["components"]["securitySchemes"]["ApiKeyAuth"] = {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "Primary API key header for OMNI and tenant integrations.",
+    }
+    schema["components"]["securitySchemes"]["BearerAuth"] = {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "API key",
+        "description": "Bearer token alternative. Use the same API key value as X-API-Key.",
+    }
+    for path, methods in schema.get("paths", {}).items():
+        if not path.startswith("/api/v2/omni/"):
+            continue
+        for method, operation in methods.items():
+            if method.lower() not in {"get", "post", "put", "patch"}:
+                continue
+            operation.setdefault("security", [{"ApiKeyAuth": []}, {"BearerAuth": []}])
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = custom_openapi
 
 
 def _str_to_bool(value: str) -> bool:
@@ -468,7 +543,7 @@ def ido_capabilities():
     )
 
 
-@app.api_route("/api/ido/proxy/{target_path:path}", methods=["GET", "POST"])
+@app.api_route("/api/ido/proxy/{target_path:path}", methods=["GET", "POST"], include_in_schema=False)
 async def ido_proxy(target_path: str, request: Request):
     backend_url = _ido_backend_url()
     inprocess_module = None if backend_url else _ido_inprocess_module()

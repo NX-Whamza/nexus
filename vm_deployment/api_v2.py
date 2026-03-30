@@ -26,8 +26,9 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from urllib.parse import urljoin
 
 import requests
-from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
 
 try:
     from mt_config_gen.mt_tower import MTTowerConfig
@@ -41,6 +42,483 @@ from ido_adapter import merge_defaults as ido_merge_defaults
 
 
 router = APIRouter(prefix="/api/v2", tags=["NOC API v2"])
+
+
+class ErrorResponse(BaseModel):
+    detail: str = Field(
+        ...,
+        description="Human-readable error detail.",
+        examples=["Authentication required - missing or incorrect API key or Bearer token"],
+    )
+
+
+class EventItem(BaseModel):
+    ts: str = Field(..., description="RFC3339 UTC timestamp")
+    level: str = Field(..., description="Event level", examples=["info"])
+    message: str = Field(..., description="Event message")
+
+
+class JobSummary(BaseModel):
+    job_id: str = Field(..., description="Unique async job id")
+    request_id: str = Field(..., description="Request correlation id")
+    action: str = Field(..., description="Stable action id")
+    submitted_by: str = Field(..., description="Submitting API key id")
+    status: str = Field(..., description="Job lifecycle status")
+    created_at: str = Field(..., description="RFC3339 UTC timestamp")
+    started_at: Optional[str] = Field(default=None, description="RFC3339 UTC timestamp")
+    finished_at: Optional[str] = Field(default=None, description="RFC3339 UTC timestamp")
+    cancel_requested: bool = Field(..., description="Whether cancellation has been requested")
+    result: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+class JobDetail(JobSummary):
+    payload: Dict[str, Any]
+
+
+class HealthData(BaseModel):
+    legacy_api_base: str
+    legacy_health: Dict[str, Any]
+    ido_caps: Dict[str, Any]
+
+
+class HealthEnvelope(BaseModel):
+    request_id: str
+    status: str
+    message: str = ""
+    data: HealthData
+    errors: List[str] = Field(default_factory=list)
+    timestamp: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "request_id": "de34edce-f608-4f1c-a4d6-c76c113cd4e4",
+                "status": "degraded",
+                "message": "v2 health",
+                "data": {
+                    "legacy_api_base": "http://127.0.0.1:5000",
+                    "legacy_health": {"ok": False, "error": "Legacy API unreachable"},
+                    "ido_caps": {"ok": True, "status_code": 200},
+                },
+                "errors": [],
+                "timestamp": "2026-03-30T02:04:30.164Z",
+            }
+        }
+    )
+
+
+class ActionsData(BaseModel):
+    actions: List[str]
+    notes: Dict[str, str]
+
+
+class ActionsEnvelope(BaseModel):
+    request_id: str
+    status: str
+    message: str = ""
+    data: ActionsData
+    errors: List[str] = Field(default_factory=list)
+    timestamp: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "request_id": "b5f8c93f-0c66-4764-a651-c3a4302fcad8",
+                "status": "ok",
+                "message": "",
+                "data": {
+                    "actions": ["health.get", "ftth.generate_bng", "aviat.run"],
+                    "notes": {
+                        "mt.*": "Native renderer actions",
+                        "legacy.proxy": "Whitelisted generic proxy to legacy /api/* endpoint",
+                    },
+                },
+                "errors": [],
+                "timestamp": "2026-03-30T02:04:30.164Z",
+            }
+        }
+    )
+
+
+class WhoAmIData(BaseModel):
+    api_key: str
+    scopes: List[str]
+
+
+class WhoAmIEnvelope(BaseModel):
+    request_id: str
+    status: str
+    message: str = ""
+    data: WhoAmIData
+    errors: List[str] = Field(default_factory=list)
+    timestamp: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "request_id": "8ddf1092-21e5-4edf-a5f4-f4f53f8f0ec0",
+                "status": "ok",
+                "message": "",
+                "data": {"api_key": "omni-prod-key", "scopes": ["admin"]},
+                "errors": [],
+                "timestamp": "2026-03-30T02:04:30.164Z",
+            }
+        }
+    )
+
+
+class ResourceLink(BaseModel):
+    method: str
+    path: str
+
+
+class BootstrapData(BaseModel):
+    api_version: str
+    service: str
+    base_url_hint: str
+    methods_supported: List[str]
+    resources: Dict[str, ResourceLink]
+    notes: Dict[str, str]
+
+
+class BootstrapEnvelope(BaseModel):
+    request_id: str
+    status: str
+    message: str = ""
+    data: BootstrapData
+    errors: List[str] = Field(default_factory=list)
+    timestamp: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "request_id": "f913489f-97c8-4d5e-9ec7-4c6f5a4f1de5",
+                "status": "ok",
+                "message": "OMNI bootstrap contract",
+                "data": {
+                    "api_version": "v2",
+                    "service": "noc-configmaker",
+                    "base_url_hint": "/api/v2",
+                    "methods_supported": ["GET", "POST", "PUT", "PATCH"],
+                    "resources": {
+                        "health": {"method": "GET", "path": "/api/v2/omni/health"},
+                        "job_submit": {"method": "POST", "path": "/api/v2/omni/jobs"},
+                    },
+                    "notes": {
+                        "read_method": "READ maps to GET in HTTP semantics",
+                        "auth": "X-API-Key or Authorization: Bearer <key>",
+                        "idempotency": "Mutating endpoints require Idempotency-Key",
+                    },
+                },
+                "errors": [],
+                "timestamp": "2026-03-30T02:04:30.164Z",
+            }
+        }
+    )
+
+
+class WorkflowsData(BaseModel):
+    workflows: Dict[str, Any]
+    parity_doc: str
+    actions_count: int
+
+
+class WorkflowsEnvelope(BaseModel):
+    request_id: str
+    status: str
+    message: str = ""
+    data: WorkflowsData
+    errors: List[str] = Field(default_factory=list)
+    timestamp: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "request_id": "86d57fe9-a32e-44a3-bf33-eae2e8ff0f26",
+                "status": "ok",
+                "message": "OMNI workflow/action mappings",
+                "data": {
+                    "workflows": {"dashboard": {"health": "health.get"}},
+                    "parity_doc": "/docs/UI_API_PARITY.md",
+                    "actions_count": 90,
+                },
+                "errors": [],
+                "timestamp": "2026-03-30T02:04:30.164Z",
+            }
+        }
+    )
+
+
+class SubmitJobRequest(BaseModel):
+    action: str = Field(..., description="Stable action id from GET /api/v2/omni/actions")
+    payload: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Action-specific payload. If omitted, extra top-level fields are folded into payload.",
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "action": "ftth.generate_bng",
+                    "payload": {
+                        "deployment_type": "outstate",
+                        "router_identity": "RTR-MT2216-AR1.NE-WESTERN-WE-1",
+                        "loopback_ip": "10.249.7.137/32",
+                        "olt_network": "10.249.180.0/29",
+                        "olt_name_primary": "NE-WESTERN-MF2-1",
+                    },
+                },
+                {
+                    "action": "health.get",
+                    "payload": {
+                        "path": "/api/health",
+                        "method": "GET",
+                    },
+                },
+            ]
+        }
+    )
+
+
+class JobAcceptedData(BaseModel):
+    job_id: str
+    request_id: str
+    action: str
+    status: str
+
+
+class JobAcceptedEnvelope(BaseModel):
+    request_id: str
+    status: str
+    message: str = ""
+    data: JobAcceptedData
+    errors: List[str] = Field(default_factory=list)
+    timestamp: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "request_id": "9fcb9791-198c-43e3-8e5a-5f6aa7f15a03",
+                "status": "accepted",
+                "message": "Job accepted",
+                "data": {
+                    "job_id": "089d0977-cec4-4cd8-9961-5c2dc9bbb34f",
+                    "request_id": "9fcb9791-198c-43e3-8e5a-5f6aa7f15a03",
+                    "action": "ftth.generate_bng",
+                    "status": "queued",
+                },
+                "errors": [],
+                "timestamp": "2026-03-30T02:04:30.164Z",
+            }
+        }
+    )
+
+
+class JobsListData(BaseModel):
+    jobs: List[JobSummary]
+    count: int
+
+
+class JobsListEnvelope(BaseModel):
+    request_id: str
+    status: str
+    message: str = ""
+    data: JobsListData
+    errors: List[str] = Field(default_factory=list)
+    timestamp: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "request_id": "f8966fcb-98e2-44f8-8740-9ad2400c4bf7",
+                "status": "ok",
+                "message": "",
+                "data": {
+                    "jobs": [
+                        {
+                            "job_id": "089d0977-cec4-4cd8-9961-5c2dc9bbb34f",
+                            "request_id": "9fcb9791-198c-43e3-8e5a-5f6aa7f15a03",
+                            "action": "health.get",
+                            "submitted_by": "omni-prod-key",
+                            "status": "success",
+                            "created_at": "2026-03-30T02:04:30.164Z",
+                            "started_at": "2026-03-30T02:04:31.164Z",
+                            "finished_at": "2026-03-30T02:04:32.164Z",
+                            "cancel_requested": False,
+                            "result": {"http_status": 200, "ok": True},
+                            "error": None,
+                        }
+                    ],
+                    "count": 1,
+                },
+                "errors": [],
+                "timestamp": "2026-03-30T02:04:30.164Z",
+            }
+        }
+    )
+
+
+class JobDetailEnvelope(BaseModel):
+    request_id: str
+    status: str
+    message: str = ""
+    data: JobDetail
+    errors: List[str] = Field(default_factory=list)
+    timestamp: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "request_id": "15a4df1c-3f32-483b-ab59-2874521ca2f5",
+                "status": "ok",
+                "message": "",
+                "data": {
+                    "job_id": "089d0977-cec4-4cd8-9961-5c2dc9bbb34f",
+                    "request_id": "9fcb9791-198c-43e3-8e5a-5f6aa7f15a03",
+                    "action": "ftth.generate_bng",
+                    "submitted_by": "omni-prod-key",
+                    "status": "running",
+                    "created_at": "2026-03-30T02:04:30.164Z",
+                    "started_at": "2026-03-30T02:04:31.164Z",
+                    "finished_at": None,
+                    "cancel_requested": False,
+                    "result": None,
+                    "error": None,
+                    "payload": {"deployment_type": "outstate"},
+                },
+                "errors": [],
+                "timestamp": "2026-03-30T02:04:30.164Z",
+            }
+        }
+    )
+
+
+class JobEventsData(BaseModel):
+    job_id: str
+    status: str
+    events: List[EventItem]
+
+
+class JobEventsEnvelope(BaseModel):
+    request_id: str
+    status: str
+    message: str = ""
+    data: JobEventsData
+    errors: List[str] = Field(default_factory=list)
+    timestamp: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "request_id": "5a5e5db4-4ed6-4f26-ac87-d48eb7efc9f8",
+                "status": "ok",
+                "message": "",
+                "data": {
+                    "job_id": "089d0977-cec4-4cd8-9961-5c2dc9bbb34f",
+                    "status": "running",
+                    "events": [
+                        {"ts": "2026-03-30T02:04:30.164Z", "level": "info", "message": "Started action"},
+                        {"ts": "2026-03-30T02:04:31.164Z", "level": "success", "message": "Action completed"},
+                    ],
+                },
+                "errors": [],
+                "timestamp": "2026-03-30T02:04:30.164Z",
+            }
+        }
+    )
+
+
+class CancelJobData(BaseModel):
+    job_id: str
+    status: str
+    cancel_requested: bool
+
+
+class CancelJobEnvelope(BaseModel):
+    request_id: str
+    status: str
+    message: str = ""
+    data: CancelJobData
+    errors: List[str] = Field(default_factory=list)
+    timestamp: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "request_id": "7dc6cb40-fc08-4e53-ad4d-8afeb1fdf0e0",
+                "status": "ok",
+                "message": "Cancel request accepted",
+                "data": {
+                    "job_id": "089d0977-cec4-4cd8-9961-5c2dc9bbb34f",
+                    "status": "running",
+                    "cancel_requested": True,
+                },
+                "errors": [],
+                "timestamp": "2026-03-30T02:04:30.164Z",
+            }
+        }
+    )
+
+
+class PatchJobRequest(BaseModel):
+    op: Optional[str] = Field(default=None, description="Use 'cancel' to request cancellation.")
+    action: Optional[str] = Field(default=None, description="Legacy alias for op. 'stop' is also accepted.")
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {"op": "cancel"},
+                {"action": "stop"},
+            ]
+        }
+    )
+
+
+COMMON_ERROR_RESPONSES = {
+    400: {
+        "model": ErrorResponse,
+        "description": "Bad request / missing Idempotency-Key",
+        "content": {"application/json": {"example": {"detail": "Missing Idempotency-Key"}}},
+    },
+    401: {
+        "model": ErrorResponse,
+        "description": "Missing auth or invalid signing headers",
+        "content": {"application/json": {"example": {"detail": "Missing API key"}}},
+    },
+    403: {
+        "model": ErrorResponse,
+        "description": "Invalid API key or insufficient scope",
+        "content": {"application/json": {"example": {"detail": "Insufficient scope; need 'job.submit'"}}},
+    },
+    404: {
+        "model": ErrorResponse,
+        "description": "Resource not found",
+        "content": {"application/json": {"example": {"detail": "Job not found"}}},
+    },
+    409: {
+        "model": ErrorResponse,
+        "description": "Idempotency or replay conflict",
+        "content": {"application/json": {"example": {"detail": "Idempotency-Key reused with different payload"}}},
+    },
+    422: {
+        "model": ErrorResponse,
+        "description": "Validation failure",
+        "content": {"application/json": {"example": {"detail": "Missing 'action'"}}},
+    },
+    503: {
+        "model": ErrorResponse,
+        "description": "API key or signing config missing on server",
+        "content": {
+            "application/json": {
+                "example": {
+                    "detail": "API keys are not configured for /api/v2 (set NOC_API_KEYS_JSON or NOC_API_KEYS)"
+                }
+            }
+        },
+    },
+}
 
 
 def _utc_now() -> datetime:
@@ -1039,7 +1517,7 @@ def _normalize_idempotency_key(value: Optional[str]) -> str:
     return (value or "").strip()
 
 
-@router.get("/health")
+@router.get("/health", include_in_schema=False)
 def v2_health(_: Dict[str, Any] = Depends(_require_scope("health.read"))):
     checks: Dict[str, Any] = {"legacy_api_base": _legacy_api_base(), "legacy_health": {"ok": False}, "ido_caps": {"ok": False}}
     try:
@@ -1059,12 +1537,18 @@ def v2_health(_: Dict[str, Any] = Depends(_require_scope("health.read"))):
     return _envelope(status=status, data=checks, message="v2 health")
 
 
-@router.get("/omni/health")
+@router.get(
+    "/omni/health",
+    response_model=HealthEnvelope,
+    summary="Health check",
+    tags=["OMNI Health"],
+    responses=COMMON_ERROR_RESPONSES,
+)
 def v2_omni_health(_: Dict[str, Any] = Depends(_require_scope("health.read"))):
     return v2_health(_)
 
 
-@router.get("/actions")
+@router.get("/actions", include_in_schema=False)
 def v2_actions(_: Dict[str, Any] = Depends(_require_scope("actions.read"))):
     return _envelope(
         status="ok",
@@ -1079,22 +1563,40 @@ def v2_actions(_: Dict[str, Any] = Depends(_require_scope("actions.read"))):
     )
 
 
-@router.get("/omni/actions")
+@router.get(
+    "/omni/actions",
+    response_model=ActionsEnvelope,
+    summary="List supported actions",
+    tags=["OMNI Discovery"],
+    responses=COMMON_ERROR_RESPONSES,
+)
 def v2_omni_actions(_: Dict[str, Any] = Depends(_require_scope("actions.read"))):
     return v2_actions(_)
 
 
-@router.get("/whoami")
+@router.get("/whoami", include_in_schema=False)
 def v2_whoami(auth: Dict[str, Any] = Depends(_require_scope("health.read"))):
     return _envelope(status="ok", data={"api_key": auth["api_key"], "scopes": auth["scopes"]})
 
 
-@router.get("/omni/whoami")
+@router.get(
+    "/omni/whoami",
+    response_model=WhoAmIEnvelope,
+    summary="Show current API identity",
+    tags=["OMNI Discovery"],
+    responses=COMMON_ERROR_RESPONSES,
+)
 def v2_omni_whoami(auth: Dict[str, Any] = Depends(_require_scope("health.read"))):
     return v2_whoami(auth)
 
 
-@router.get("/omni/bootstrap")
+@router.get(
+    "/omni/bootstrap",
+    response_model=BootstrapEnvelope,
+    summary="Bootstrap contract metadata",
+    tags=["OMNI Discovery"],
+    responses=COMMON_ERROR_RESPONSES,
+)
 def v2_omni_bootstrap(auth: Dict[str, Any] = Depends(_require_scope("actions.read"))):
     _ = auth
     return _envelope(
@@ -1125,7 +1627,13 @@ def v2_omni_bootstrap(auth: Dict[str, Any] = Depends(_require_scope("actions.rea
     )
 
 
-@router.get("/omni/workflows")
+@router.get(
+    "/omni/workflows",
+    response_model=WorkflowsEnvelope,
+    summary="List workflow to action mappings",
+    tags=["OMNI Discovery"],
+    responses=COMMON_ERROR_RESPONSES,
+)
 def v2_omni_workflows(_: Dict[str, Any] = Depends(_require_scope("actions.read"))):
     return _envelope(
         status="ok",
@@ -1138,10 +1646,10 @@ def v2_omni_workflows(_: Dict[str, Any] = Depends(_require_scope("actions.read")
     )
 
 
-@router.post("/jobs")
+@router.post("/jobs", include_in_schema=False)
 def v2_submit_job(
     request: Request,
-    payload: Dict[str, Any] = Body(default_factory=dict),
+    payload: SubmitJobRequest = Body(...),
     idempotency_key: Optional[str] = Header(default=None, alias="Idempotency-Key"),
     auth: Dict[str, Any] = Depends(_require_scope("job.submit")),
 ):
@@ -1162,12 +1670,13 @@ def v2_submit_job(
             status_code, body = existing
             return JSONResponse(status_code=status_code, content=body)
 
-    action = (payload.get("action") or "").strip()
+    payload_dict = payload.model_dump(exclude_none=True)
+    action = (payload.action or "").strip()
     if not action:
         raise HTTPException(status_code=422, detail="Missing 'action'")
-    job_payload = payload.get("payload")
+    job_payload = payload.payload
     if not isinstance(job_payload, dict):
-        job_payload = {k: v for k, v in payload.items() if k != "action"}
+        job_payload = {k: v for k, v in payload_dict.items() if k != "action"}
     rid = request.headers.get("X-Request-ID") or _request_id()
     job = _JOBS.submit(action=action, payload=job_payload, submitted_by=auth["api_key"], request_id=rid)
     response_body = _envelope(
@@ -1194,10 +1703,17 @@ def v2_submit_job(
     return JSONResponse(status_code=202, content=response_body)
 
 
-@router.post("/omni/jobs")
+@router.post(
+    "/omni/jobs",
+    response_model=JobAcceptedEnvelope,
+    status_code=202,
+    summary="Submit async job",
+    tags=["OMNI Jobs"],
+    responses=COMMON_ERROR_RESPONSES,
+)
 def v2_omni_submit_job(
     request: Request,
-    payload: Dict[str, Any] = Body(default_factory=dict),
+    payload: SubmitJobRequest = Body(...),
     idempotency_key: Optional[str] = Header(default=None, alias="Idempotency-Key"),
     auth: Dict[str, Any] = Depends(_require_scope("job.submit")),
 ):
@@ -1209,9 +1725,9 @@ def v2_omni_submit_job(
     )
 
 
-@router.get("/jobs")
+@router.get("/jobs", include_in_schema=False)
 def v2_list_jobs(
-    limit: int = 100,
+    limit: int = Query(default=100, ge=1, le=500, description="Maximum number of jobs to return"),
     auth: Dict[str, Any] = Depends(_require_scope("job.read")),
 ):
     _ = auth
@@ -1219,15 +1735,21 @@ def v2_list_jobs(
     return _envelope(status="ok", data={"jobs": rows, "count": len(rows)})
 
 
-@router.get("/omni/jobs")
+@router.get(
+    "/omni/jobs",
+    response_model=JobsListEnvelope,
+    summary="List jobs",
+    tags=["OMNI Jobs"],
+    responses=COMMON_ERROR_RESPONSES,
+)
 def v2_omni_list_jobs(
-    limit: int = 100,
+    limit: int = Query(default=100, ge=1, le=500, description="Maximum number of jobs to return"),
     auth: Dict[str, Any] = Depends(_require_scope("job.read")),
 ):
     return v2_list_jobs(limit=limit, auth=auth)
 
 
-@router.get("/jobs/{job_id}")
+@router.get("/jobs/{job_id}", include_in_schema=False)
 def v2_get_job(job_id: str, auth: Dict[str, Any] = Depends(_require_scope("job.read"))):
     _ = auth
     job = _JOBS.get(job_id)
@@ -1236,12 +1758,18 @@ def v2_get_job(job_id: str, auth: Dict[str, Any] = Depends(_require_scope("job.r
     return _envelope(status="ok", data=_job_to_dict(job, include_payload=True, include_events=False))
 
 
-@router.get("/omni/jobs/{job_id}")
+@router.get(
+    "/omni/jobs/{job_id}",
+    response_model=JobDetailEnvelope,
+    summary="Get job detail",
+    tags=["OMNI Jobs"],
+    responses=COMMON_ERROR_RESPONSES,
+)
 def v2_omni_get_job(job_id: str, auth: Dict[str, Any] = Depends(_require_scope("job.read"))):
     return v2_get_job(job_id=job_id, auth=auth)
 
 
-@router.get("/jobs/{job_id}/events")
+@router.get("/jobs/{job_id}/events", include_in_schema=False)
 def v2_get_job_events(job_id: str, auth: Dict[str, Any] = Depends(_require_scope("job.read"))):
     _ = auth
     job = _JOBS.get(job_id)
@@ -1257,12 +1785,18 @@ def v2_get_job_events(job_id: str, auth: Dict[str, Any] = Depends(_require_scope
     )
 
 
-@router.get("/omni/jobs/{job_id}/events")
+@router.get(
+    "/omni/jobs/{job_id}/events",
+    response_model=JobEventsEnvelope,
+    summary="Get job event stream snapshot",
+    tags=["OMNI Jobs"],
+    responses=COMMON_ERROR_RESPONSES,
+)
 def v2_omni_get_job_events(job_id: str, auth: Dict[str, Any] = Depends(_require_scope("job.read"))):
     return v2_get_job_events(job_id=job_id, auth=auth)
 
 
-@router.post("/jobs/{job_id}/cancel")
+@router.post("/jobs/{job_id}/cancel", include_in_schema=False)
 def v2_cancel_job(
     request: Request,
     job_id: str,
@@ -1307,7 +1841,13 @@ def v2_cancel_job(
     return response_body
 
 
-@router.post("/omni/jobs/{job_id}/cancel")
+@router.post(
+    "/omni/jobs/{job_id}/cancel",
+    response_model=CancelJobEnvelope,
+    summary="Cancel job via POST",
+    tags=["OMNI Jobs"],
+    responses=COMMON_ERROR_RESPONSES,
+)
 def v2_omni_cancel_job(
     request: Request,
     job_id: str,
@@ -1322,7 +1862,7 @@ def v2_omni_cancel_job(
     )
 
 
-@router.put("/jobs/{job_id}/cancel")
+@router.put("/jobs/{job_id}/cancel", include_in_schema=False)
 def v2_cancel_job_put(
     request: Request,
     job_id: str,
@@ -1337,7 +1877,13 @@ def v2_cancel_job_put(
     )
 
 
-@router.put("/omni/jobs/{job_id}/cancel")
+@router.put(
+    "/omni/jobs/{job_id}/cancel",
+    response_model=CancelJobEnvelope,
+    summary="Cancel job via PUT",
+    tags=["OMNI Jobs"],
+    responses=COMMON_ERROR_RESPONSES,
+)
 def v2_omni_cancel_job_put(
     request: Request,
     job_id: str,
@@ -1352,15 +1898,15 @@ def v2_omni_cancel_job_put(
     )
 
 
-@router.patch("/jobs/{job_id}")
+@router.patch("/jobs/{job_id}", include_in_schema=False)
 def v2_patch_job(
     request: Request,
     job_id: str,
-    payload: Dict[str, Any] = Body(default_factory=dict),
+    payload: PatchJobRequest = Body(...),
     idempotency_key: Optional[str] = Header(default=None, alias="Idempotency-Key"),
     auth: Dict[str, Any] = Depends(_require_scope("job.cancel")),
 ):
-    op = str(payload.get("op") or payload.get("action") or "").strip().lower()
+    op = str(payload.op or payload.action or "").strip().lower()
     if op not in {"cancel", "stop"}:
         raise HTTPException(status_code=422, detail="Supported PATCH ops: cancel")
     return v2_cancel_job(
@@ -1371,11 +1917,17 @@ def v2_patch_job(
     )
 
 
-@router.patch("/omni/jobs/{job_id}")
+@router.patch(
+    "/omni/jobs/{job_id}",
+    response_model=CancelJobEnvelope,
+    summary="Cancel job via PATCH",
+    tags=["OMNI Jobs"],
+    responses=COMMON_ERROR_RESPONSES,
+)
 def v2_omni_patch_job(
     request: Request,
     job_id: str,
-    payload: Dict[str, Any] = Body(default_factory=dict),
+    payload: PatchJobRequest = Body(...),
     idempotency_key: Optional[str] = Header(default=None, alias="Idempotency-Key"),
     auth: Dict[str, Any] = Depends(_require_scope("job.cancel")),
 ):
