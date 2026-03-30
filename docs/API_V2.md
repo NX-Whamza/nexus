@@ -7,6 +7,7 @@ Everything below uses exact request/response JSON shapes with no abbreviated pay
 
 - API: `https://noc-configmaker.nxlink.com/api/v2`
 - OMNI aliases: `https://noc-configmaker.nxlink.com/api/v2/omni/*`
+- Interactive Swagger: `https://noc-configmaker.nxlink.com/docs`
 - UI: `https://noc-configmaker.nxlink.com/l`
 
 ## Authentication
@@ -1080,5 +1081,6 @@ Re-run prechecks on devices.
 
 ## Runtime API Docs
 
-- Swagger: `https://noc-configmaker.nxlink.com/docs`
-- OpenAPI JSON: `https://noc-configmaker.nxlink.com/openapi.json`
+- Swagger UI: `https://noc-configmaker.nxlink.com/docs`
+- The published integration surface is the interactive Swagger at `/docs`.
+- OMNI consumers should treat `/docs` as the primary contract reference for request/response JSON shapes.
