@@ -23,11 +23,12 @@ import requests
 from pathlib import Path
 from typing import Any, Dict, Type
 from fastapi.openapi.utils import get_openapi
+from fastapi.openapi.docs import get_swagger_ui_html
 
 from a2wsgi import WSGIMiddleware
 from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
 # Ensure local imports resolve when launched from repo root or service wrappers.
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -143,6 +144,16 @@ def custom_openapi():
 
 
 app.openapi = custom_openapi
+
+
+@app.get("/docs", include_in_schema=False)
+@app.get("/docs/", include_in_schema=False)
+def swagger_ui() -> HTMLResponse:
+    return get_swagger_ui_html(
+        openapi_url=app.openapi_url or "/docs/openapi.json",
+        title=f"{app.title} - Swagger UI",
+        swagger_ui_parameters=app.swagger_ui_parameters,
+    )
 
 
 def _str_to_bool(value: str) -> bool:
