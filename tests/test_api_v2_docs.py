@@ -74,6 +74,11 @@ def test_docs_openapi_includes_typed_job_models():
     assert "FtthGenerateBngPayload" in components
     assert "AviatRunJobRequest" in components
     assert "NokiaGenerate7250JobRequest" in components
+    assert "ConfigsSaveJobRequest" in components
+    assert "ConfigsGetJobRequest" in components
+    assert "DeviceFetchConfigSshJobRequest" in components
+    assert "ComplianceApplyJobRequest" in components
+    assert "FeedbackSubmitJobRequest" in components
 
     submit_post = schema["paths"]["/api/v2/omni/jobs"]["post"]
     request_schema = submit_post["requestBody"]["content"]["application/json"]["schema"]
@@ -86,6 +91,9 @@ def test_docs_openapi_includes_typed_job_models():
     assert "FtthGenerateBngJobRequest" in request_refs
     assert "AviatRunJobRequest" in request_refs
     assert "NokiaGenerate7250JobRequest" in request_refs
+    assert "ConfigsSaveJobRequest" in request_refs
+    assert "DeviceFetchConfigSshJobRequest" in request_refs
+    assert "FeedbackSubmitJobRequest" in request_refs
     assert "SubmitJobRequest" in request_refs
 
     security_schemes = schema["components"]["securitySchemes"]

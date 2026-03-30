@@ -481,6 +481,146 @@ class AviatRunJobRequest(BaseModel):
     )
 
 
+class ConfigsSavePayload(BaseModel):
+    config_type: str = Field(..., description="Configuration family or generator type.")
+    device_name: str = Field(..., description="Operator-facing device identifier.")
+    device_type: str = Field(..., description="Platform/model identifier.")
+    loopback_ip: Optional[str] = Field(default=None, description="Loopback or management IP when applicable.")
+    config_content: str = Field(..., description="Rendered configuration text.")
+    site_name: Optional[str] = Field(default=None, description="Site or market label.")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional tenant-defined metadata.")
+
+
+class ConfigsSaveJobRequest(BaseModel):
+    action: Literal["configs.save"] = Field(..., description="Persist a generated configuration artifact.")
+    payload: ConfigsSavePayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "configs.save",
+                "payload": {
+                    "config_type": "tower-config",
+                    "device_name": "RTR-EDGE-01",
+                    "device_type": "CCR2004",
+                    "loopback_ip": "10.249.7.137/32",
+                    "config_content": "/system identity set name=RTR-EDGE-01",
+                    "site_name": "West Hub",
+                    "metadata": {"tenant_code": "tenant-a", "workflow": "mikrotik.render"},
+                },
+            }
+        }
+    )
+
+
+class ConfigsGetPayload(BaseModel):
+    config_id: int = Field(..., ge=1, description="Saved configuration record id.")
+
+
+class ConfigsGetJobRequest(BaseModel):
+    action: Literal["configs.get"] = Field(..., description="Fetch a saved configuration artifact by id.")
+    payload: ConfigsGetPayload
+
+    model_config = ConfigDict(
+        json_schema_extra={"example": {"action": "configs.get", "payload": {"config_id": 42}}}
+    )
+
+
+class DeviceFetchConfigSshPayload(BaseModel):
+    host: str = Field(..., description="Device hostname or management IP.")
+    port: int = Field(default=22, ge=1, le=65535, description="SSH port.")
+    username: str = Field(..., description="SSH username.")
+    password: str = Field(..., description="SSH password.")
+    command: str = Field(..., description="Read-only device command used to fetch running/exported config.")
+
+
+class DeviceFetchConfigSshJobRequest(BaseModel):
+    action: Literal["device.fetch_config_ssh"] = Field(..., description="Fetch device configuration over SSH.")
+    payload: DeviceFetchConfigSshPayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "device.fetch_config_ssh",
+                "payload": {
+                    "host": "10.249.10.10",
+                    "port": 22,
+                    "username": "admin",
+                    "password": "redacted",
+                    "command": "/export terse",
+                },
+            }
+        }
+    )
+
+
+class ComplianceApplyPayload(BaseModel):
+    config: str = Field(..., description="Rendered config text to be normalized or validated.")
+    loopback_ip: Optional[str] = Field(default=None, description="Loopback or router identifier used for policy matching.")
+    policy_name: Optional[str] = Field(default=None, description="Tenant policy/template reference.")
+
+
+class ComplianceApplyJobRequest(BaseModel):
+    action: Literal["compliance.apply"] = Field(..., description="Apply compliance overlays to generated configuration.")
+    payload: ComplianceApplyPayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "compliance.apply",
+                "payload": {
+                    "config": "/routing ospf instance set default router-id=10.249.7.137",
+                    "loopback_ip": "10.249.7.137/32",
+                    "policy_name": "standard-edge",
+                },
+            }
+        }
+    )
+
+
+class CompliancePolicyGetPayload(BaseModel):
+    policy_name: str = Field(..., description="Tenant policy/template identifier.")
+
+
+class CompliancePolicyGetJobRequest(BaseModel):
+    action: Literal["compliance.policies.get"] = Field(..., description="Fetch a single named compliance policy.")
+    payload: CompliancePolicyGetPayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {"action": "compliance.policies.get", "payload": {"policy_name": "standard-edge"}}
+        }
+    )
+
+
+class FeedbackSubmitPayload(BaseModel):
+    type: str = Field(..., description="Feedback type such as feedback, bug, or feature.")
+    rating: Optional[int] = Field(default=None, ge=1, le=5, description="Optional rating score.")
+    message: str = Field(..., description="User-facing feedback content.")
+    email: Optional[str] = Field(default=None, description="Contact email for follow-up.")
+    tab: Optional[str] = Field(default=None, description="UI tab/workflow where the feedback originated.")
+
+
+class FeedbackSubmitJobRequest(BaseModel):
+    action: Literal["feedback.submit"] = Field(..., description="Submit user feedback into the shared review queue.")
+    payload: FeedbackSubmitPayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "feedback.submit",
+                "payload": {
+                    "type": "feature",
+                    "rating": 5,
+                    "message": "Need tenant-specific defaults in the Nokia workflow.",
+                    "email": "ops@example.com",
+                    "tab": "nokia-configurator",
+                },
+            }
+        }
+    )
+
+
 class MikrotikToNokiaMigrationPayload(BaseModel):
     source_config: str = Field(..., description="Source MikroTik configuration text.")
     preserve_ips: bool = Field(default=True, description="Preserve source IP addressing during conversion.")
@@ -515,6 +655,12 @@ PublishedSubmitJobRequest = Union[
     NokiaGenerate7250JobRequest,
     TaranaGenerateJobRequest,
     AviatRunJobRequest,
+    ConfigsSaveJobRequest,
+    ConfigsGetJobRequest,
+    DeviceFetchConfigSshJobRequest,
+    ComplianceApplyJobRequest,
+    CompliancePolicyGetJobRequest,
+    FeedbackSubmitJobRequest,
     MikrotikToNokiaMigrationJobRequest,
     SubmitJobRequest,
 ]
@@ -761,11 +907,17 @@ COMMON_ERROR_RESPONSES = {
 
 PUBLIC_ACTION_NOTES: Dict[str, str] = {
     "health.get": "Tenant-neutral health probe for the published service.",
+    "configs.save": "Persist rendered configuration artifacts and associated metadata.",
+    "configs.get": "Retrieve one saved configuration artifact by id.",
     "ftth.generate_bng": "Generate FTTH BNG artifacts using tenant-selected templates and policy references.",
     "ftth.preview_bng": "Preview FTTH address planning output before generation.",
     "nokia.generate_7250": "Generate Nokia 7250 artifacts from tenant-neutral structured input.",
     "tarana.generate": "Generate Tarana-related configuration output.",
     "aviat.run": "Run Aviat maintenance workflow for backup, status, verification, and upgrade operations.",
+    "device.fetch_config_ssh": "Fetch current device configuration over SSH using operator-supplied credentials.",
+    "compliance.apply": "Apply compliance overlays or normalization rules to configuration text.",
+    "compliance.policies.get": "Retrieve a named tenant policy/template definition.",
+    "feedback.submit": "Submit operator feedback, bug reports, or feature requests.",
     "migration.mikrotik_to_nokia": "Convert MikroTik configuration into Nokia SR OS format.",
     "legacy.proxy": "Escape hatch for approved internal routes while native contract coverage is completed.",
 }

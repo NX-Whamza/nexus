@@ -2,6 +2,26 @@
 
 This maps current NOC ConfigMaker UI workflows to `/api/v2` job actions for OMNI/Mushu integration.
 
+## Sidebar Coverage Snapshot
+
+| Sidebar Area | Current UI Coverage | Published `/api/v2/omni` Contract Coverage | Status |
+|-------------|---------------------|--------------------------------------------|--------|
+| Home / Dashboard | Health, activity, app defaults, infrastructure | `health.get`, `activity.list`, `configs.list`, `legacy.proxy` | Partial |
+| MikroTik Config | Router/generator workflows, enterprise, Tarana | `mt.*`, `enterprise.generate_non_mpls`, `tarana.generate` | Partial |
+| Field Config Studio | IDO-backed device interrogation and generation | `ido.*` actions | Partial |
+| Devices Firmware Updater | Aviat and Cambium workflows | `aviat.*` typed start, Cambium not yet promoted into v2 | Partial |
+| FTTH Configurator | Preview/generate BNG plus FTTH site/customer tools | `ftth.preview_bng`, `ftth.generate_bng`, `ftth.mf2_package` | Partial |
+| Command Vault | Nokia/Cisco/MikroTik references | Not yet promoted as first-class published contract | Gap |
+| Cisco Port Setup | Cisco-specific config helper | Not yet promoted as first-class published contract | Gap |
+| Power Tools | Diff, bulk ops, maintenance, compliance | `compliance.*` typed start, bulk/diff not yet promoted | Partial |
+| History | Saved configs and log history | `configs.*`, `activity.*` typed start | Partial |
+| Feedback / Admin | Feedback submission and review/admin actions | `feedback.submit`, `admin.feedback.*` | Partial |
+
+Status meaning:
+- `Typed`: explicit Swagger schema/examples exist for the primary action payloads
+- `Partial`: action exists and is callable, but more sub-workflows still need explicit published schemas
+- `Gap`: UI exists but the workflow is not yet promoted into the OMNI contract
+
 ## How OMNI should call
 
 1. `POST /api/v2/omni/jobs` with `{"action":"...", "payload":{...}}`
