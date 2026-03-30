@@ -16926,6 +16926,23 @@ def _cambium_extract_firmware(info):
     return None
 
 
+def _cambium_versions_match(expected, actual):
+    expected_text = str(expected or "").strip()
+    actual_text = str(actual or "").strip()
+    if not expected_text or not actual_text:
+        return False
+    if expected_text == actual_text:
+        return True
+
+    def _base(value):
+        match = re.search(r"\d+(?:\.\d+)+", value)
+        return match.group(0) if match else value
+
+    expected_base = _base(expected_text)
+    actual_base = _base(actual_text)
+    return bool(expected_base and actual_base and expected_base == actual_base)
+
+
 def _cambium_broadcast_log(message, level="info", task_id=None, ip=None):
     entry = {
         "timestamp": get_utc_timestamp(),
@@ -17188,7 +17205,7 @@ def _cambium_run_single(radio, username, should_abort=None):
         if "verify" in tasks:
             actual_fw = after_fw or before_fw
             verify_status = "success" if actual_fw and (
-                not update_version or str(actual_fw).strip() == str(update_version).strip()
+                not update_version or _cambium_versions_match(update_version, actual_fw)
             ) else "error"
             if verify_status != "success":
                 raise RuntimeError(

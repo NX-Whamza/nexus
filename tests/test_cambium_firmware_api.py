@@ -375,6 +375,65 @@ def test_cambium_backup_download_by_path_and_ip(monkeypatch):
     assert by_ip.headers["content-type"].startswith("application/json")
 
 
+def test_cambium_verify_accepts_matching_base_version(monkeypatch):
+    monkeypatch.setattr(api_server, "HAS_CAMBIUM", True)
+    api_server.cambium_shared_queue.clear()
+    api_server.cambium_tasks.clear()
+    api_server.cambium_log_queues.clear()
+
+    def fake_device_info(ip, device_type, password=None, run_tests=True):
+        return {
+            "success": True,
+            "running_config": '{"device_props":{"name":"demo"}}',
+            "test_results": [
+                {"name": "Firmware Version", "actual": "5.10.4", "expected": "5.10.4", "pass": True}
+            ],
+        }
+
+    def fake_update_device(ip, device_type, username=None, password=None, update_version=None, callback=None):
+        return {
+            "success": True,
+            "ip": ip,
+            "device_type": device_type,
+            "target_version": update_version,
+            "selected_image": "ePMP-AC-v5.10.4.img",
+        }
+
+    monkeypatch.setattr(api_server, "cambium_get_device_info", fake_device_info)
+    monkeypatch.setattr(api_server, "cambium_update_device", fake_update_device)
+    monkeypatch.setattr(api_server, "cambium_resolve_device_type", lambda value: "CNEP3K")
+
+    r = client.post(
+        "/api/cambium/run",
+        json={
+            "ips": ["10.20.30.45"],
+            "device_type": "CNEP3K",
+            "update_version": "5.10.4-13433",
+            "password": "secret",
+            "tasks": ["firmware", "verify"],
+            "requested_by": "frontend-user",
+        },
+    )
+    assert r.status_code == 200
+    task_id = r.json()["task_id"]
+
+    deadline = time.time() + 3
+    final_status = None
+    while time.time() < deadline:
+        status_resp = client.get(f"/api/cambium/status/{task_id}")
+        assert status_resp.status_code == 200
+        final_status = status_resp.json()
+        if final_status["status"] == "completed":
+            break
+        time.sleep(0.05)
+
+    assert final_status is not None
+    assert final_status["status"] == "completed"
+    result = final_status["results"][0]
+    assert result["status"] == "success"
+    assert result["verify_status"] == "success"
+
+
 def test_cambium_resolve_device_type_aliases():
     # Only AP types — canonical names pass through unchanged
     assert resolve_device_type("CNEP3K") == "CNEP3K"
