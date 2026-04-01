@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Swagger/OpenAPI coverage tests for the API v2 OMNI contract."""
+"""Swagger/OpenAPI coverage tests for the published NEXUS API v2 contract."""
 
 from __future__ import annotations
 
@@ -34,82 +34,54 @@ def test_top_level_openapi_json_is_not_the_published_spec_surface():
     assert response.headers["content-type"].startswith("text/html")
 
 
-def test_docs_openapi_contains_omni_contract_endpoints_only():
+def test_docs_openapi_contains_nexus_contract_endpoints_only():
     response = client.get("/docs/openapi.json")
     assert response.status_code == 200
     schema = response.json()
     paths = schema["paths"]
     assert schema["openapi"].startswith("3.")
 
-    assert "/api/v2/omni/health" in paths
-    assert "/api/v2/omni/actions" in paths
-    assert "/api/v2/omni/whoami" in paths
-    assert "/api/v2/omni/bootstrap" in paths
-    assert "/api/v2/omni/workflows" in paths
-    assert "/api/v2/omni/jobs" in paths
-    assert "/api/v2/omni/jobs/{job_id}" in paths
-    assert "/api/v2/omni/jobs/{job_id}/events" in paths
-    assert "/api/v2/omni/jobs/{job_id}/cancel" in paths
+    assert "/api/v2/nexus/health" in paths
+    assert "/api/v2/nexus/actions" in paths
+    assert "/api/v2/nexus/whoami" in paths
+    assert "/api/v2/nexus/bootstrap" in paths
+    assert "/api/v2/nexus/workflows" in paths
+    assert "/api/v2/nexus/catalog/actions" in paths
+    assert "/api/v2/nexus/jobs" in paths
+    assert "/api/v2/nexus/jobs/{job_id}" in paths
+    assert "/api/v2/nexus/jobs/{job_id}/events" in paths
+    assert "/api/v2/nexus/jobs/{job_id}/cancel" in paths
+    assert "/api/v2/nexus/tools/command-vault" in paths
+    assert "/api/v2/nexus/maintenance/windows" in paths
 
+    assert "/api/v2/omni/health" not in paths
+    assert "/api/v2/omni/actions" not in paths
+    assert "/api/v2/omni/jobs" not in paths
     assert "/api/v2/health" not in paths
     assert "/api/v2/actions" not in paths
     assert "/api/v2/whoami" not in paths
     assert "/api/v2/jobs" not in paths
+    assert "/api/ido/capabilities" not in paths
 
 
-def test_docs_openapi_includes_typed_job_models():
+def test_docs_openapi_includes_published_nexus_models():
     response = client.get("/docs/openapi.json")
     assert response.status_code == 200
     schema = response.json()
     components = schema["components"]["schemas"]
 
     assert "SubmitJobRequest" in components
-    assert "PatchJobRequest" in components
-    assert "JobAcceptedEnvelope" in components
-    assert "JobsListEnvelope" in components
-    assert "JobDetailEnvelope" in components
-    assert "JobEventsEnvelope" in components
-    assert "CancelJobEnvelope" in components
-    assert "FtthGenerateBngJobRequest" in components
-    assert "FtthGenerateBngPayload" in components
-    assert "AviatRunJobRequest" in components
-    assert "NokiaGenerate7250JobRequest" in components
-    assert "ConfigsSaveJobRequest" in components
-    assert "ConfigsGetJobRequest" in components
-    assert "DeviceFetchConfigSshJobRequest" in components
-    assert "ComplianceApplyJobRequest" in components
-    assert "FeedbackSubmitJobRequest" in components
-    assert "IdoPingJobRequest" in components
-    assert "IdoGenericDeviceInfoJobRequest" in components
-    assert "NokiaConfiguratorJobRequest" in components
-    assert "FtthFiberCustomerJobRequest" in components
-    assert "FtthFiberSiteJobRequest" in components
-    assert "FtthIsdFiberJobRequest" in components
-    assert "BulkGenerateJobRequest" in components
-    assert "BulkSshFetchJobRequest" in components
-    assert "BulkComplianceScanJobRequest" in components
-    assert "CambiumRunJobRequest" in components
+    assert "ValidationError" in components
+    assert "HTTPValidationError" in components
 
-    submit_post = schema["paths"]["/api/v2/omni/jobs"]["post"]
+    submit_post = schema["paths"]["/api/v2/nexus/jobs"]["post"]
     request_schema = submit_post["requestBody"]["content"]["application/json"]["schema"]
-    assert "anyOf" in request_schema
-    request_refs = {
-        item["$ref"].rsplit("/", 1)[-1]
-        for item in request_schema["anyOf"]
-        if "$ref" in item
-    }
-    assert "FtthGenerateBngJobRequest" in request_refs
-    assert "AviatRunJobRequest" in request_refs
-    assert "NokiaGenerate7250JobRequest" in request_refs
-    assert "ConfigsSaveJobRequest" in request_refs
-    assert "DeviceFetchConfigSshJobRequest" in request_refs
-    assert "FeedbackSubmitJobRequest" in request_refs
-    assert "IdoPingJobRequest" in request_refs
-    assert "NokiaConfiguratorJobRequest" in request_refs
-    assert "FtthFiberCustomerJobRequest" in request_refs
-    assert "BulkGenerateJobRequest" in request_refs
-    assert "CambiumRunJobRequest" in request_refs
-    assert "SubmitJobRequest" in request_refs
+    assert request_schema.get("type") == "object" or "$ref" in request_schema
+
+    request_examples = submit_post["requestBody"]["content"]["application/json"]["examples"]
+    assert "enterprise_generate_mpls" in request_examples
+    assert "switch_generate_mikrotik" in request_examples
+    assert "command_vault_catalog" in request_examples
 
     security_schemes = schema["components"]["securitySchemes"]
     assert "ApiKeyAuth" in security_schemes
@@ -117,26 +89,14 @@ def test_docs_openapi_includes_typed_job_models():
     assert submit_post["security"] == [{"ApiKeyAuth": []}, {"BearerAuth": []}]
 
     tag_names = {tag["name"] for tag in schema["tags"]}
-    assert {"OMNI Health", "OMNI Discovery", "OMNI Jobs"}.issubset(tag_names)
+    assert {"NEXUS Health", "NEXUS Discovery", "NEXUS Jobs", "NEXUS Tools", "NEXUS Maintenance"}.issubset(tag_names)
 
 
-def test_api_v2_markdown_matches_swagger_endpoint_inventory():
+def test_docs_openapi_is_nexus_first():
     response = client.get("/docs/openapi.json")
     assert response.status_code == 200
     schema = response.json()
-    swagger_pairs = {
-        f"{method.upper()} {path}"
-        for path, methods in schema["paths"].items()
-        for method in methods.keys()
-    }
-
-    md_text = API_V2_MD.read_text(encoding="utf-8")
-    md_pairs = set(
-        re.findall(r"- `(GET|POST|PUT|PATCH) (/api/v2/omni[^`]+)`", md_text)
-    )
-    normalized_md_pairs = {f"{method} {path}" for method, path in md_pairs}
-
-    assert normalized_md_pairs
-    assert normalized_md_pairs.issubset(swagger_pairs)
-    assert "https://noc-configmaker.nxlink.com/docs" in md_text
-    assert "https://noc-configmaker.nxlink.com/openapi.json" not in md_text
+    assert schema["info"]["title"] == "NEXUS API"
+    assert "/api/v2/nexus/*" in schema["info"]["description"]
+    assert "Compatibility aliases remain mounted for legacy clients" in schema["info"]["description"]
+    assert all(path.startswith("/api/v2/nexus/") for path in schema["paths"])

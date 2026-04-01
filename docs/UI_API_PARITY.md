@@ -6,7 +6,7 @@ This maps current NEXUS UI workflows to `/api/v2` job actions. NEXUS is the cano
 
 ## Sidebar Coverage Snapshot
 
-| Sidebar Area | Current UI Coverage | Published `/api/v2/omni` Contract Coverage | Status |
+| Sidebar Area | Current UI Coverage | Published `/api/v2/nexus` Contract Coverage | Status |
 |-------------|---------------------|--------------------------------------------|--------|
 | Home / Dashboard | Health, activity, app defaults, infrastructure | `health.get`, `activity.list`, `configs.list`, `legacy.proxy` | Partial |
 | MikroTik Config | Router/generator workflows, enterprise, Tarana | `mt.*`, `enterprise.generate_non_mpls`, `tarana.generate` | Partial |
@@ -22,7 +22,7 @@ This maps current NEXUS UI workflows to `/api/v2` job actions. NEXUS is the cano
 Status meaning:
 - `Typed`: explicit Swagger schema/examples exist for the primary action payloads
 - `Partial`: action exists and is callable, but more sub-workflows still need explicit published schemas
-- `Gap`: UI exists but the workflow is not yet promoted into the OMNI contract
+- `Gap`: UI exists but the workflow is not yet promoted into the published NEXUS contract
 
 ## How Clients Should Call
 

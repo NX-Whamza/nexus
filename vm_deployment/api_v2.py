@@ -163,7 +163,7 @@ class WhoAmIEnvelope(BaseModel):
                 "request_id": "8ddf1092-21e5-4edf-a5f4-f4f53f8f0ec0",
                 "status": "ok",
                 "message": "",
-                "data": {"api_key": "omni-prod-key", "scopes": ["admin"]},
+                "data": {"api_key": "nexus-api-key", "scopes": ["admin"]},
                 "errors": [],
                 "timestamp": "2026-03-30T02:04:30.164Z",
             }
@@ -198,15 +198,15 @@ class BootstrapEnvelope(BaseModel):
             "example": {
                 "request_id": "f913489f-97c8-4d5e-9ec7-4c6f5a4f1de5",
                 "status": "ok",
-                "message": "OMNI bootstrap contract",
+                "message": "NEXUS bootstrap contract",
                 "data": {
                     "api_version": "v2",
-                    "service": "noc-configmaker",
-                    "base_url_hint": "/api/v2",
+                    "service": "nexus",
+                    "base_url_hint": "/api/v2/nexus",
                     "methods_supported": ["GET", "POST", "PUT", "PATCH"],
                     "resources": {
-                        "health": {"method": "GET", "path": "/api/v2/omni/health"},
-                        "job_submit": {"method": "POST", "path": "/api/v2/omni/jobs"},
+                        "health": {"method": "GET", "path": "/api/v2/nexus/health"},
+                        "job_submit": {"method": "POST", "path": "/api/v2/nexus/jobs"},
                     },
                     "notes": {
                         "read_method": "READ maps to GET in HTTP semantics",
@@ -240,7 +240,7 @@ class WorkflowsEnvelope(BaseModel):
             "example": {
                 "request_id": "86d57fe9-a32e-44a3-bf33-eae2e8ff0f26",
                 "status": "ok",
-                "message": "OMNI workflow/action mappings",
+                "message": "NEXUS workflow/action mappings",
                 "data": {
                     "workflows": {"dashboard": {"health": "health.get"}},
                     "parity_doc": "/docs/UI_API_PARITY.md",
@@ -254,7 +254,7 @@ class WorkflowsEnvelope(BaseModel):
 
 
 class SubmitJobRequest(BaseModel):
-    action: str = Field(..., description="Stable action id from GET /api/v2/omni/actions")
+    action: str = Field(..., description="Stable action id from GET /api/v2/nexus/actions")
     payload: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Action-specific payload. If omitted, extra top-level fields are folded into payload.",
@@ -477,7 +477,7 @@ class AviatRunJobRequest(BaseModel):
                     "ips": ["10.247.180.66"],
                     "tasks": ["backup", "upgrade", "verify"],
                     "firmware": "CTR-4.2.0",
-                    "requested_by": "omni-automation",
+                    "requested_by": "nexus-automation",
                 },
             }
         }
@@ -629,7 +629,7 @@ class IdoPingPayload(BaseModel):
 
 
 class IdoPingJobRequest(BaseModel):
-    action: Literal["ido.ping"] = Field(..., description="Ping a device through the IDO backend.")
+    action: Literal["ido.ping"] = Field(..., description="Ping a device through the shared device-access backend.")
     payload: IdoPingPayload
 
     model_config = ConfigDict(
@@ -644,7 +644,7 @@ class IdoDeviceInfoPayload(BaseModel):
 
 
 class IdoGenericDeviceInfoJobRequest(BaseModel):
-    action: Literal["ido.generic.device_info"] = Field(..., description="Fetch generic device facts through IDO.")
+    action: Literal["ido.generic.device_info"] = Field(..., description="Fetch generic device facts through the shared device-access backend.")
     payload: IdoDeviceInfoPayload
 
     model_config = ConfigDict(
@@ -960,7 +960,7 @@ class CambiumRunJobRequest(BaseModel):
                     "tasks": ["backup", "firmware", "verify"],
                     "firmware_version": "5.10.4-13433",
                     "firmware_source": "stable",
-                    "requested_by": "omni-automation",
+                    "requested_by": "nexus-automation",
                 },
             }
         }
@@ -1085,7 +1085,7 @@ class JobsListEnvelope(BaseModel):
                             "job_id": "089d0977-cec4-4cd8-9961-5c2dc9bbb34f",
                             "request_id": "9fcb9791-198c-43e3-8e5a-5f6aa7f15a03",
                             "action": "health.get",
-                            "submitted_by": "omni-prod-key",
+                            "submitted_by": "nexus-api-key",
                             "status": "success",
                             "created_at": "2026-03-30T02:04:30.164Z",
                             "started_at": "2026-03-30T02:04:31.164Z",
@@ -1122,7 +1122,7 @@ class JobDetailEnvelope(BaseModel):
                     "job_id": "089d0977-cec4-4cd8-9961-5c2dc9bbb34f",
                     "request_id": "9fcb9791-198c-43e3-8e5a-5f6aa7f15a03",
                     "action": "ftth.generate_bng",
-                    "submitted_by": "omni-prod-key",
+                    "submitted_by": "nexus-api-key",
                     "status": "running",
                     "created_at": "2026-03-30T02:04:30.164Z",
                     "started_at": "2026-03-30T02:04:31.164Z",
@@ -1278,8 +1278,8 @@ PUBLIC_ACTION_NOTES: Dict[str, str] = {
     "compliance.apply": "Apply compliance overlays or normalization rules to configuration text.",
     "compliance.policies.get": "Retrieve a named tenant policy/template definition.",
     "feedback.submit": "Submit operator feedback, bug reports, or feature requests.",
-    "ido.ping": "Probe device reachability through the IDO backend.",
-    "ido.generic.device_info": "Retrieve generic device facts through the IDO backend.",
+    "ido.ping": "Probe device reachability through the shared device-access backend.",
+    "ido.generic.device_info": "Retrieve generic device facts through the shared device-access backend.",
     "nokia.configurator.generate": "Generate Nokia configurator output for the unified Nokia workflow.",
     "migration.parse_mikrotik_for_nokia": "Parse MikroTik exports into Nokia migration helper structures.",
     "ftth.fiber_customer": "Generate FTTH customer handoff configuration.",
@@ -3542,7 +3542,7 @@ _NEXUS_ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
     "ido.ap.device_info": {
         "tab": "Device Config Studio",
         "delivery": "api",
-        "summary": "Fetch AP device info from the embedded IDO backend.",
+        "summary": "Fetch AP device info from the shared device-access backend.",
         "backend_path": "/api/ido/proxy/api/ap/device_info",
         "tenant_ready": True,
         "payload_example": {

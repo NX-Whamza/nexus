@@ -60,24 +60,33 @@ async def lifespan(_: FastAPI):
 
 
 API_DESCRIPTION = """
-API-first contract for OMNI and future tenant-facing integrations.
+API-first contract for NEXUS and future tenant-facing integrations.
 
-Use the `/api/v2/omni/*` routes documented here as the stable external surface.
-Legacy Flask routes remain mounted for backward compatibility, but they are not the primary integration contract.
+Use the `/api/v2/nexus/*` routes documented here as the stable external surface.
+Compatibility aliases remain mounted for legacy clients, but they are not the primary integration contract.
+This contract is intended to support multiple tenants and should avoid provider-specific assumptions.
 """.strip()
 
 OPENAPI_TAGS = [
     {
-        "name": "OMNI Health",
-        "description": "Availability and health endpoints for OMNI and external integrations.",
+        "name": "NEXUS Health",
+        "description": "Availability and health endpoints for NEXUS and tenant-facing integrations.",
     },
     {
-        "name": "OMNI Discovery",
+        "name": "NEXUS Discovery",
         "description": "Identity, actions, bootstrap, and workflow discovery endpoints.",
     },
     {
-        "name": "OMNI Jobs",
+        "name": "NEXUS Jobs",
         "description": "Async job submission, job inspection, events, and cancellation endpoints.",
+    },
+    {
+        "name": "NEXUS Tools",
+        "description": "Direct typed tool endpoints published for NEXUS-native and tenant-facing integrations.",
+    },
+    {
+        "name": "NEXUS Maintenance",
+        "description": "Tenant-facing scheduled maintenance management endpoints.",
     },
 ]
 
@@ -124,7 +133,7 @@ def custom_openapi():
         "type": "apiKey",
         "in": "header",
         "name": "X-API-Key",
-        "description": "Primary API key header for OMNI and tenant integrations.",
+        "description": "Primary API key header for NEXUS and tenant integrations.",
     }
     schema["components"]["securitySchemes"]["BearerAuth"] = {
         "type": "http",
@@ -132,13 +141,64 @@ def custom_openapi():
         "bearerFormat": "API key",
         "description": "Bearer token alternative. Use the same API key value as X-API-Key.",
     }
+    published_paths = {}
     for path, methods in schema.get("paths", {}).items():
-        if not path.startswith("/api/v2/omni/"):
+        if not path.startswith("/api/v2/nexus/"):
             continue
+        published_paths[path] = methods
         for method, operation in methods.items():
             if method.lower() not in {"get", "post", "put", "patch"}:
                 continue
             operation.setdefault("security", [{"ApiKeyAuth": []}, {"BearerAuth": []}])
+            if path == "/api/v2/nexus/health":
+                operation["tags"] = ["NEXUS Health"]
+            elif path in {
+                "/api/v2/nexus/actions",
+                "/api/v2/nexus/whoami",
+                "/api/v2/nexus/bootstrap",
+                "/api/v2/nexus/workflows",
+                "/api/v2/nexus/catalog/actions",
+            }:
+                operation["tags"] = ["NEXUS Discovery"]
+            elif path.startswith("/api/v2/nexus/jobs"):
+                operation["tags"] = ["NEXUS Jobs"]
+            elif path.startswith("/api/v2/nexus/tools/"):
+                operation["tags"] = ["NEXUS Tools"]
+            elif path.startswith("/api/v2/nexus/maintenance/"):
+                operation["tags"] = ["NEXUS Maintenance"]
+    schema["paths"] = published_paths
+
+    def _collect_refs(value, out):
+        if isinstance(value, dict):
+            ref = value.get("$ref")
+            if isinstance(ref, str) and ref.startswith("#/components/schemas/"):
+                out.add(ref.rsplit("/", 1)[-1])
+            for child in value.values():
+                _collect_refs(child, out)
+        elif isinstance(value, list):
+            for child in value:
+                _collect_refs(child, out)
+
+    all_schemas = schema.get("components", {}).get("schemas", {})
+    needed = set()
+    _collect_refs(schema["paths"], needed)
+
+    queue = list(needed)
+    while queue:
+        name = queue.pop()
+        payload = all_schemas.get(name)
+        if not payload:
+            continue
+        nested = set()
+        _collect_refs(payload, nested)
+        for child in nested:
+            if child not in needed:
+                needed.add(child)
+                queue.append(child)
+
+    schema["components"]["schemas"] = {
+        name: payload for name, payload in all_schemas.items() if name in needed
+    }
     app.openapi_schema = schema
     return schema
 
