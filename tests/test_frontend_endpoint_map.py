@@ -41,6 +41,7 @@ def test_frontend_endpoint_wiring_has_backend_routes():
         '/api/health',
         '/api/version',
         '/api/app-config',
+        '/api/tenant/defaults',
         '/api/preview-ftth-bng',
         '/api/generate-ftth-bng',
         '/api/generate-ftth-fiber-customer',

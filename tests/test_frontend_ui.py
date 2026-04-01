@@ -50,8 +50,9 @@ def test_ftth_speed_controls_and_backend_payload_hooks_exist():
         'Missing FTTH uplink auto-negotiation payload mapping in NOC-configMaker.html'
     assert "speed: speedSelect.value" in content, 'Missing FTTH OLT speed payload mapping in NOC-configMaker.html'
     assert 'BGP Peer Configuration' in content, 'Missing FTTH BGP peer display section in NOC-configMaker.html'
-    assert '10.2.0.107/32' in content, 'Missing FTTH CR7 peer display in NOC-configMaker.html'
-    assert '10.2.0.108/32' in content, 'Missing FTTH CR8 peer display in NOC-configMaker.html'
+    assert "fetch(`${apiBase}/tenant/defaults`)" in content, 'Missing tenant-defaults bootstrap fetch in NOC-configMaker.html'
+    assert 'getTenantRouteReflectorPeers' in content, 'Missing tenant route-reflector peer helper in NOC-configMaker.html'
+    assert 'getTenantDefaultAsn' in content, 'Missing tenant ASN helper in NOC-configMaker.html'
     assert "const targetUrl = `${apiBase.replace(/\\/+$/, '')}/preview-ftth-bng`;" in content, \
         'Missing resolved API base wiring for FTTH preview in NOC-configMaker.html'
     assert "apiBase + '/save-completed-config'" in content, \
@@ -206,6 +207,7 @@ def test_command_vault_and_maintenance_tabs_use_backend_contracts():
     assert 'id="mikrotikVaultGrid"' in content, 'Missing MikroTik Command Vault backend target grid in NOC-configMaker.html'
     assert "fetch(`${apiBase}/maintenance/windows?status=all&limit=250`)" in content, 'Scheduled Maintenance should load from the backend endpoint'
     assert "const MAINT_KEY = 'nexus_maintenance_windows_cache';" in content, 'Scheduled Maintenance should use the NEXUS cache key'
+    assert "fetch(`${apiBase}/tenant/defaults`)" in content, 'Shared tools should hydrate tenant defaults from backend discovery'
 
 
 def test_frontend_copy_is_tenant_neutral_for_shared_tools():

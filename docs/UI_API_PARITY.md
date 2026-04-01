@@ -8,7 +8,7 @@ This maps current NEXUS UI workflows to `/api/v2` job actions. NEXUS is the cano
 
 | Sidebar Area | Current UI Coverage | Published `/api/v2/nexus` Contract Coverage | Status |
 |-------------|---------------------|--------------------------------------------|--------|
-| Home / Dashboard | Health, activity, app defaults, infrastructure | `health.get`, `activity.list`, `configs.list`, `legacy.proxy` | Partial |
+| Home / Dashboard | Health, activity, app defaults, infrastructure, tenant defaults | `health.get`, `tenant.defaults.get`, `activity.list`, `configs.list`, `legacy.proxy` | Partial |
 | MikroTik Config | Router/generator workflows, enterprise, Tarana | `mt.*`, `enterprise.generate_non_mpls`, `tarana.generate` | Partial |
 | Field Config Studio | IDO-backed device interrogation and generation | `ido.*` typed start for ping/generic info, more subflows remain | Partial |
 | Devices Firmware Updater | Aviat and Cambium workflows | `aviat.*` typed start, `cambium.run` typed start | Partial |
@@ -41,6 +41,7 @@ Compatibility aliases currently exist at `/api/v2/jobs` and `/api/v2/omni/jobs`,
 | Action | Description | Payload |
 |--------|-------------|---------|
 | `health.get` | Health badge | `{}` |
+| `tenant.defaults.get` | Shared tenant defaults for ASN, peers, DNS, policy metadata | `{}` |
 | `app.config.get` | App defaults/config | `{}` |
 | `infrastructure.get` | Infra defaults (DNS, RADIUS, shared keys) | `{}` |
 | `routerboards.list` | Routerboard device list | `{}` |
@@ -64,6 +65,8 @@ Compatibility aliases currently exist at `/api/v2/jobs` and `/api/v2/omni/jobs`,
 | `mt.render` | Render config + portmap | `{"config_type": "tower", "payload": {"loopback_subnet": "10.x.x.x/32", "site_name": "...", ...}}` |
 | `mt.config` | Config text only | `{"config_type": "tower", "payload": {...}}` |
 | `mt.portmap` | Port map only | `{"config_type": "tower", "payload": {...}}` |
+
+MikroTik, Nokia, and FTTH tabs should initialize ASN, route-reflector peers, and DNS defaults from `tenant.defaults.get` rather than provider-specific hardcoded values.
 
 ## Nokia 7250
 
@@ -114,7 +117,7 @@ Compatibility aliases currently exist at `/api/v2/jobs` and `/api/v2/omni/jobs`,
 | `ftth.generate_bng` | Generate full FTTH BNG config | `{"deployment_type": "outstate", "router_identity": "RTR-MT2216-AR1.SITE", "loopback_ip": "10.x.x.x/32", "cpe_network": "10.x.x.0/22", "cgnat_private": "100.64.x.0/22", "cgnat_public": "132.147.x.x/32", "unauth_network": "10.x.x.0/22", "olt_network": "10.x.x.0/29", "olt_name_primary": "OLT-GW", "routeros_version": "7.19.4"}` |
 | `ftth.generate_fiber_customer` | Generate fiber customer handoff config | `{"routerboard": "RB5009", "routeros": "7.19.4", "provider": "ACME Fiber", "port": "sfp-sfpplus1", "address": "10.x.x.2/30", "network": "10.x.x.0/30", "loopback_ip": "10.x.x.x/32", "vlan_mode": "tagged", "vlan_id": "210", "apply_compliance": false}` |
 | `ftth.generate_fiber_site` | Generate 1072/1036 paired fiber site configs | `{"tower_name": "ACME-HUB-1", "loopback_1072": "10.x.x.107/32", "loopback_1036": "10.x.x.103/32", "bh1_subnet": "10.x.x.0/30", "link_1072_1036_a": "10.x.x.4/30", "link_1072_1036_b": "10.x.x.8/30", "fiber_port_ip": "10.x.x.1/30", "backhauls": [{"name": "BH-EAST", "port": "sfp-sfpplus1", "subnet": "10.x.x.12/30"}], "apply_compliance": false}` |
-| `ftth.generate_isd_fiber` | Generate ISD fiber config + port map | `{"router_type": "CCR2004-1G-12S+2XS", "tower_name": "ACME-ISD-1", "loopback_subnet": "10.x.x.108/32", "private_ip": "10.x.x.1/24", "public_ip": "132.147.x.x/29", "fiber_port_ip": "10.x.x.1/30", "backhauls": [{"name": "CR7", "ip": "10.2.0.107/32"}], "apply_compliance": false}` |
+| `ftth.generate_isd_fiber` | Generate ISD fiber config + port map | `{"router_type": "CCR2004-1G-12S+2XS", "tower_name": "ACME-ISD-1", "loopback_subnet": "10.x.x.108/32", "private_ip": "10.x.x.1/24", "public_ip": "132.147.x.x/29", "fiber_port_ip": "10.x.x.1/30", "backhauls": [{"name": "RR1", "ip": "10.10.10.10/32"}], "apply_compliance": false}` |
 | `ftth.mf2_package` | Generate FTTH MF2 OLT package | `{"olt_name": "OLT-1", "olt_ip": "10.x.x.2", "gateway_ip": "10.x.x.1", "vlan_id": 100}` |
 | `ftth.fiber_customer` | Generate FTTH fiber customer handoff config | `{"routerboard": "CCR2004", "routeros": "7.19.4", "provider": "tenant-a", "address": "132.147.10.2/30", "network": "132.147.10.0/30", "port": "sfp-sfpplus1", "vlan_mode": "tagged", "vlan_id": "2100"}` |
 | `ftth.fiber_site` | Generate paired FTTH fiber site configs | `{"tower_name": "WEST-HUB", "loopback_1072": "10.249.50.1/32", "loopback_1036": "10.249.50.2/32", "bh1_subnet": "10.249.60.0/30", "link_1072_1036_a": "10.249.61.0/31", "link_1072_1036_b": "10.249.61.2/31", "fiber_port_ip": "10.249.62.1/30"}` |

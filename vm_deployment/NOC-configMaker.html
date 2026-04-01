@@ -4396,23 +4396,23 @@
                             </div>
                             <div>
                                 <label for="mtAsn">ASN</label>
-                                <input type="text" id="mtAsn" value="26077" placeholder="26077">
+                                <input type="text" id="mtAsn" placeholder="Tenant ASN">
                             </div>
                             <div>
                                 <label for="mtBgpPeer1Name">BGP Peer 1 Name</label>
-                                <input type="text" id="mtBgpPeer1Name" value="CR7" placeholder="CR7">
+                                <input type="text" id="mtBgpPeer1Name" placeholder="RR1">
                             </div>
                             <div>
                                 <label for="mtBgpPeer1Address">BGP Peer 1 Address</label>
-                                <input type="text" id="mtBgpPeer1Address" value="10.2.0.107/32" placeholder="10.2.0.107/32">
+                                <input type="text" id="mtBgpPeer1Address" placeholder="10.10.10.10/32">
                             </div>
                             <div>
                                 <label for="mtBgpPeer2Name">BGP Peer 2 Name</label>
-                                <input type="text" id="mtBgpPeer2Name" value="CR8" placeholder="CR8">
+                                <input type="text" id="mtBgpPeer2Name" placeholder="RR2">
                             </div>
                             <div>
                                 <label for="mtBgpPeer2Address">BGP Peer 2 Address</label>
-                                <input type="text" id="mtBgpPeer2Address" value="10.2.0.108/32" placeholder="10.2.0.108/32">
+                                <input type="text" id="mtBgpPeer2Address" placeholder="10.10.10.11/32">
                             </div>
                             <div>
                                 <label for="mtLoopbackSubnet">Loopback Subnet</label>
@@ -4995,11 +4995,11 @@
                             <input type="text" id="ospfAreaId" value="0.0.0.0" readonly>
                             <div id="bgpSection">
                                 <label for="bgpPeers">BGP Peers JSON (e.g.,
-                                    [{"name":"CR7","remote":"10.2.0.107/32"}]):</label>
+                                    [{"name":"RR1","remote":"10.10.10.10/32"}]):</label>
                                 <textarea id="bgpPeers"
-                                    rows="3">[{"name":"CR7","remote":"10.2.0.107/32"},{"name":"CR8","remote":"10.2.0.108/32"}]</textarea>
-                                <label for="bgpAS">BGP Local AS (e.g., 26077):</label>
-                                <input type="text" id="bgpAS" value="26077">
+                                    rows="3"></textarea>
+                                <label for="bgpAS">BGP Local AS (e.g., 64512):</label>
+                                <input type="text" id="bgpAS" placeholder="Tenant ASN">
                             </div>
                         </div>
 
@@ -7171,11 +7171,11 @@
                                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px;">
                                     <input type="text" id="nokia7210_ospfArea" value="0.0.0.0" placeholder="OSPF Area"
                                         style="padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
-                                    <input type="text" id="nokia7210_asn" value="26077" placeholder="ASN"
+                                    <input type="text" id="nokia7210_asn" placeholder="ASN"
                                         style="padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
-                                    <input type="text" id="nokia7210_bgpPeer1" value="10.2.0.107" placeholder="BGP Peer 1"
+                                    <input type="text" id="nokia7210_bgpPeer1" placeholder="BGP Peer 1"
                                         style="padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
-                                    <input type="text" id="nokia7210_bgpPeer2" value="10.2.0.108" placeholder="BGP Peer 2"
+                                    <input type="text" id="nokia7210_bgpPeer2" placeholder="BGP Peer 2"
                                         style="padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
                                     <input type="text" id="nokia7210_vplsNum" value="2245" placeholder="VPLS Number"
                                         style="padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color);">
@@ -7265,8 +7265,8 @@
                                     style="width:100%; font-size:13px; padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--input-bg); color:var(--text-color); font-family:'JetBrains Mono',monospace;"
                                     placeholder="One prefix per line">10.2.0.14/32
 10.2.0.21/32
-10.2.0.107/32
-10.2.0.108/32
+10.10.10.10/32
+10.10.10.11/32
 10.17.0.11/32
 10.30.0.9/32
 10.240.0.3/32
@@ -7281,7 +7281,7 @@
                                 <h2 style="color: var(--text-color); margin-top: 0; font-size: 16px;">BGP Neighbors</h2>
                                 <div style="background: #2a4a2a; padding: 10px; border-radius: 6px; margin-bottom: 12px; border-left: 3px solid #4CAF50;">
                                     <p style="margin: 0; color: #90EE90; font-size: 13px;">
-                                        <strong>Default profile:</strong> Uses group "DALLAS-RR" with AS 26077.
+                                        <strong>Default profile:</strong> Uses tenant route-reflector peers and tenant ASN.
                                     </p>
                                 </div>
                                 <table class="nokia7250-table" id="nokia7250_bgp_tbl">
@@ -7476,7 +7476,7 @@
                             </div>
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label for="nokia_mig_as" style="font-size: 13px;">Autonomous System:</label>
-                                <input type="number" id="nokia_mig_as" placeholder="26077" value=""
+                                <input type="number" id="nokia_mig_as" placeholder="Tenant ASN" value=""
                                     style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-color); font-size: 13px;">
                             </div>
                             <div class="form-group" style="margin-bottom: 0;">
@@ -7693,11 +7693,11 @@
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                         <div style="padding: 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg);">
                             <strong>CR7</strong><br>
-                            <span style="color: var(--text-color-secondary);">10.2.0.107/32</span>
+                            <span style="color: var(--text-color-secondary);">Tenant peer 1</span>
                         </div>
                         <div style="padding: 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg);">
                             <strong>CR8</strong><br>
-                            <span style="color: var(--text-color-secondary);">10.2.0.108/32</span>
+                            <span style="color: var(--text-color-secondary);">Tenant peer 2</span>
                         </div>
                     </div>
                 </div>
@@ -7902,11 +7902,11 @@
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                         <div style="padding: 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg);">
                             <strong>CR7</strong><br>
-                            <span style="color: var(--text-color-secondary);">10.2.0.107/32</span>
+                            <span style="color: var(--text-color-secondary);">Tenant peer 1</span>
                         </div>
                         <div style="padding: 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg);">
                             <strong>CR8</strong><br>
-                            <span style="color: var(--text-color-secondary);">10.2.0.108/32</span>
+                            <span style="color: var(--text-color-secondary);">Tenant peer 2</span>
                         </div>
                     </div>
                 </div>
@@ -8211,7 +8211,7 @@
                             <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                                 <div><label for="ftthSiteTowerName">Tower Name</label><input type="text" id="ftthSiteTowerName" placeholder="TX-MARLIN-W-FC-2"></div>
                                 <div><label for="ftthSiteTowerGps">Tower GPS</label><input type="text" id="ftthSiteTowerGps" placeholder="30.1234,-96.1234"></div>
-                                <div><label for="ftthSiteAsn">ASN</label><input type="text" id="ftthSiteAsn" value="26077"></div>
+                                <div><label for="ftthSiteAsn">ASN</label><input type="text" id="ftthSiteAsn" placeholder="Tenant ASN"></div>
                                 <div><label for="ftthSiteRouteros1072">1072 RouterOS</label><input type="text" id="ftthSiteRouteros1072" value="7.19.4"></div>
                                 <div><label for="ftthSiteLoopback1072">1072 Loopback /32</label><input type="text" id="ftthSiteLoopback1072" placeholder="10.26.0.7/32"></div>
                                 <div><label for="ftthSiteLoopback1036">1036 Loopback /32</label><input type="text" id="ftthSiteLoopback1036" placeholder="10.26.0.8/32"></div>
@@ -8227,10 +8227,10 @@
                                 <div><label for="ftthSiteFiberAddress">Fiber Port IP / CIDR</label><input type="text" id="ftthSiteFiberAddress" placeholder="10.42.10.2/30"></div>
                                 <div><label for="ftthSiteFiberVlanMode">Fiber VLAN Mode</label><select id="ftthSiteFiberVlanMode"><option value="none" selected>No VLAN</option><option value="tagged">Tagged VLAN</option></select></div>
                                 <div><label for="ftthSiteFiberVlanId">Fiber VLAN ID</label><input type="number" id="ftthSiteFiberVlanId" placeholder="300" min="1" max="4094"></div>
-                                <div><label for="ftthSitePeer1Name">BGP Peer 1 Name</label><input type="text" id="ftthSitePeer1Name" value="CR7"></div>
-                                <div><label for="ftthSitePeer1Ip">BGP Peer 1 IP</label><input type="text" id="ftthSitePeer1Ip" value="10.2.0.107"></div>
-                                <div><label for="ftthSitePeer2Name">BGP Peer 2 Name</label><input type="text" id="ftthSitePeer2Name" value="CR8"></div>
-                                <div><label for="ftthSitePeer2Ip">BGP Peer 2 IP</label><input type="text" id="ftthSitePeer2Ip" value="10.2.0.108"></div>
+                                <div><label for="ftthSitePeer1Name">BGP Peer 1 Name</label><input type="text" id="ftthSitePeer1Name" placeholder="RR1"></div>
+                                <div><label for="ftthSitePeer1Ip">BGP Peer 1 IP</label><input type="text" id="ftthSitePeer1Ip" placeholder="10.10.10.10"></div>
+                                <div><label for="ftthSitePeer2Name">BGP Peer 2 Name</label><input type="text" id="ftthSitePeer2Name" placeholder="RR2"></div>
+                                <div><label for="ftthSitePeer2Ip">BGP Peer 2 IP</label><input type="text" id="ftthSitePeer2Ip" placeholder="10.10.10.11"></div>
                             </div>
                             <label style="display:flex; align-items:center; gap:8px; margin-top: 14px; cursor:pointer;">
                                 <input type="checkbox" id="ftthSiteApplyCompliance" checked>
@@ -9941,8 +9941,8 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
         // Tenant configuration constants (inlined from nextlink_constants.js)
         const NEXTLINK_INFRASTRUCTURE = {
             dnsServers: {
-                primary: '142.147.112.3',
-                secondary: '142.147.112.19',
+                primary: '1.1.1.1',
+                secondary: '8.8.8.8',
                 getList: function () { return `${this.primary},${this.secondary}`; }
             },
             syslogServer: '142.147.116.215',
@@ -9954,7 +9954,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             backup: { enabled: false, ftpHost: '', ftpUser: '', ftpPassword: '', ftpPath: 'backups' },
             emailAlerts: { enabled: false, recipient: '', from: '' },
             mpls: { vplsPeer: '10.254.247.3', vplsStaticId: 2245 },
-            snmp: { community: 'CHANGE_ME', trapCommunity: 'CHANGE_ME', contact: 'netops@team.nxlink.com' },
+            snmp: { community: 'CHANGE_ME', trapCommunity: 'CHANGE_ME', contact: 'noc@example.com' },
             sharedKeys: { ospfBgpMd5: 'm8M5JwvdYM', default: 'CHANGE_ME' }
         };
 
@@ -9962,6 +9962,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
         function getDnsServers() { return NEXTLINK_INFRASTRUCTURE.dnsServers; }
         function getSyslogServer() { return NEXTLINK_INFRASTRUCTURE.syslogServer; }
         function getNtpServers() { return NEXTLINK_INFRASTRUCTURE.ntpServers; }
+        window.__tenantDefaults = null;
 
         console.log('Tenant default constants loaded (inlined)');
     </script>
@@ -10322,8 +10323,90 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             }
         }
 
+        function getTenantDefaultsValue(path, fallback = '') {
+            try {
+                const source = window.__tenantDefaults;
+                if (!source || typeof source !== 'object') return fallback;
+                const keys = path.split('.');
+                let value = source;
+                for (const key of keys) {
+                    if (value && typeof value === 'object' && key in value) {
+                        value = value[key];
+                    } else {
+                        return fallback;
+                    }
+                }
+                return value ?? fallback;
+            } catch (e) {
+                return fallback;
+            }
+        }
+
+        function getTenantRouteReflectorPeers() {
+            const peers = getTenantDefaultsValue('routing.route_reflector_peers', []);
+            return Array.isArray(peers) ? peers.filter(peer => peer && (peer.remote || peer.ip)) : [];
+        }
+
+        function getTenantDefaultAsn() {
+            return String(getTenantDefaultsValue('routing.asn', '') || '').trim();
+        }
+
+        function getTenantDnsList() {
+            const all = getTenantDefaultsValue('services.dns_servers', []);
+            if (Array.isArray(all) && all.length) {
+                return all.filter(Boolean).join(',');
+            }
+            return '';
+        }
+
+        function applyTenantDefaultsToFormFields() {
+            const asn = getTenantDefaultAsn();
+            const peers = getTenantRouteReflectorPeers();
+            const dnsList = getTenantDnsList();
+            const setIfEmpty = (id, value) => {
+                const el = document.getElementById(id);
+                if (!el || !value) return;
+                const current = String(el.value || '').trim();
+                if (!current) el.value = value;
+            };
+
+            setIfEmpty('mtAsn', asn);
+            setIfEmpty('bgpAS', asn);
+            setIfEmpty('nokia7210_asn', asn);
+            setIfEmpty('ftthSiteAsn', asn);
+            setIfEmpty('nokia_mig_as', asn);
+            setIfEmpty('dnsServers', dnsList);
+
+            if (peers[0]) {
+                setIfEmpty('mtBgpPeer1Name', peers[0].name || 'RR1');
+                setIfEmpty('mtBgpPeer1Address', peers[0].remote || peers[0].ip || '');
+                setIfEmpty('nokia7210_bgpPeer1', peers[0].remote || peers[0].ip || '');
+                setIfEmpty('ftthSitePeer1Name', peers[0].name || 'RR1');
+                setIfEmpty('ftthSitePeer1Ip', peers[0].remote || peers[0].ip || '');
+            }
+            if (peers[1]) {
+                setIfEmpty('mtBgpPeer2Name', peers[1].name || 'RR2');
+                setIfEmpty('mtBgpPeer2Address', peers[1].remote || peers[1].ip || '');
+                setIfEmpty('nokia7210_bgpPeer2', peers[1].remote || peers[1].ip || '');
+                setIfEmpty('ftthSitePeer2Name', peers[1].name || 'RR2');
+                setIfEmpty('ftthSitePeer2Ip', peers[1].remote || peers[1].ip || '');
+            }
+
+            const bgpPeersEl = document.getElementById('bgpPeers');
+            if (bgpPeersEl && !String(bgpPeersEl.value || '').trim() && peers.length) {
+                bgpPeersEl.value = JSON.stringify(
+                    peers.slice(0, 2).map((peer, idx) => ({
+                        name: peer.name || `RR${idx + 1}`,
+                        remote: peer.remote || peer.ip || ''
+                    }))
+                );
+            }
+        }
+
         function getDNSList() {
             // Get DNS servers from infrastructure configuration (no fallbacks)
+            const tenantList = getTenantDnsList();
+            if (tenantList) return tenantList;
             const primary = getInfrastructureValue('dnsServers.primary', '');
             const secondary = getInfrastructureValue('dnsServers.secondary', '');
             if (!primary || !secondary) {
@@ -12830,7 +12913,8 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 };
 
                 setIfEmpty('sharedKey', getInfrastructureValue('sharedKeys.ospfBgpMd5', 'm8M5JwvdYM') || 'm8M5JwvdYM');
-                setIfEmpty('dnsServers', (typeof getDNSList === 'function' ? getDNSList() : '142.147.112.3,142.147.112.19'));
+                setIfEmpty('dnsServers', (typeof getDNSList === 'function' ? getDNSList() : '1.1.1.1,8.8.8.8'));
+                applyTenantDefaultsToFormFields();
 
                 const snmpEl = document.getElementById('snmpCommunity');
                 if (snmpEl) {
@@ -12844,6 +12928,16 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 // Best-effort: fetch authoritative infra defaults from backend (requires auth).
                 // This improves consistency (e.g., RADIUS secret) without forcing humans to type secrets into the UI.
                 (async function loadInfraFromBackend() {
+                    try {
+                        const apiBase = (typeof AI_API_BASE !== 'undefined' ? AI_API_BASE : window.AI_API_BASE) || '/api';
+                        const tenantResp = await fetch(`${apiBase}/tenant/defaults`);
+                        if (tenantResp.ok) {
+                            window.__tenantDefaults = await tenantResp.json();
+                            applyTenantDefaultsToFormFields();
+                        }
+                    } catch (e) {
+                        // Non-fatal: UI will fall back to local defaults.
+                    }
                     try {
                         const token = localStorage.getItem('auth_token');
                         if (!token) return;
@@ -12876,6 +12970,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                                 NEXTLINK_INFRASTRUCTURE.radiusServers.login = loginServers.map(a => ({ address: a, secret: radiusSecret, comment: 'RADIUS' }));
                             }
                         }
+                        applyTenantDefaultsToFormFields();
                     } catch (e) {
                         // Non-fatal: UI will fall back to local defaults.
                     }
@@ -16072,10 +16167,11 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 const asn = document.getElementById('mtAsn')?.value?.trim();
                 const model = normalizeRouterModelToLegacy(document.getElementById('mtRouterModel')?.value || '');
                 const rosVersion = document.getElementById('mtRouterOSVersion')?.value?.trim();
-                const peer1Name = (document.getElementById('mtBgpPeer1Name')?.value || 'CR7').trim();
-                const peer1Addr = ensureCIDR(document.getElementById('mtBgpPeer1Address')?.value || '10.2.0.107/32', 32);
-                const peer2Name = (document.getElementById('mtBgpPeer2Name')?.value || 'CR8').trim();
-                const peer2Addr = ensureCIDR(document.getElementById('mtBgpPeer2Address')?.value || '10.2.0.108/32', 32);
+                const tenantPeers = getTenantRouteReflectorPeers();
+                const peer1Name = (document.getElementById('mtBgpPeer1Name')?.value || tenantPeers[0]?.name || 'RR1').trim();
+                const peer1Addr = ensureCIDR(document.getElementById('mtBgpPeer1Address')?.value || tenantPeers[0]?.remote || tenantPeers[0]?.ip || '', 32);
+                const peer2Name = (document.getElementById('mtBgpPeer2Name')?.value || tenantPeers[1]?.name || 'RR2').trim();
+                const peer2Addr = ensureCIDR(document.getElementById('mtBgpPeer2Address')?.value || tenantPeers[1]?.remote || tenantPeers[1]?.ip || '', 32);
 
                 const bgpPeers = JSON.stringify([
                     { name: peer1Name, remote: peer1Addr },
@@ -17291,11 +17387,11 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     longitude,
                     state_code: stateCode,
                     deployment_mode: deploymentMode,
-                    asn: asn || '26077',
-                    peer_1_name: peers[0]?.name || 'PEER1',
-                    peer_1_address: peers[0]?.remote || '10.2.0.107',
-                    peer_2_name: peers[1]?.name || 'PEER2',
-                    peer_2_address: peers[1]?.remote || '10.2.0.108',
+                    asn: asn || getTenantDefaultAsn() || '65000',
+                    peer_1_name: peers[0]?.name || getTenantRouteReflectorPeers()[0]?.name || 'RR1',
+                    peer_1_address: peers[0]?.remote || getTenantRouteReflectorPeers()[0]?.remote || getTenantRouteReflectorPeers()[0]?.ip || '',
+                    peer_2_name: peers[1]?.name || getTenantRouteReflectorPeers()[1]?.name || 'RR2',
+                    peer_2_address: peers[1]?.remote || getTenantRouteReflectorPeers()[1]?.remote || getTenantRouteReflectorPeers()[1]?.ip || '',
                     ros_ver: rosVer,
                     is_tarana: isTarana,
                     is_326: is326,
@@ -18705,24 +18801,25 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     config += `# BGP CONNECTIONS\n`;
                     config += `/routing bgp connection\n`;
 
-                    // Add BGP connections for core routers
-                    const bgpConnections = [
-                        { name: 'CR7', remote: '10.2.0.107' },
-                        { name: 'CR8', remote: '10.2.0.108' }
-                    ];
+                    // Add BGP connections using tenant route-reflector peers when available
+                    const tenantAsn = (document.getElementById('mtAsn')?.value || document.getElementById('bgpAS')?.value || getTenantDefaultAsn() || '65000').trim();
+                    const bgpConnections = getTenantRouteReflectorPeers().slice(0, 2).map((peer, idx) => ({
+                        name: peer.name || `RR${idx + 1}`,
+                        remote: peer.remote || peer.ip || ''
+                    }));
 
                     bgpConnections.forEach(conn => {
-                        config += `add cisco-vpls-nlri-len-fmt=auto-bits connect=yes listen=yes local.address=${routerId} .role=ibgp multihop=yes name=${conn.name} remote.address=${conn.remote} .as=26077 .port=179 tcp-md5-key=${sharedKey} templates=default\n`;
+                        config += `add cisco-vpls-nlri-len-fmt=auto-bits connect=yes listen=yes local.address=${routerId} .role=ibgp multihop=yes name=${conn.name} remote.address=${conn.remote} .as=${tenantAsn} .port=179 tcp-md5-key=${sharedKey} templates=default\n`;
                     });
                     config += `\n`;
 
                     // Add BGP Routing Filter Rules
                     config += `# BGP ROUTING FILTER RULES\n`;
                     config += `/routing filter rule\n`;
-                    config += `add chain=bgr-a-bgp-in-filter disabled=no rule="if (dst in 0.0.0.0/0 && dst-len == 32 && protocol bgp && bgp-communities includes 26077:86) { set blackhole yes; accept; }"\n`;
+                    config += `add chain=bgr-a-bgp-in-filter disabled=no rule="if (dst in 0.0.0.0/0 && dst-len == 32 && protocol bgp && bgp-communities includes ${tenantAsn}:86) { set blackhole yes; accept; }"\n`;
                     config += `add chain=bgr-a-bgp-in-filter disabled=no rule="if (dst in 0.0.0.0/0 && dst-len == 0 && protocol bgp) { set bgp-local-pref 500; accept; }"\n`;
                     config += `add chain=bgr-a-bgp-in-filter disabled=no rule="if (dst in 0.0.0.0/0 && dst-len >= 0 && protocol bgp) { accept; }"\n`;
-                    config += `add chain=bgr-b-bgp-in-filter disabled=no rule="if (dst in 0.0.0.0/0 && dst-len == 32 && protocol bgp && bgp-communities includes 26077:86) { set blackhole yes; accept; }"\n`;
+                    config += `add chain=bgr-b-bgp-in-filter disabled=no rule="if (dst in 0.0.0.0/0 && dst-len == 32 && protocol bgp && bgp-communities includes ${tenantAsn}:86) { set blackhole yes; accept; }"\n`;
                     config += `add chain=bgr-b-bgp-in-filter disabled=no rule="if (dst in 0.0.0.0/0 && dst-len == 0 && protocol bgp) { set bgp-local-pref 500; accept; }"\n`;
                     config += `add chain=bgr-b-bgp-in-filter disabled=no rule="if (dst in 0.0.0.0/0 && dst-len >= 0 && protocol bgp) { accept; }"\n\n`;
                 }
@@ -25477,8 +25574,8 @@ Ready for translation!`);
                 const tbody = document.querySelector('#nokia7250_bgp_tbl tbody');
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td><input placeholder="DALLAS-RR" value="DALLAS-RR"></td>
-                    <td><input placeholder="10.2.0.107"></td>
+                    <td><input placeholder="RR-GROUP"></td>
+                    <td><input placeholder="10.10.10.10"></td>
                     <td><button type="button" class="nokia7250-del-btn" onclick="this.closest('tr').remove()">×</button></td>`;
                 tbody.appendChild(tr);
             };
@@ -25657,7 +25754,7 @@ Ready for translation!`);
                 push('');
 
                 section('Router (Network Side) Configuration');
-                push('/configure router autonomous-system 26077');
+                push(`/configure router autonomous-system ${getTenantDefaultAsn() || '65000'}`);
                 push(`/configure router router-id ${systemIp}`);
                 push(`/configure router interface "system" address ${loopback}`);
                 push('/configure router interface "system" no shutdown');
@@ -25732,15 +25829,17 @@ Ready for translation!`);
                 section('BGP Configuration');
                 push(`/configure router bgp router-id ${systemIp}`);
                 const groups = {};
+                const defaultMainBgpGroup = getTenantRouteReflectorPeers()[0]?.name || 'RR-GROUP';
+                const tenantAsn = getTenantDefaultAsn() || '65000';
                 bgpNeighbors.forEach((neighbor) => {
-                    const key = neighbor.group || 'DALLAS-RR';
+                    const key = neighbor.group || defaultMainBgpGroup;
                     if (!groups[key]) groups[key] = [];
                     groups[key].push(neighbor.ip);
                 });
                 Object.entries(groups).forEach(([group, ips]) => {
                     push(`/configure router bgp group "${group}" description "${group}"`);
                     push(`/configure router bgp group "${group}" authentication-key "${bgpKey}"`);
-                    push(`/configure router bgp group "${group}" peer-as 26077`);
+                    push(`/configure router bgp group "${group}" peer-as ${tenantAsn}`);
                     push(`/configure router bgp group "${group}" local-address ${systemIp}`);
                     ips.forEach((ip) => push(`/configure router bgp group "${group}" neighbor ${ip}`));
                     push(`/configure router bgp group "${group}" no shutdown`);
@@ -25833,10 +25932,10 @@ Ready for translation!`);
                     // Add two default BGP neighbors
                     nokia7250MainAddBgp();
                     const rows = document.querySelectorAll('#nokia7250_bgp_tbl tbody tr');
-                    if (rows[0]) rows[0].cells[1].querySelector('input').value = '10.2.0.107';
+                    if (rows[0]) rows[0].cells[1].querySelector('input').value = getTenantRouteReflectorPeers()[0]?.remote || getTenantRouteReflectorPeers()[0]?.ip || '';
                     nokia7250MainAddBgp();
                     const rows2 = document.querySelectorAll('#nokia7250_bgp_tbl tbody tr');
-                    if (rows2[1]) rows2[1].cells[1].querySelector('input').value = '10.2.0.108';
+                    if (rows2[1]) rows2[1].cells[1].querySelector('input').value = getTenantRouteReflectorPeers()[1]?.remote || getTenantRouteReflectorPeers()[1]?.ip || '';
                 }
                 const siteSuffixEl = document.getElementById('nokia7250_siteSuffix');
                 const systemNameEl = document.getElementById('nokia7250_systemName');
@@ -25934,11 +26033,12 @@ Ready for translation!`);
                     lines.push(...buildNokiaSectionHeader(isBng2 ? 'BNG 2.0 ROUTING' : 'ROUTING'));
                     lines.push(`/configure router autonomous-system ${params.asn}`);
                     lines.push(`/configure router ospf 1 area ${params.ospfArea} interface "system" no shutdown`);
-                    lines.push(`/configure router bgp group "DALLAS-RR" peer-as ${params.asn}`);
-                    lines.push(`/configure router bgp group "DALLAS-RR" local-address ${params.systemIp}`);
-                    lines.push(`/configure router bgp group "DALLAS-RR" authentication-key "${params.bgpKey}"`);
+                    const defaultBgpGroup = getTenantRouteReflectorPeers()[0]?.name || 'RR-GROUP';
+                    lines.push(`/configure router bgp group "${defaultBgpGroup}" peer-as ${params.asn}`);
+                    lines.push(`/configure router bgp group "${defaultBgpGroup}" local-address ${params.systemIp}`);
+                    lines.push(`/configure router bgp group "${defaultBgpGroup}" authentication-key "${params.bgpKey}"`);
                     params.bgpPeers.filter(Boolean).forEach(peer => {
-                        lines.push(`/configure router bgp group "DALLAS-RR" neighbor ${peer}`);
+                        lines.push(`/configure router bgp group "${defaultBgpGroup}" neighbor ${peer}`);
                     });
                     if (params.vplsNum) {
                         lines.push(`/configure service sdp 101 mpls create`);
@@ -26063,11 +26163,11 @@ Ready for translation!`);
                         timezone: tz,
                         uplinks,
                         bgp_peers: [
-                            v('nokia7210_bgpPeer1') || '10.2.0.107',
-                            v('nokia7210_bgpPeer2') || '10.2.0.108'
+                            v('nokia7210_bgpPeer1') || getTenantRouteReflectorPeers()[0]?.remote || getTenantRouteReflectorPeers()[0]?.ip || '',
+                            v('nokia7210_bgpPeer2') || getTenantRouteReflectorPeers()[1]?.remote || getTenantRouteReflectorPeers()[1]?.ip || ''
                         ],
                         ospf_area: v('nokia7210_ospfArea') || '0.0.0.0',
-                        asn: v('nokia7210_asn') || '26077',
+                        asn: v('nokia7210_asn') || getTenantDefaultAsn() || '65000',
                         vpls_num: v('nokia7210_vplsNum') || '2245',
                         vpls_target1: v('nokia7210_vplsTarget1') || '10.249.0.200',
                         vpls_target2: v('nokia7210_vplsTarget2'),
@@ -26121,10 +26221,10 @@ Ready for translation!`);
                                 bgpKey,
                                 uplinks,
                                 ospfArea: v('nokia7210_ospfArea') || '0.0.0.0',
-                                asn: v('nokia7210_asn') || '26077',
+                                asn: v('nokia7210_asn') || getTenantDefaultAsn() || '65000',
                                 bgpPeers: [
-                                    v('nokia7210_bgpPeer1') || '10.2.0.107',
-                                    v('nokia7210_bgpPeer2') || '10.2.0.108'
+                                    v('nokia7210_bgpPeer1') || getTenantRouteReflectorPeers()[0]?.remote || getTenantRouteReflectorPeers()[0]?.ip || '',
+                                    v('nokia7210_bgpPeer2') || getTenantRouteReflectorPeers()[1]?.remote || getTenantRouteReflectorPeers()[1]?.ip || ''
                                 ],
                                 vplsNum: v('nokia7210_vplsNum') || '2245',
                                 vplsTarget1: v('nokia7210_vplsTarget1') || '10.249.0.200',
@@ -26402,7 +26502,7 @@ Ready for translation!`);
                     L.push('            no shutdown');
                     L.push('        exit');
                 });
-                L.push('        autonomous-system 26077');
+                L.push(`        autonomous-system ${getTenantDefaultAsn() || '65000'}`);
                 L.push(`        router-id ${systemIp}`);
 
                 // ---- OSPF ----
@@ -26570,7 +26670,7 @@ Ready for translation!`);
                     L.push(`            group "${group}"`);
                     L.push(`                description "${group}"`);
                     L.push(`                authentication-key "${bgpKey}"`);
-                    L.push('                peer-as 26077');
+                    L.push(`                peer-as ${getTenantDefaultAsn() || '65000'}`);
                     L.push(`                local-address ${systemIp}`);
                     ips.forEach(ip => {
                         L.push(`                neighbor ${ip}`);
@@ -28595,7 +28695,7 @@ Ready for translation!`);
             const payload = {
                 tower_name: document.getElementById('ftthSiteTowerName')?.value?.trim() || '',
                 tower_gps: document.getElementById('ftthSiteTowerGps')?.value?.trim() || '',
-                asn: document.getElementById('ftthSiteAsn')?.value?.trim() || '26077',
+                asn: document.getElementById('ftthSiteAsn')?.value?.trim() || getTenantDefaultAsn() || '65000',
                 routeros_1072: document.getElementById('ftthSiteRouteros1072')?.value?.trim() || '7.19.4',
                 loopback_1072: document.getElementById('ftthSiteLoopback1072')?.value?.trim() || '',
                 loopback_1036: document.getElementById('ftthSiteLoopback1036')?.value?.trim() || '',
@@ -28611,10 +28711,10 @@ Ready for translation!`);
                 fiber_port_ip: document.getElementById('ftthSiteFiberAddress')?.value?.trim() || '',
                 fiber_vlan_mode: document.getElementById('ftthSiteFiberVlanMode')?.value || 'none',
                 fiber_vlan_id: document.getElementById('ftthSiteFiberVlanId')?.value?.trim() || '',
-                peer1_name: document.getElementById('ftthSitePeer1Name')?.value?.trim() || 'CR7',
-                peer1_ip: document.getElementById('ftthSitePeer1Ip')?.value?.trim() || '10.2.0.107',
-                peer2_name: document.getElementById('ftthSitePeer2Name')?.value?.trim() || 'CR8',
-                peer2_ip: document.getElementById('ftthSitePeer2Ip')?.value?.trim() || '10.2.0.108',
+                peer1_name: document.getElementById('ftthSitePeer1Name')?.value?.trim() || getTenantRouteReflectorPeers()[0]?.name || 'RR1',
+                peer1_ip: document.getElementById('ftthSitePeer1Ip')?.value?.trim() || getTenantRouteReflectorPeers()[0]?.remote || getTenantRouteReflectorPeers()[0]?.ip || '',
+                peer2_name: document.getElementById('ftthSitePeer2Name')?.value?.trim() || getTenantRouteReflectorPeers()[1]?.name || 'RR2',
+                peer2_ip: document.getElementById('ftthSitePeer2Ip')?.value?.trim() || getTenantRouteReflectorPeers()[1]?.remote || getTenantRouteReflectorPeers()[1]?.ip || '',
                 apply_compliance: !!document.getElementById('ftthSiteApplyCompliance')?.checked,
                 backhauls: collectFtthFiberBackhauls('ftthSiteBackhauls')
             };
