@@ -93,6 +93,30 @@ class MTBNG2Config:
         value = str(ip_or_cidr or "").strip()
         return value.split("/")[0] if "/" in value else value
 
+    @staticmethod
+    def _extract_custom_tarana_sectors(params):
+        custom = params.get("tarana_sectors")
+        if isinstance(custom, list):
+            return custom
+
+        field_map = [
+            ("Alpha", ("tarana_alpha_port", "alpha_port", "alphaPort", "tarana_bng2_alphaPort")),
+            ("Beta", ("tarana_beta_port", "beta_port", "betaPort", "tarana_bng2_betaPort")),
+            ("Gamma", ("tarana_gamma_port", "gamma_port", "gammaPort", "tarana_bng2_gammaPort")),
+            ("Delta", ("tarana_delta_port", "delta_port", "deltaPort", "tarana_bng2_deltaPort")),
+        ]
+        sectors = []
+        for name, keys in field_map:
+            port = ""
+            for key in keys:
+                value = str(params.get(key, "") or "").strip()
+                if value:
+                    port = value
+                    break
+            if port:
+                sectors.append({"name": name, "port": port})
+        return sectors or None
+
     def __init__(self, **params):
         try:
             self.router_type = params["router_type"]
@@ -135,16 +159,15 @@ class MTBNG2Config:
                 self.tarana_subnet = IPNetwork(params["tarana_subnet"])
                 self.tarana_sector_count = int(params.get("tarana_sector_count", 3))
                 self.tarana_sector_start = int(params.get("tarana_sector_start", 0))
-                # Accept custom sector port assignments from frontend
-                self._custom_sectors = params.get("tarana_sectors", None)
+                if self.tarana_sector_count < 1 or self.tarana_sector_count > len(TARANA_SECTORS):
+                    raise ValueError(
+                        f"Tarana sector count must be between 1 and {len(TARANA_SECTORS)}."
+                    )
+                # Accept custom sector port assignments from frontend.
+                self._custom_sectors = self._extract_custom_tarana_sectors(params)
                 # Unicorn MGMT subnet (defaults to tarana_subnet if not provided)
                 raw_unicorn = params.get("unicorn_mgmt_subnet") or str(self.tarana_subnet)
                 self.unicorn_mgmt_subnet = IPNetwork(raw_unicorn)
-
-                if self.tarana_sector_count > len(TARANA_SECTORS):
-                    raise ValueError(
-                        f"Tarana sector counts above {len(TARANA_SECTORS)} sectors are not supported."
-                    )
 
             self.is_326 = params.get("is_326", False)
             if self.is_326:
@@ -191,6 +214,7 @@ class MTBNG2Config:
                     raise ValueError(f"Invalid backhaul params: {backhaul}")
             self._validate_port_policy()
             self._validate_switch_policy()
+            self._validate_tarana_policy()
 
         except KeyError as err:
             raise ValueError(f"Missing parameter: {err}")
@@ -237,6 +261,36 @@ class MTBNG2Config:
                 raise ValueError(f"Switch uplink port '{port}' collides with a backhaul port.")
             if port in seen:
                 raise ValueError(f"Duplicate switch uplink port '{port}' is not allowed.")
+            seen.add(port)
+
+    def _validate_tarana_policy(self):
+        if not self.is_tarana:
+            return
+        policy = BNG2_PORT_POLICY.get(self.router_type)
+        if not policy:
+            return
+
+        management_port = policy["management"]
+        allowed_ports = set(policy["backhaul"])
+        backhaul_ports = {str(b.get("port", "")).strip() for b in self.backhauls}
+        switch_ports = {str(sw.get("port", "")).strip() for sw in self.switches}
+        seen = set()
+
+        for sector in self.get_tarana_sectors():
+            port = str(sector.get("port", "")).strip()
+            if not port:
+                raise ValueError(f"Tarana sector '{sector.get('name', 'Unknown')}' is missing a port.")
+            if port == management_port or port not in allowed_ports:
+                raise ValueError(
+                    f"Tarana port '{port}' is not valid for {self.router_type}. "
+                    f"Allowed Tarana ports: {sorted(allowed_ports)}"
+                )
+            if port in switch_ports:
+                raise ValueError(f"Tarana port '{port}' collides with a switch uplink port.")
+            if port in backhaul_ports:
+                raise ValueError(f"Tarana port '{port}' collides with a backhaul port.")
+            if port in seen:
+                raise ValueError(f"Duplicate Tarana port '{port}' is not allowed.")
             seen.add(port)
 
     @staticmethod

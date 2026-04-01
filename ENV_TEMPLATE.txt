@@ -100,6 +100,7 @@ AZURE_CLIENT_SECRET=PASTE_YOUR_CLIENT_SECRET_HERE
 # NOKIA7250_NLROOT_PW=CHANGE_ME
 # NOKIA7250_ADMIN_PW=CHANGE_ME
 # NOKIA7250_BGP_AUTH_KEY=CHANGE_ME
+# NOKIA7250_OSPF_AUTH_KEY=CHANGE_ME
 
 # One-shot Aviat log cleanup on backend startup (optional)
 # Deletes rows from secure_data/activity_log.db that match:

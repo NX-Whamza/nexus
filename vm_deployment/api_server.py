@@ -20,7 +20,7 @@ if sys.platform == 'win32':
         # If wrapping fails (e.g., in PyInstaller), just continue
         pass
 
-from flask import Flask, request, jsonify, send_file, send_from_directory
+from flask import Flask, request, jsonify, send_file, send_from_directory, stream_with_context
 from flask import make_response, abort, Response
 from flask_cors import CORS
 import os
@@ -454,6 +454,17 @@ try:
 except Exception:
     HAS_AVIAT = False
 
+try:
+    from cambium_firmware import (
+        list_firmware_catalog as cambium_list_firmware_catalog,
+        get_device_info as cambium_get_device_info,
+        update_device as cambium_update_device,
+        resolve_device_type as cambium_resolve_device_type,
+    )
+    HAS_CAMBIUM = True
+except Exception:
+    HAS_CAMBIUM = False
+
 # Safe print function for PyInstaller compatibility (defined early for use throughout)
 def safe_print(*args, **kwargs):
     """Print with error handling for PyInstaller compatibility"""
@@ -502,6 +513,42 @@ AVIAT_LOADING_MAX_WAIT = int(os.getenv("AVIAT_LOADING_MAX_WAIT", "5400"))
 AVIAT_LOADING_UNKNOWN_MAX_CHECKS = int(os.getenv("AVIAT_LOADING_UNKNOWN_MAX_CHECKS", "6"))
 _aviat_background_threads_started = False
 _aviat_background_threads_lock = threading.Lock()
+
+# ========================================
+# CAMBIUM FIRMWARE UPDATER STATE
+# ========================================
+cambium_tasks = {}
+cambium_log_queues = {}
+cambium_global_log_queues = set()
+cambium_global_log_history = []
+cambium_shared_queue = []
+CAMBIUM_SHARED_QUEUE_STORE = Path(__file__).resolve().parent / "cambium_shared_queue.json"
+CAMBIUM_GLOBAL_LOG_LIMIT = 2000
+CAMBIUM_MAX_WORKERS = int(os.getenv("CAMBIUM_MAX_WORKERS", "4"))
+
+
+def _cambium_load_shared_queue():
+    if not CAMBIUM_SHARED_QUEUE_STORE.exists():
+        return
+    try:
+        with CAMBIUM_SHARED_QUEUE_STORE.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        if isinstance(data, list):
+            cambium_shared_queue.clear()
+            cambium_shared_queue.extend([entry for entry in data if isinstance(entry, dict) and entry.get("ip")])
+    except Exception:
+        pass
+
+
+def _cambium_save_shared_queue():
+    try:
+        with CAMBIUM_SHARED_QUEUE_STORE.open("w", encoding="utf-8") as handle:
+            json.dump(cambium_shared_queue, handle)
+    except Exception:
+        pass
+
+
+_cambium_load_shared_queue()
 
 
 def _aviat_dedupe_queue(entries):
@@ -1523,14 +1570,14 @@ ROUTERBOARD_INTERFACES = {
             'ethernet_1g': ['ether1'],
             'sfp28_25g': ['sfp28-1', 'sfp28-2', 'sfp28-3', 'sfp28-4', 'sfp28-5', 'sfp28-6',
                          'sfp28-7', 'sfp28-8', 'sfp28-9', 'sfp28-10', 'sfp28-11', 'sfp28-12'],
-            'qsfp28_100g': ['qsfpplus1-1', 'qsfpplus2-1']
+            'qsfp28_100g': ['qsfp28-1-1', 'qsfp28-2-1']
         },
         'total_ports': 15,
         'management_port': 'ether1',
         'typical_use': {
             'ether1': 'Management',
             'sfp28-1-12': 'High-speed customer/sector connections (25G)',
-            'qsfpplus1-1, qsfpplus2-1': 'Ultra high-speed uplinks (100G)'
+            'qsfp28-1-1, qsfp28-2-1': 'Ultra high-speed uplinks (100G)'
         }
     },
 
@@ -10388,7 +10435,10 @@ def gen_tarana_config():
         # BNG1 MUST use bridge3000 interface (not UNICORNMGMT)
         # Pattern: add address=IP/prefix comment=... interface=bridge3000 network=...
         # ============================================================
-        unicorn_cidr_match = re.search(r'add address=(\d+\.\d+\.\d+\.\d+)/(\d+)\s+comment=([^\s]+)\s+interface=bridge3000\s+network=(\d+\.\d+\.\d+\.\d+)', raw_config)
+        unicorn_cidr_match = re.search(
+            r'add address=(\d+\.\d+\.\d+\.\d+)/(\d+)\s+comment=([^\s"]+|"[^"]+")\s+interface=bridge3000\s+network=(\d+\.\d+\.\d+\.\d+)',
+            raw_config
+        )
         
         # CRITICAL: Reject if UNICORNMGMT interface is found (should be bridge3000)
         if re.search(r'interface=UNICORNMGMT', raw_config):
@@ -10422,7 +10472,7 @@ def gen_tarana_config():
                     # Fix /ip address line - replace only the network parameter
                     raw_config = re.sub(
                         r'(add address=' + re.escape(user_ip) + r'/' + str(prefix_len) + r'\s+comment=' + re.escape(comment) + r'\s+interface=' + re.escape(interface_name) + r'\s+network=)' + re.escape(existing_network),
-                        r'\1' + correct_network,
+                        r'\g<1>' + correct_network,
                         raw_config
                     )
                 else:
@@ -10441,7 +10491,7 @@ def gen_tarana_config():
                         print(f"[TARANA] OSPF network incorrect, fixing from {ospf_network} to {expected_ospf_network}")
                         raw_config = re.sub(
                             r'(/routing ospf interface-template.*?network=)' + re.escape(ospf_network),
-                            r'\1' + expected_ospf_network,
+                            r'\g<1>' + expected_ospf_network,
                             raw_config,
                             flags=re.DOTALL
                         )
@@ -10505,8 +10555,8 @@ Return the corrected configuration with proper network calculations and formatti
                     cleaned = ai_result.replace('```routeros', '').replace('```', '').strip()
                     # Only use AI result if it's substantial and contains the required elements
                     if cleaned and len(cleaned) > 100:
-                        # Verify AI result has the required UNICORNMGMT line
-                        if 'UNICORNMGMT' in cleaned and '/ip address' in cleaned:
+                        # Accept AI output only when it preserves the BNG1 bridge3000 format.
+                        if '/ip address' in cleaned and ('interface=bridge3000' in cleaned or 'interfaces=bridge3000' in cleaned):
                             corrected_config = cleaned
                             print(f"[TARANA] AI validation successful ({len(corrected_config)} chars)")
                         else:
@@ -10841,6 +10891,7 @@ def nokia7250_defaults():
         'nlroot_pw':      os.getenv('NOKIA7250_NLROOT_PW', '').strip(),
         'admin_pw':       os.getenv('NOKIA7250_ADMIN_PW', '').strip(),
         'bgp_auth_key':   os.getenv('NOKIA7250_BGP_AUTH_KEY', '').strip(),
+        'ospf_auth_key':  os.getenv('NOKIA7250_OSPF_AUTH_KEY', '').strip() or os.getenv('NOKIA7250_BGP_AUTH_KEY', '').strip(),
     })
 
 
@@ -10855,6 +10906,7 @@ def _get_nokia_configurator_creds():
         'nlroot_pw': os.getenv('NOKIA7250_NLROOT_PW', '').strip(),
         'admin_pw': os.getenv('NOKIA7250_ADMIN_PW', '').strip(),
         'bgp_auth_key': os.getenv('NOKIA7250_BGP_AUTH_KEY', '').strip(),
+        'ospf_auth_key': os.getenv('NOKIA7250_OSPF_AUTH_KEY', '').strip() or os.getenv('NOKIA7250_BGP_AUTH_KEY', '').strip(),
     }
 
 
@@ -11057,6 +11109,12 @@ def generate_nokia7250():
         fiber_ip = data.get('fiber_ip', '').strip()
         backhauls = data.get('backhauls', [])
         
+        creds = _get_nokia_configurator_creds()
+        snmp_community = creds.get('snmp_community') or 'public'
+        nlroot_pw = creds.get('nlroot_pw') or 'changeme'
+        bgp_auth_key = creds.get('bgp_auth_key') or 'changeme'
+        ospf_auth_key = creds.get('ospf_auth_key') or bgp_auth_key
+
         if not system_name or not system_ip:
             return jsonify({'error': 'System name and system IP are required'}), 400
         
@@ -11064,10 +11122,30 @@ def generate_nokia7250():
         if not backhauls or len(backhauls) == 0:
             return jsonify({'error': 'At least one backhaul is required'}), 400
         
-        # Validate each backhaul has name and ip
-        for bh in backhauls:
-            if not bh.get('name') or not bh.get('ip'):
-                return jsonify({'error': 'Each backhaul must have both name and IP/netmask'}), 400
+        # Validate and normalize backhauls.
+        reserved_backhaul_ports = {'1/1/1', '1/1/2'}
+        if enable_fiber and fiber_ip:
+            reserved_backhaul_ports.add('1/1/24')
+        default_backhaul_ports = [f'1/1/{port}' for port in range(3, 24)]
+        used_backhaul_ports = set()
+        normalized_backhauls = []
+        for idx, bh in enumerate(backhauls, start=1):
+            bh_name = str(bh.get('description') or bh.get('name') or '').strip()
+            bh_ip = str(bh.get('ip') or '').strip()
+            if not bh_name or not bh_ip:
+                return jsonify({'error': 'Each backhaul must have a description/name and IP/netmask'}), 400
+            bh_port = str(bh.get('port') or '').strip()
+            if not bh_port:
+                try:
+                    bh_port = next(port for port in default_backhaul_ports if port not in used_backhaul_ports)
+                except StopIteration:
+                    return jsonify({'error': 'No Nokia 7250 backhaul ports remain available for automatic assignment'}), 400
+            if bh_port in reserved_backhaul_ports:
+                return jsonify({'error': f'Backhaul port {bh_port} is reserved by the base Nokia 7250 layout'}), 400
+            if bh_port in used_backhaul_ports:
+                return jsonify({'error': f'Backhaul port {bh_port} is used more than once'}), 400
+            used_backhaul_ports.add(bh_port)
+            normalized_backhauls.append({'name': bh_name, 'ip': bh_ip, 'port': bh_port})
         
         # Extract IP and netmask
         ip_parts = system_ip.split('/')
@@ -11091,7 +11169,7 @@ def generate_nokia7250():
         config_lines.append("")
         config_lines.append("# SNMP")
         config_lines.append("/configure system snmp no shutdown")
-        config_lines.append("/configure system security snmp community \"FBZ1yYdphf\" r version both")
+        config_lines.append(f"/configure system security snmp community \"{snmp_community}\" r version both")
         config_lines.append("")
         config_lines.append("# NTP")
         config_lines.append("/configure system time ntp server 52.128.59.240")
@@ -11105,7 +11183,7 @@ def generate_nokia7250():
         config_lines.append("# USERS")
         config_lines.append("/configure system security user nlroot access ftp snmp console netconf grpc")
         config_lines.append("/configure system security user nlroot console member \"administrative\"")
-        config_lines.append("/configure system security user nlroot password XAgYqY8jig!d")
+        config_lines.append(f"/configure system security user nlroot password {nlroot_pw}")
         config_lines.append("/configure system security no user admin")
         config_lines.append("")
         config_lines.append("# IDLE TIMEOUT")
@@ -11124,7 +11202,7 @@ def generate_nokia7250():
             config_lines.append(f"/configure system security management-access-filter ip-filter entry {idx} src-ip {acl_ip}")
             config_lines.append(f"/configure system security management-access-filter ip-filter entry {idx} dst-port 22 65535")
             config_lines.append(f"/configure system security management-access-filter ip-filter entry {idx} action permit")
-        config_lines.append("/configure system security management-access-filter ip-filter no shut")
+        config_lines.append("/configure system security management-access-filter ip-filter no shutdown")
         config_lines.append("")
         config_lines.append("# CARD CONFIGURATION")
         config_lines.append("/configure card 1 card-type imm24-sfp++8-sfp28+2-qsfp28")
@@ -11140,7 +11218,7 @@ def generate_nokia7250():
         config_lines.append("##################################")
         config_lines.append("# SYSTEM IP")
         config_lines.append(f"/configure router interface \"system\" address {system_ip}")
-        config_lines.append("/configure router interface \"system\" no shut")
+        config_lines.append("/configure router interface \"system\" no shutdown")
         config_lines.append("/configure router autonomous-system 26077")
         config_lines.append(f"/configure router router-id {system_ip_addr}")
         config_lines.append("")
@@ -11167,21 +11245,21 @@ def generate_nokia7250():
         
         if enable_ospf:
             config_lines.append("# OSPF")
-            config_lines.append(f"/configure router ospf 1 {system_ip_addr} area 0.0.0.0 interface \"system\" no shut")
-            config_lines.append("/configure router ospf 1 no shut")
+            config_lines.append(f"/configure router ospf 1 {system_ip_addr} area 0.0.0.0 interface \"system\" no shutdown")
+            config_lines.append("/configure router ospf 1 no shutdown")
             config_lines.append("")
         
         if enable_bgp:
             config_lines.append("# BGP")
             config_lines.append(f"/configure router bgp router-id {system_ip_addr}")
             config_lines.append(f"/configure router bgp group \"{bgp_group}\" description \"{bgp_group}\"")
-            config_lines.append(f"/configure router bgp group \"{bgp_group}\" authentication-key nvla8Z")
+            config_lines.append(f"/configure router bgp group \"{bgp_group}\" authentication-key \"{bgp_auth_key}\"")
             config_lines.append(f"/configure router bgp group \"{bgp_group}\" peer-as 26077")
             config_lines.append(f"/configure router bgp group \"{bgp_group}\" local-address {system_ip_addr}")
             for neighbor in bgp_neighbors:
                 if neighbor and neighbor.strip():
                     config_lines.append(f"/configure router bgp group \"{bgp_group}\" neighbor {neighbor.strip()}")
-            config_lines.append("/configure router bgp no shut")
+            config_lines.append("/configure router bgp no shutdown")
             config_lines.append("")
         
         if vpls_services and sdp_farend1:
@@ -11189,21 +11267,21 @@ def generate_nokia7250():
             config_lines.append("/configure service sdp 101 mpls create")
             config_lines.append(f"/configure service sdp 101 far-end {sdp_farend1}")
             config_lines.append("/configure service sdp 101 ldp")
-            config_lines.append("/configure service sdp 101 no shut")
+            config_lines.append("/configure service sdp 101 no shutdown")
             if sdp_farend2 and sdp_farend2.strip():
                 config_lines.append("/configure service sdp 102 mpls create")
                 config_lines.append(f"/configure service sdp 102 far-end {sdp_farend2}")
                 config_lines.append("/configure service sdp 102 ldp")
-                config_lines.append("/configure service sdp 102 no shut")
+                config_lines.append("/configure service sdp 102 no shutdown")
             else:
                 # SDP 102 without far-end (as shown in example)
                 config_lines.append("/configure service sdp 102 mpls create")
                 config_lines.append("/configure service sdp 102 far-end")
                 config_lines.append("/configure service sdp 102 ldp")
-                config_lines.append("/configure service sdp 102 no shut")
+                config_lines.append("/configure service sdp 102 no shutdown")
             config_lines.append("")
             config_lines.append("#MPLS")
-            config_lines.append("/configure router mpls no shut")
+            config_lines.append("/configure router mpls no shutdown")
             for vpls_id in vpls_services:
                 if vpls_id and str(vpls_id).strip():
                     vpls_num = str(vpls_id).strip()
@@ -11243,7 +11321,7 @@ def generate_nokia7250():
             config_lines.append("# FIBER OSPF CONFIGURATION")
             config_lines.append(f"/configure router ospf 1 area 0.0.0.0 interface \"{fiber_interface}\" interface-type point-to-point")
             config_lines.append(f"/configure router ospf 1 area 0.0.0.0 interface \"{fiber_interface}\" authentication-type message-digest")
-            config_lines.append(f"/configure router ospf 1 area 0.0.0.0 interface \"{fiber_interface}\" message-digest-key 1 md5 \"m8M5JwvdYM\"")
+            config_lines.append(f"/configure router ospf 1 area 0.0.0.0 interface \"{fiber_interface}\" message-digest-key 1 md5 \"{ospf_auth_key}\"")
             config_lines.append(f"/configure router ospf 1 area 0.0.0.0 interface \"{fiber_interface}\" no shutdown")
             config_lines.append("")
         
@@ -11254,25 +11332,26 @@ def generate_nokia7250():
             config_lines.append("##################################")
             config_lines.append("        ")
             config_lines.append("")
-            for backhaul in backhauls:
-                bh_name = backhaul.get('name', '').strip()
-                bh_ip = backhaul.get('ip', '').strip()
+            for backhaul in normalized_backhauls:
+                bh_name = backhaul['name']
+                bh_ip = backhaul['ip']
+                bh_port = backhaul['port']
                 if bh_name and bh_ip:
                     config_lines.append("")
                     config_lines.append(f"# {bh_name}")
-                    config_lines.append(f"/config port 1/1/1 no shut")
-                    config_lines.append(f"/config port 1/1/1 ethernet mode network")
-                    config_lines.append(f"/config port 1/1/1 description \"{bh_name}\"")
-                    config_lines.append(f"/config router interface \"{bh_name}\" address {bh_ip}")
-                    config_lines.append(f"/config router interface \"{bh_name}\" port 1/1/1")
-                    config_lines.append(f"/config router interface \"{bh_name}\" no shut")
-                    config_lines.append(f"/config router mpls interface \"{bh_name}\" no shut")
-                    config_lines.append(f"/config router rsvp interface \"{bh_name}\" no shut")
-                    config_lines.append(f"/config router ldp interface-parameters interface \"{bh_name}\" no shut")
-                    config_lines.append(f"/config router ospf 1 area 0.0.0.0 interface \"{bh_name}\" interface-type point-to-point")
-                    config_lines.append(f"/config router ospf 1 area 0.0.0.0 interface \"{bh_name}\" authentication-type message-digest")
-                    config_lines.append(f"/config router ospf 1 area 0.0.0.0 interface \"{bh_name}\" message-digest-key 1 md5 \"m8M5JwvdYM\"")
-                    config_lines.append(f"/config router ospf 1 area 0.0.0.0 interface \"{bh_name}\" no shut")
+                    config_lines.append(f"/configure port {bh_port} no shutdown")
+                    config_lines.append(f"/configure port {bh_port} ethernet mode network")
+                    config_lines.append(f"/configure port {bh_port} description \"{bh_name}\"")
+                    config_lines.append(f"/configure router interface \"{bh_name}\" address {bh_ip}")
+                    config_lines.append(f"/configure router interface \"{bh_name}\" port {bh_port}")
+                    config_lines.append(f"/configure router interface \"{bh_name}\" no shutdown")
+                    config_lines.append(f"/configure router mpls interface \"{bh_name}\" no shutdown")
+                    config_lines.append(f"/configure router rsvp interface \"{bh_name}\" no shutdown")
+                    config_lines.append(f"/configure router ldp interface-parameters interface \"{bh_name}\" no shutdown")
+                    config_lines.append(f"/configure router ospf 1 area 0.0.0.0 interface \"{bh_name}\" interface-type point-to-point")
+                    config_lines.append(f"/configure router ospf 1 area 0.0.0.0 interface \"{bh_name}\" authentication-type message-digest")
+                    config_lines.append(f"/configure router ospf 1 area 0.0.0.0 interface \"{bh_name}\" message-digest-key 1 md5 \"{ospf_auth_key}\"")
+                    config_lines.append(f"/configure router ospf 1 area 0.0.0.0 interface \"{bh_name}\" no shutdown")
                     config_lines.append("    ")
         
         config_text = '\n'.join(config_lines)
@@ -15738,6 +15817,7 @@ def _build_activity_message(display_user, activity_type, site_name, device=''):
         'enterprise-feeding-config':        'generated Enterprise Feeding config for',
         'enterprise-feeding-outstate-config': 'generated Enterprise Feeding Out-of-State config for',
         'aviat-upgrade':                    'performed Aviat backhaul upgrade on',
+        'cambium-upgrade':                  'performed Cambium radio upgrade on',
         'ftth-bng':                         'generated FTTH BNG config for',
         'maintenance-scheduled':            'scheduled maintenance:',
         'maintenance-started':              'started maintenance:',
@@ -16808,6 +16888,709 @@ def aviat_get_status(task_id):
     if task_id not in aviat_tasks:
         return jsonify({'error': 'Task not found'}), 404
     return jsonify(aviat_tasks[task_id])
+
+
+# ========================================
+# CAMBIUM RADIO FIRMWARE UPDATER API
+# ========================================
+
+def _cambium_queue_find(ip):
+    for entry in cambium_shared_queue:
+        if entry.get("ip") == ip:
+            return entry
+    return None
+
+
+def _cambium_queue_upsert(ip, updates=None):
+    entry = _cambium_queue_find(ip)
+    if entry is None:
+        entry = {"ip": ip}
+        cambium_shared_queue.append(entry)
+    if isinstance(updates, dict):
+        entry.update(updates)
+    entry["updated_at"] = get_utc_timestamp()
+    return entry
+
+
+def _cambium_queue_remove(ip):
+    cambium_shared_queue[:] = [entry for entry in cambium_shared_queue if entry.get("ip") != ip]
+
+
+def _cambium_extract_firmware(info):
+    if not isinstance(info, dict):
+        return None
+    for item in info.get("test_results") or []:
+        if str(item.get("name", "")).strip().lower() == "firmware version":
+            actual = item.get("actual")
+            return str(actual).strip() if actual else None
+    return None
+
+
+def _cambium_versions_match(expected, actual):
+    expected_text = str(expected or "").strip()
+    actual_text = str(actual or "").strip()
+    if not expected_text or not actual_text:
+        return False
+    if expected_text == actual_text:
+        return True
+
+    def _base(value):
+        match = re.search(r"\d+(?:\.\d+)+", value)
+        return match.group(0) if match else value
+
+    expected_base = _base(expected_text)
+    actual_base = _base(actual_text)
+    return bool(expected_base and actual_base and expected_base == actual_base)
+
+
+def _cambium_broadcast_log(message, level="info", task_id=None, ip=None):
+    entry = {
+        "timestamp": get_utc_timestamp(),
+        "message": str(message),
+        "level": level,
+        "task_id": task_id,
+        "ip": ip,
+    }
+    cambium_global_log_history.append(entry)
+    del cambium_global_log_history[:-CAMBIUM_GLOBAL_LOG_LIMIT]
+    for q in list(cambium_global_log_queues):
+        try:
+            q.put(entry)
+        except Exception:
+            pass
+    if task_id in cambium_log_queues:
+        try:
+            cambium_log_queues[task_id].put(entry)
+        except Exception:
+            pass
+
+
+def _log_cambium_activity(result):
+    conn = None
+    try:
+        if not isinstance(result, dict) or result.get("status") not in {"success", "error"}:
+            return
+        init_activity_db()
+        secure_dir = 'secure_data'
+        db_path = os.path.join(secure_dir, 'activity_log.db')
+        conn = sqlite3.connect(db_path)
+        c = conn.cursor()
+        ts_unix = get_unix_timestamp()
+        ts_iso = get_utc_timestamp()
+        username = _short_username(result.get('username') or 'cambium-tool')
+        c.execute('''INSERT INTO activities
+                     (username, activity_type, device, site_name, routeros_version, success, timestamp, timestamp_unix)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                  (
+                      username,
+                      'cambium-upgrade',
+                      'Cambium Radio',
+                      result.get('ip') or 'Unknown',
+                      result.get('firmware_version_after') or result.get('target_version') or '',
+                      1 if result.get('status') == 'success' else 0,
+                      ts_iso,
+                      ts_unix,
+                  ))
+        conn.commit()
+    except Exception as e:
+        safe_print(f"[CAMBIUM] Failed to log activity: {e}")
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def _cambium_update_queue_from_result(result, username=None):
+    if not isinstance(result, dict):
+        return
+    status = result.get("status") or ("success" if result.get("success") else "error")
+    _cambium_queue_upsert(
+        result.get("ip"),
+        {
+            "status": status,
+            "firmwareStatus": status,
+            "deviceType": result.get("device_type"),
+            "targetVersion": result.get("target_version"),
+            "firmwareVersion": result.get("firmware_version_after") or result.get("firmware_version_before"),
+            "selectedImage": result.get("selected_image"),
+            "lastError": result.get("error"),
+            "backupStatus": result.get("backup_status"),
+            "verifyStatus": result.get("verify_status"),
+            "backupPath": result.get("backup_path"),
+            "username": result.get("username") or username or "cambium-tool",
+        },
+    )
+
+
+def _cambium_expand_tasks(task_values):
+    tasks = []
+    for task in task_values or []:
+        value = str(task or "").strip().lower()
+        if value and value not in tasks:
+            tasks.append(value)
+    return tasks or ["firmware"]
+
+
+def _cambium_expand_radios(data):
+    radios = data.get("radios")
+    if isinstance(radios, list) and radios:
+        expanded = []
+        for item in radios:
+            if not isinstance(item, dict):
+                continue
+            ip = str(item.get("ip") or item.get("ip_address") or "").strip()
+            if not ip:
+                continue
+            expanded.append(
+                {
+                    "ip": ip,
+                    "device_type": item.get("device_type") or item.get("deviceType") or data.get("device_type"),
+                    "update_version": item.get("update_version") or item.get("target_version") or data.get("update_version"),
+                    "username": (
+                        item.get("device_username")
+                        or item.get("username")
+                        or data.get("device_username")
+                        or data.get("username")
+                    ),
+                    "password": item.get("password") or data.get("password"),
+                    "tasks": _cambium_expand_tasks(item.get("tasks") or data.get("tasks")),
+                }
+            )
+        return expanded
+
+    ips = data.get("ips") or []
+    if not isinstance(ips, list):
+        return []
+    return [
+        {
+            "ip": str(ip).strip(),
+            "device_type": data.get("device_type"),
+            "update_version": data.get("update_version"),
+            "username": data.get("device_username") or data.get("username"),
+            "password": data.get("password"),
+            "tasks": _cambium_expand_tasks(data.get("tasks")),
+        }
+        for ip in ips if str(ip).strip()
+    ]
+
+
+def _cambium_check_single(ip, device_type, password=None, run_tests=True):
+    info = cambium_get_device_info(ip, device_type, password=password, run_tests=run_tests)
+    return {
+        "ip": ip,
+        "device_type": cambium_resolve_device_type(device_type),
+        "reachable": bool(info.get("success")),
+        "firmware_version": _cambium_extract_firmware(info),
+        "info": info,
+        "error": str(info.get("message")) if not info.get("success") and info.get("message") else None,
+    }
+
+
+def _cambium_write_backup(ip, running_config):
+    backup_dir = Path(__file__).resolve().parent / "secure_data" / "cambium_backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    backup_path = backup_dir / f"{str(ip).replace('.', '_')}_{timestamp}.json"
+    text = running_config if isinstance(running_config, str) else json.dumps(running_config, indent=2, sort_keys=True)
+    backup_path.write_text(text, encoding="utf-8")
+    return str(backup_path)
+
+
+def _cambium_run_single(radio, username, should_abort=None):
+    ip = radio["ip"]
+    canonical = cambium_resolve_device_type(radio.get("device_type"))
+    password = radio.get("password")
+    device_username = radio.get("username")
+    update_version = radio.get("update_version")
+    tasks = _cambium_expand_tasks(radio.get("tasks"))
+
+    before_info = None
+    after_info = None
+    before_fw = None
+    after_fw = None
+    backup_status = None
+    verify_status = None
+    backup_path = None
+
+    def log_cb(message):
+        _cambium_broadcast_log(message, "info", ip=ip)
+
+    try:
+        if callable(should_abort) and should_abort():
+            return {
+                "ip": ip,
+                "success": False,
+                "status": "aborted",
+                "device_type": canonical,
+                "target_version": update_version,
+                "selected_image": None,
+                "firmware_version_before": None,
+                "firmware_version_after": None,
+                "before_info": None,
+                "after_info": None,
+                "backup_status": None,
+                "verify_status": None,
+                "backup_path": None,
+                "error": "Aborted",
+                "username": username or "cambium-tool",
+            }
+        _cambium_queue_upsert(ip, {
+            "status": "processing",
+            "firmwareStatus": "processing" if "firmware" in tasks else "pending",
+            "backupStatus": "processing" if "backup" in tasks else "pending",
+            "verifyStatus": "processing" if "verify" in tasks else "pending",
+            "deviceType": canonical,
+            "targetVersion": update_version,
+            "username": username or "cambium-tool",
+        })
+        try:
+            before_info = cambium_get_device_info(ip, canonical, password=password, run_tests=True)
+            before_fw = _cambium_extract_firmware(before_info)
+            if before_fw:
+                log_cb(f"[{ip}] Current firmware: {before_fw}")
+        except Exception as exc:
+            _cambium_broadcast_log(f"[{ip}] Precheck info unavailable: {exc}", "warning", ip=ip)
+
+        if "backup" in tasks:
+            running_config = (before_info or {}).get("running_config")
+            if not running_config:
+                raise RuntimeError("Backup failed: running config was not returned by the device")
+            backup_path = _cambium_write_backup(ip, running_config)
+            backup_status = "success"
+            log_cb(f"[{ip}] Backup saved to {backup_path}")
+        else:
+            backup_status = "pending"
+
+        if callable(should_abort) and should_abort():
+            return {
+                "ip": ip,
+                "success": False,
+                "status": "aborted",
+                "device_type": canonical,
+                "target_version": update_version,
+                "selected_image": None,
+                "firmware_version_before": before_fw,
+                "firmware_version_after": None,
+                "before_info": before_info,
+                "after_info": None,
+                "backup_status": backup_status,
+                "verify_status": verify_status,
+                "backup_path": backup_path,
+                "error": "Aborted",
+                "username": username or "cambium-tool",
+            }
+
+        update_result = {"target_version": update_version, "selected_image": None}
+        if "firmware" in tasks:
+            update_result = cambium_update_device(
+                ip,
+                canonical,
+                username=device_username,
+                password=password,
+                update_version=update_version,
+                callback=log_cb,
+            )
+
+        if "verify" in tasks or "firmware" in tasks:
+            try:
+                after_info = cambium_get_device_info(ip, canonical, password=password, run_tests=True)
+                after_fw = _cambium_extract_firmware(after_info)
+            except Exception as exc:
+                _cambium_broadcast_log(f"[{ip}] Post-upgrade verification unavailable: {exc}", "warning", ip=ip)
+                if "verify" in tasks:
+                    raise RuntimeError(f"Verification failed: {exc}") from exc
+
+        if "verify" in tasks:
+            actual_fw = after_fw or before_fw
+            verify_status = "success" if actual_fw and (
+                not update_version or _cambium_versions_match(update_version, actual_fw)
+            ) else "error"
+            if verify_status != "success":
+                raise RuntimeError(
+                    f"Verification failed: expected {update_version or 'selected target'}, found {actual_fw or 'unknown'}"
+                )
+        else:
+            verify_status = "pending"
+
+        return {
+            "ip": ip,
+            "success": True,
+            "status": "success",
+            "device_type": canonical,
+            "target_version": update_result.get("target_version") or update_version,
+            "selected_image": update_result.get("selected_image"),
+            "firmware_version_before": before_fw,
+            "firmware_version_after": after_fw,
+            "before_info": before_info,
+            "after_info": after_info,
+            "backup_status": backup_status,
+            "verify_status": verify_status,
+            "backup_path": backup_path,
+            "error": None,
+            "username": username or "cambium-tool",
+        }
+    except Exception as exc:
+        return {
+            "ip": ip,
+            "success": False,
+            "status": "error",
+            "device_type": canonical,
+            "target_version": update_version,
+            "selected_image": None,
+            "firmware_version_before": before_fw,
+            "firmware_version_after": after_fw,
+            "before_info": before_info,
+            "after_info": after_info,
+            "backup_status": backup_status,
+            "verify_status": verify_status,
+            "backup_path": backup_path,
+            "error": str(exc),
+            "username": username or "cambium-tool",
+        }
+
+
+def _cambium_background_task(task_id, radios, username):
+    results = []
+    cambium_tasks[task_id]["status"] = "running"
+    def should_abort():
+        return cambium_tasks.get(task_id, {}).get("abort") is True
+    max_workers = max(1, min(CAMBIUM_MAX_WORKERS, len(radios)))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_cambium_run_single, radio, username, should_abort): radio for radio in radios}
+        for future in as_completed(futures):
+            result = future.result()
+            results.append(result)
+            _cambium_update_queue_from_result(result, username=username)
+            _log_cambium_activity(result)
+            if result.get("success"):
+                _cambium_broadcast_log(
+                    f"[{result['ip']}] Cambium tasks completed successfully.",
+                    "success",
+                    task_id=task_id,
+                    ip=result["ip"],
+                )
+            elif result.get("status") == "aborted":
+                _cambium_broadcast_log(
+                    f"[{result['ip']}] Cambium task aborted.",
+                    "warning",
+                    task_id=task_id,
+                    ip=result["ip"],
+                )
+            else:
+                _cambium_broadcast_log(
+                    f"[{result['ip']}] Cambium task failed: {result.get('error')}",
+                    "error",
+                    task_id=task_id,
+                    ip=result["ip"],
+                )
+            _cambium_save_shared_queue()
+
+    cambium_tasks[task_id]["status"] = "aborted" if should_abort() else "completed"
+    cambium_tasks[task_id]["results"] = results
+    cambium_tasks[task_id]["completed_at"] = get_utc_timestamp()
+    if task_id in cambium_log_queues:
+        cambium_log_queues[task_id].put(None)
+
+
+@app.route('/api/firmware-updater/providers', methods=['GET'])
+def firmware_updater_providers():
+    cambium_catalog = None
+    if HAS_CAMBIUM:
+        try:
+            cambium_catalog = cambium_list_firmware_catalog()
+        except Exception as exc:
+            cambium_catalog = {"error": str(exc)}
+    return jsonify({
+        "success": True,
+        "providers": {
+            "aviat": {
+                "available": HAS_AVIAT,
+                "label": "Aviat Backhaul Firmware Updater",
+            },
+            "cambium": {
+                "available": HAS_CAMBIUM,
+                "label": "Cambium Radio Firmware Updater",
+                "catalog": cambium_catalog,
+            },
+        },
+    })
+
+
+@app.route('/api/cambium/catalog', methods=['GET'])
+def cambium_catalog():
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    return jsonify({"success": True, **cambium_list_firmware_catalog()})
+
+
+@app.route('/api/cambium/device-info', methods=['POST'])
+def cambium_device_info():
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    data = request.get_json(force=True) or {}
+    ip = str(data.get("ip") or data.get("ip_address") or "").strip()
+    device_type = data.get("device_type")
+    password = data.get("password")
+    run_tests = str(data.get("run_tests", "true")).lower() != "false"
+    if not ip or not device_type:
+        return jsonify({'error': 'ip and device_type are required'}), 400
+    try:
+        info = _cambium_check_single(ip, device_type, password=password, run_tests=run_tests)
+        _cambium_queue_upsert(ip, {
+            "status": "pending" if info["reachable"] else "error",
+            "firmwareStatus": "pending" if info["reachable"] else "error",
+            "deviceType": info["device_type"],
+            "firmwareVersion": info["firmware_version"],
+            "lastError": info["error"],
+        })
+        _cambium_save_shared_queue()
+        return jsonify({"success": True, **info})
+    except Exception as exc:
+        return jsonify({'error': str(exc)}), 400
+
+
+@app.route('/api/cambium/check-status', methods=['POST'])
+def cambium_check_status():
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    data = request.get_json(force=True) or {}
+    radios = _cambium_expand_radios(data)
+    if not radios:
+        return jsonify({'error': 'No radios provided'}), 400
+
+    results = []
+    with ThreadPoolExecutor(max_workers=max(1, min(CAMBIUM_MAX_WORKERS, len(radios)))) as executor:
+        futures = {
+            executor.submit(
+                _cambium_check_single,
+                radio["ip"],
+                radio.get("device_type"),
+                password=radio.get("password"),
+                run_tests=True,
+            ): radio for radio in radios
+        }
+        for future in as_completed(futures):
+            result = future.result()
+            results.append(result)
+            _cambium_queue_upsert(result["ip"], {
+                "status": "pending" if result["reachable"] else "error",
+                "firmwareStatus": "pending" if result["reachable"] else "error",
+                "deviceType": result["device_type"],
+                "firmwareVersion": result["firmware_version"],
+                "lastError": result["error"],
+            })
+    _cambium_save_shared_queue()
+    return jsonify({"success": True, "results": results})
+
+
+@app.route('/api/cambium/queue', methods=['GET', 'POST'])
+def cambium_queue_state():
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    if request.method == 'GET':
+        return jsonify({"radios": cambium_shared_queue})
+
+    data = request.get_json(force=True) or {}
+    mode = str(data.get("mode") or "replace").strip().lower()
+    actor_username = (
+        data.get("requested_by")
+        or data.get("actor_username")
+        or data.get("submitted_by")
+        or "cambium-tool"
+    )
+    radios = _cambium_expand_radios(data)
+
+    if mode == "replace":
+        cambium_shared_queue.clear()
+        for radio in radios:
+            canonical = cambium_resolve_device_type(radio.get("device_type"))
+            _cambium_queue_upsert(radio["ip"], {
+                "status": "pending",
+                "firmwareStatus": "pending",
+                "deviceType": canonical,
+                "targetVersion": radio.get("update_version"),
+                "username": actor_username,
+            })
+    elif mode == "add":
+        for radio in radios:
+            canonical = cambium_resolve_device_type(radio.get("device_type"))
+            _cambium_queue_upsert(radio["ip"], {
+                "status": "pending",
+                "firmwareStatus": "pending",
+                "deviceType": canonical,
+                "targetVersion": radio.get("update_version"),
+                "username": actor_username,
+            })
+    elif mode == "remove":
+        for radio in radios:
+            _cambium_queue_remove(radio["ip"])
+    else:
+        return jsonify({'error': f'Unsupported mode: {mode}'}), 400
+
+    _cambium_save_shared_queue()
+    return jsonify({"radios": cambium_shared_queue})
+
+
+@app.route('/api/cambium/run', methods=['POST'])
+def cambium_run_tasks():
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    data = request.get_json(force=True) or {}
+    radios = _cambium_expand_radios(data)
+    actor_username = (
+        data.get("requested_by")
+        or data.get("actor_username")
+        or data.get("submitted_by")
+        or "cambium-tool"
+    )
+    if not radios:
+        return jsonify({'error': 'No radios provided'}), 400
+
+    normalized = []
+    for radio in radios:
+        if not radio.get("device_type"):
+            return jsonify({'error': f"device_type is required for {radio['ip']}"}), 400
+        canonical = cambium_resolve_device_type(radio.get("device_type"))
+        normalized.append(
+            {
+                "ip": radio["ip"],
+                "device_type": canonical,
+                "update_version": radio.get("update_version"),
+                "username": radio.get("username"),
+                "password": radio.get("password"),
+                "tasks": _cambium_expand_tasks(radio.get("tasks")),
+            }
+        )
+        selected_tasks = _cambium_expand_tasks(radio.get("tasks"))
+        _cambium_queue_upsert(radio["ip"], {
+            "status": "processing",
+            "firmwareStatus": "processing" if "firmware" in selected_tasks else "pending",
+            "backupStatus": "processing" if "backup" in selected_tasks else "pending",
+            "verifyStatus": "processing" if "verify" in selected_tasks else "pending",
+            "deviceType": canonical,
+            "targetVersion": radio.get("update_version"),
+            "username": actor_username,
+        })
+    _cambium_save_shared_queue()
+
+    task_id = str(uuid.uuid4())
+    cambium_tasks[task_id] = {
+        "status": "queued",
+        "abort": False,
+        "task_id": task_id,
+        "username": actor_username,
+        "radios": normalized,
+        "tasks": _cambium_expand_tasks(data.get("tasks")),
+        "started_at": get_utc_timestamp(),
+        "results": [],
+    }
+    cambium_log_queues[task_id] = queue.Queue()
+    threading.Thread(
+        target=_cambium_background_task,
+        args=(task_id, normalized, actor_username),
+        daemon=True,
+    ).start()
+    return jsonify({"success": True, "task_id": task_id, "count": len(normalized)})
+
+
+@app.route('/api/cambium/stream/<task_id>')
+def cambium_stream_logs(task_id):
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    if task_id not in cambium_log_queues:
+        return jsonify({'error': 'Task not found'}), 404
+
+    @stream_with_context
+    def generate():
+        q = cambium_log_queues[task_id]
+        while True:
+            item = q.get()
+            if item is None:
+                break
+            yield f"data: {json.dumps(item)}\n\n"
+
+    response = Response(generate(), mimetype='text/event-stream')
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['X-Accel-Buffering'] = 'no'
+    return response
+
+
+@app.route('/api/cambium/stream/global')
+def cambium_stream_global():
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    q = queue.Queue()
+    cambium_global_log_queues.add(q)
+
+    @stream_with_context
+    def generate():
+        for entry in cambium_global_log_history[-200:]:
+            yield f"data: {json.dumps(entry)}\n\n"
+        try:
+            while True:
+                item = q.get()
+                yield f"data: {json.dumps(item)}\n\n"
+        finally:
+            cambium_global_log_queues.discard(q)
+
+    response = Response(generate(), mimetype='text/event-stream')
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['X-Accel-Buffering'] = 'no'
+    return response
+
+
+@app.route('/api/cambium/status/<task_id>')
+def cambium_get_status(task_id):
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    if task_id not in cambium_tasks:
+        return jsonify({'error': 'Task not found'}), 404
+    return jsonify(cambium_tasks[task_id])
+
+
+@app.route('/api/cambium/abort/<task_id>', methods=['POST'])
+def cambium_abort_task(task_id):
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    if task_id not in cambium_tasks:
+        return jsonify({'error': 'Task not found'}), 404
+    cambium_tasks[task_id]['abort'] = True
+    cambium_tasks[task_id]['status'] = 'aborting'
+    return jsonify({'status': 'aborting'})
+
+
+@app.route('/api/cambium/backup', methods=['GET'])
+def cambium_download_backup():
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    ip = str(request.args.get("ip") or "").strip()
+    requested_path = str(request.args.get("path") or "").strip()
+    if not ip and not requested_path:
+        return jsonify({'error': 'ip or path is required'}), 400
+
+    backup_root = (Path(__file__).resolve().parent / "secure_data" / "cambium_backups").resolve()
+    backup_root.mkdir(parents=True, exist_ok=True)
+
+    target = None
+    if requested_path:
+        candidate = Path(requested_path).resolve()
+        try:
+            candidate.relative_to(backup_root)
+        except ValueError:
+            return jsonify({'error': 'Backup path is outside Cambium backup storage'}), 400
+        if not candidate.is_file():
+            return jsonify({'error': 'Backup file not found'}), 404
+        target = candidate
+    else:
+        prefix = f"{ip.replace('.', '_')}_"
+        matches = sorted(backup_root.glob(f"{prefix}*.json"), key=lambda path: path.stat().st_mtime, reverse=True)
+        if not matches:
+            return jsonify({'error': f'No backup found for {ip}'}), 404
+        target = matches[0]
+
+    return send_file(str(target), as_attachment=True, download_name=target.name, mimetype='application/json')
 
 
 FTTH_FIBER_DEVICE_PROFILES = {

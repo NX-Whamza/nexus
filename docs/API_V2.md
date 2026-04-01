@@ -2,11 +2,13 @@
 
 This is the production contract for OMNI and other API clients.
 Everything below uses exact request/response JSON shapes with no abbreviated payloads.
+Public examples should be read as tenant-neutral contract examples, not Nextlink-only operational defaults.
 
 ## Base URL
 
 - API: `https://noc-configmaker.nxlink.com/api/v2`
 - OMNI aliases: `https://noc-configmaker.nxlink.com/api/v2/omni/*`
+- Interactive Swagger: `https://noc-configmaker.nxlink.com/docs`
 - UI: `https://noc-configmaker.nxlink.com/l`
 
 ## Authentication
@@ -92,6 +94,13 @@ Idempotency-Key: 1dbff6c0-4676-4c48-85f1-49b40d09c89a
 - `POST /api/v2/omni/jobs/{job_id}/cancel`
 - `PUT /api/v2/omni/jobs/{job_id}/cancel`
 - `PATCH /api/v2/omni/jobs/{job_id}`
+
+## Contract Direction
+
+- `/docs` is the primary machine-readable and human-readable contract surface.
+- High-value published actions now expose explicit payload schemas in Swagger instead of only `action + {}`.
+- Tenant-specific behavior should be represented by template, policy, or tenant identifiers in payloads rather than hardcoded provider assumptions.
+- The generic `legacy.proxy` and generic `SubmitJobRequest` fallback remain available while native typed contract coverage expands.
 
 ## 1) Health
 
@@ -1080,5 +1089,6 @@ Re-run prechecks on devices.
 
 ## Runtime API Docs
 
-- Swagger: `https://noc-configmaker.nxlink.com/docs`
-- OpenAPI JSON: `https://noc-configmaker.nxlink.com/openapi.json`
+- Swagger UI: `https://noc-configmaker.nxlink.com/docs`
+- The published integration surface is the interactive Swagger at `/docs`.
+- OMNI consumers should treat `/docs` as the primary contract reference for request/response JSON shapes.

@@ -79,7 +79,6 @@ Attributes to return during pre-check. (dashboard name, label, expected value)
 PRE_CHECK_ATTRIBUTES = {
     "EP3K": [
         ("cambiumCurrentSWInfo", "Firmware Version", "5.10.1"),
-        # ("cambiumCurrentSWInfo", "Firmware Version", "4.6.2STA"),
         ("cambiumEffectiveDeviceName", "Device Name", None),
         ("cambiumHWInfo", "Device SKU", ["37", "40"]),
     ],
@@ -92,35 +91,6 @@ PRE_CHECK_ATTRIBUTES = {
         ("cambiumCurrentSWInfo", "Firmware Version", r"5.10.1"),
         ("cambiumEffectiveDeviceName", "Device Name", None),
         ("cambiumHWInfo", "Device SKU", ["53264"]),
-    ],
-    "F4600C": [
-        ("cambiumCurrentSWInfo", "Firmware Version", r"5.10.1"),
-        ("cambiumEffectiveDeviceName", "Device Name", None),
-        ("cambiumHWInfo", "Device SKU", ["53520"]),
-    ],
-    "F300-13": [
-        # ("cambiumCurrentSWInfo", "Firmware Version", "4.5.4-RC7"),
-        ("cambiumCurrentSWInfo", "Firmware Version", "5.10.1"),
-        ("cambiumEffectiveDeviceName", "Device Name", None),
-        ("cambiumHWInfo", "Device SKU", ["35", "36", "38", "55", "59", "61"]),
-    ],
-    "F300-16": [
-        # ("cambiumCurrentSWInfo", "Firmware Version", "4.5.4-RC7"),
-        ("cambiumCurrentSWInfo", "Firmware Version", "5.10.1"),
-        ("cambiumEffectiveDeviceName", "Device Name", None),
-        ("cambiumHWInfo", "Device SKU", ["35", "36", "38", "55"]),
-    ],
-    "F300-25": [
-        # ("cambiumCurrentSWInfo", "Firmware Version", "4.5.4-RC7"),
-        ("cambiumCurrentSWInfo", "Firmware Version", "5.10.1"),
-        ("cambiumEffectiveDeviceName", "Device Name", None),
-        ("cambiumHWInfo", "Device SKU", ["35", "36", "38", "55", "58", "60"]),
-    ],
-    "F300-CSM": [
-        # ("cambiumCurrentSWInfo", "Firmware Version", "4.5.4-RC7"),
-        ("cambiumCurrentSWInfo", "Firmware Version", "5.10.1"),
-        ("cambiumEffectiveDeviceName", "Device Name", None),
-        ("cambiumHWInfo", "Device SKU", ["45"]),
     ],
 }
 

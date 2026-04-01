@@ -217,17 +217,19 @@ class MTTowerConfig:
             self._bgp_md5_key = os.getenv("NEXTLINK_BGP_MD5_KEY", "m8M5JwvdYM")
             self._ospf_md5_key = os.getenv("NEXTLINK_OSPF_MD5_KEY", "m8M5JwvdYM")
 
-            self._validate_port_policy()
-
             if self.is_tarana:
                 self.tarana_subnet = IPNetwork(params["tarana_subnet"])
                 self.tarana_sector_count = int(params.get("tarana_sector_count", 3))
                 self.tarana_sector_start = int(params.get("tarana_sector_start", 0))
+                if self.tarana_sector_count < 1 or self.tarana_sector_count > 4:
+                    raise ValueError("Tarana sector count must be between 1 and 4.")
                 # Accept custom sector port assignments from frontend
                 self._custom_sectors = params.get("tarana_sectors", None)
                 # Unicorn MGMT subnet (defaults to tarana_subnet if not provided)
                 raw_unicorn = params.get("unicorn_mgmt_subnet") or str(self.tarana_subnet)
                 self.unicorn_mgmt_subnet = IPNetwork(raw_unicorn)
+
+            self._validate_port_policy()
 
         except KeyError as err:
             raise ValueError(f"Missing parameter: {err}")

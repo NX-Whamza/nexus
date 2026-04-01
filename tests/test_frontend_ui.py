@@ -11,6 +11,7 @@ repo_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(repo_root))
 
 UI_FILE = repo_root / 'vm_deployment' / 'NOC-configMaker.html'
+CAMBIUM_UI_FILE = repo_root / 'vm_deployment' / 'cambium-firmware-updater.js'
 
 
 def test_ftth_modal_exists():
@@ -143,6 +144,23 @@ def test_enterprise_uses_single_routerboard_source_of_truth():
     assert "type: 'generated mpls enterprise config'" in content, 'Missing MPLS enterprise activity logging in NOC-configMaker.html'
 
 
+def test_tarana_tab_uses_shared_port_population_and_validates_bng1_inputs():
+    content = UI_FILE.read_text(encoding='utf-8')
+    assert 'function normalizeTaranaDeviceKey(deviceKey, fallbackKey = \'\')' in content, 'Missing Tarana-local device normalization helper in NOC-configMaker.html'
+    assert 'function getTaranaRecommendedPorts(deviceValue)' in content, 'Missing Tarana-local recommended port helper in NOC-configMaker.html'
+    assert 'function getTaranaPortOptions(deviceKey)' in content, 'Missing shared Tarana port inventory helper in NOC-configMaker.html'
+    assert 'function populateTaranaPortSelects(options)' in content, 'Missing shared Tarana port select population helper in NOC-configMaker.html'
+    assert 'function resolveTaranaMgmtCidr(cidrInput)' in content, 'Missing Tarana BNG1 CIDR normalization helper in NOC-configMaker.html'
+    assert 'function getTaranaSpeedSyntax(routerosVersion)' in content, 'Missing Tarana RouterOS speed helper in NOC-configMaker.html'
+    assert 'Gateway or Network (CIDR)' in content, 'Missing Tarana BNG1 gateway/network guidance in NOC-configMaker.html'
+    assert 'You can enter the /29 network or the first usable router IP.' in content, 'Missing Tarana BNG1 CIDR hint in NOC-configMaker.html'
+    assert "preserveSelection: true" in content, 'Tarana port dropdowns should preserve user selections during repopulation'
+    assert 'Each Tarana sector must use a different port.' in content, 'Missing Tarana duplicate-port validation in NOC-configMaker.html'
+    assert 'const speedSyntax = getTaranaSpeedSyntax(routerosVersion);' in content, 'Missing Tarana RouterOS-aware speed syntax wiring in NOC-configMaker.html'
+    assert 'Tarana BNG1 supports only CCR2004 and CCR2216.' in content, 'Missing explicit Tarana BNG1 device guard in NOC-configMaker.html'
+    assert "const selectedDeviceKey = normalizeTaranaDeviceKey(selectedDevice, '');" in content, 'Tarana handlers should use the local device normalization fallback'
+
+
 def test_nokia_configurator_is_truly_unified():
     content = UI_FILE.read_text(encoding='utf-8')
     assert 'id="nokiaPlatformModel"' in content, 'Missing Nokia platform model selector in NOC-configMaker.html'
@@ -179,6 +197,94 @@ def test_sidebar_and_nokia_7250_layout_updates_exist():
     assert 'Uplink ${index + 1} IP/CIDR is invalid' in content, 'Missing Nokia 7250 uplink CIDR validation message'
 
 
+def test_nokia_7250_port_setup_uses_safe_field_reader_and_clean_labels():
+    content = UI_FILE.read_text(encoding='utf-8')
+    assert 'function getCellFieldValue(tr, cellIndex, selector, options = {})' in content, 'Missing shared Nokia 7250 port-table field reader helper'
+    assert "ospfKey = creds.ospf_auth_key || creds.bgp_auth_key || '';" in content, 'Missing Nokia 7250 OSPF key fallback wiring'
+    assert 'Please enter an OSPF MD5 Auth Key, or configure NOKIA7250_OSPF_AUTH_KEY on the server.' in content, 'Missing Nokia 7250 OSPF env guidance'
+    assert 'Port ${duplicatePort.port} is selected more than once. Each Nokia port can only be configured once.' in content, 'Missing duplicate Nokia 7250 port guard'
+    assert 'Interface description "${duplicateDesc.desc}" is duplicated. Use a unique interface name per port.' in content, 'Missing duplicate Nokia 7250 interface-name guard'
+    assert '`<option value="1/1/${i}">1/1/${i}</option>`' in content, 'Missing clean Nokia 7250 SFP+ port label'
+    assert '`<option value="1/1/c${i}/1">1/1/c${i}/1</option>`' in content, 'Missing clean Nokia 7250 breakout port label'
+    assert '`<option value="1/1/${i}">1/1/${i} (SFP+)</option>`' not in content, 'Found stale Nokia 7250 SFP+ bracket label'
+    assert '`<option value="1/1/c${i}/1">1/1/c${i}/1 (QSFP28)</option>`' not in content, 'Found stale Nokia 7250 QSFP28 bracket label'
+    assert '`/configure port ${p.port} no shutdown`' in content, 'Missing normalized Nokia 7250 port command prefix'
+    assert '`/configure router ospf 1 area "${ospfArea}" interface "${p.desc}" no shutdown`' in content, 'Missing normalized Nokia 7250 OSPF shutdown command'
+
+
+def test_mikrotik_migration_target_device_change_handler_exists():
+    content = UI_FILE.read_text(encoding='utf-8')
+    assert 'onchange="updateInterfacesForMigration()"' in content, 'Missing MikroTik migration target-device onchange hook'
+    assert 'window.updateInterfacesForMigration = function () {' in content, 'Missing MikroTik migration onchange handler implementation'
+    assert 'updateDevicePorts();' in content, 'Missing MikroTik migration device-port refresh delegation'
+    assert "const escapeHtml = (typeof window !== 'undefined' && typeof window.escHtml === 'function')" in content, 'Missing local HTML escaping fallback for Upgrade Existing migration preview'
+    assert '${escapeHtml(analysis.migration_type || \'config-audit\')}' in content, 'Migration preview should use the local escapeHtml fallback instead of raw escHtml'
+
+
+def test_device_firmware_updater_wraps_aviat_and_cambium():
+    content = UI_FILE.read_text(encoding='utf-8')
+    cambium_js = CAMBIUM_UI_FILE.read_text(encoding='utf-8')
+    assert 'DEVICES FIRMWARE UPDATER' in content, 'Missing top-level Devices Firmware Updater navigation label'
+    assert 'id="device-firmware-updater-pane"' in content, 'Missing shared device firmware content pane'
+    assert 'data-device-firmware-tab="aviat"' in content, 'Missing Aviat firmware subtab button/dropdown wiring'
+    assert 'data-device-firmware-tab="cambium"' in content, 'Missing Cambium firmware subtab button/dropdown wiring'
+    assert 'window.showDeviceFirmwareUpdaterSubTab = function (tabKey)' in content, 'Missing device firmware subtab controller'
+    assert 'id="device-firmware-cambium-section"' in content, 'Missing Cambium firmware section in shared pane'
+    assert '<script src="cambium-firmware-updater.js"></script>' in content, 'Missing external Cambium firmware updater bundle'
+    assert 'function getCambiumApiBase()' in cambium_js, 'Missing Cambium API base helper'
+    assert "return `${getApiRoot()}/cambium`;" in cambium_js, 'Cambium updater should point at the dedicated /api/cambium namespace'
+    assert "/firmware-updater/providers" in cambium_js, 'Cambium updater should load shared firmware providers'
+    assert "cambiumFetch('/catalog')" in cambium_js, 'Cambium updater should load the Cambium catalog'
+    assert "cambiumFetch('/device-info'" in cambium_js, 'Cambium updater should query Cambium device info'
+    assert "cambiumFetch('/queue'" in cambium_js, 'Cambium updater should queue Cambium radios through the backend'
+    assert "cambiumFetch('/run'" in cambium_js, 'Cambium updater should start Cambium runs through the backend'
+    assert "cambiumFetch(`/status/${taskId}`)" in cambium_js, 'Cambium updater should poll Cambium task status'
+    assert "new EventSource(`${getCambiumApiBase()}/stream/${encodeURIComponent(taskId)}`)" in cambium_js, 'Cambium updater should open per-task Cambium SSE streams'
+    assert "new EventSource(`${getCambiumApiBase()}/stream/global`)" in cambium_js, 'Cambium updater should open the Cambium global SSE stream'
+    assert "cambiumFetch('/check-status'" not in cambium_js, 'Cambium updater should not call the removed check-status endpoint'
+    assert "cambiumFetch(`/abort/${encodeURIComponent(cambiumState.taskId)}`" in cambium_js, 'Cambium updater should request abort through the Cambium backend'
+    assert "requested_by: cambiumGetUsername()" in cambium_js, 'Cambium updater should send the operator as requested_by, not as the radio login username'
+    assert "body: JSON.stringify({ ip, device_type: deviceType, username: cambiumGetUsername(), password: selectedProfile().password || '' })" not in cambium_js, 'Cambium device-info requests should not send the signed-in app user as the device username'
+    assert "function syncInteractiveState()" in cambium_js, 'Cambium updater should centralize UI lockout while a run is active'
+    assert "if (cambiumState.isProcessing) return;" in cambium_js, 'Cambium updater row actions should no-op while a run is active'
+    assert "syncInteractiveState();" in cambium_js and "updateUI();" in cambium_js, 'Cambium updater should refresh disabled button state when processing starts or ends'
+    assert "backupPath: radio.backupPath || radio.backup_path || ''" in cambium_js, 'Cambium updater should preserve backup paths from backend results'
+    assert "onclick=\"cambiumDownloadBackup(" in cambium_js, 'Cambium updater should expose a per-row backup download action'
+    assert "window.cambiumDownloadBackup = async function (ip)" in cambium_js, 'Cambium updater should define a backup download handler'
+    assert "abortBtn.disabled = !cambiumState.isProcessing;" in cambium_js, 'Cambium abort button should be clickable whenever a Cambium task is active'
+    assert "const backupAvailable = backupStatus === 'success' || !!radio.backupPath;" in cambium_js, 'Cambium backup button should enable from successful backup status even if the path is stale in UI state'
+    assert "const query = radio.backupPath" in cambium_js, 'Cambium backup download should fall back to IP-based lookup when only backup status is available'
+    assert "function clearPersistedRadios()" in cambium_js, 'Cambium updater should clear stale browser-side queue state on reload'
+    assert "await loadQueueState({ quiet: true });" in cambium_js, 'Cambium updater should reload queue state from the backend during initialization'
+    assert "localStorage.setItem(CAMBIUM_STORAGE_KEY" not in cambium_js, 'Cambium updater should not repopulate stale local queue state from browser storage'
+    assert "'cambium-upgrade': TOOL_ROUTE_DEFINITIONS['device-firmware-updater:cambium']" in content, 'Missing activity-route mapping for Cambium upgrades'
+
+
+def test_vpls_helpers_are_not_shadowed_by_duplicate_definitions():
+    content = UI_FILE.read_text(encoding='utf-8')
+    assert content.count('function addVpls(') == 1, 'Found duplicate addVpls() definitions shadowing VPLS preset support'
+    assert content.count('function updateVplsCount(') == 1, 'Found duplicate updateVplsCount() definitions shadowing VPLS count handling'
+
+
+def test_routeros_ui_baseline_is_7194_or_newer():
+    content = UI_FILE.read_text(encoding='utf-8')
+    assert 'option value="7.11.2"' not in content, 'Found stale RouterOS 7.11.2 option in NOC-configMaker.html'
+    assert 'option value="7.16.2"' not in content, 'Found stale RouterOS 7.16.2 option in NOC-configMaker.html'
+    assert 'option value="7.18.2"' not in content, 'Found stale RouterOS 7.18.2 option in NOC-configMaker.html'
+    assert 'option value="6.49.2"' not in content, 'Found stale RouterOS 6.49.2 option in NOC-configMaker.html'
+    assert 'option value="6.45.2"' not in content, 'Found stale RouterOS 6.45.2 option in NOC-configMaker.html'
+    assert 'RouterOS generation baseline: 7.19.4 or newer' in content, 'Missing updated RouterOS baseline guidance in NOC-configMaker.html'
+
+
+def test_mikrotik_device_lookup_and_tarana_defaults_are_normalized():
+    content = UI_FILE.read_text(encoding='utf-8')
+    assert "function getDeviceConfig(deviceValue, fallbackKey = 'ccr2004')" in content, 'Missing shared normalized device-config helper in NOC-configMaker.html'
+    assert "const selectedDevice = getNormalizedDeviceKey(targetDevice || currentDevice, '');" in content, 'Missing normalized migration device key selection in NOC-configMaker.html'
+    assert "const targetDeviceConfig = getDeviceConfig(targetDevice, '');" in content, 'Missing normalized migration target-device config lookup in NOC-configMaker.html'
+    assert "function getTaranaRecommendedPortsForDevice(deviceValue)" in content, 'Missing shared Tarana default-port helper in NOC-configMaker.html'
+    assert "alpha: 'sfp28-8'" in content and "delta: 'sfp28-11'" in content, 'Missing consistent CCR2216 Tarana default ports in NOC-configMaker.html'
+
+
 
 if __name__ == '__main__':
     try:
@@ -187,6 +293,7 @@ if __name__ == '__main__':
         test_ftth_fiber_customer_and_cisco_generator_exist()
         test_routerboard_identity_prefixes_are_normalized()
         test_enterprise_uses_single_routerboard_source_of_truth()
+        test_tarana_tab_uses_shared_port_population_and_validates_bng1_inputs()
         test_nokia_configurator_is_truly_unified()
         test_sidebar_and_nokia_7250_layout_updates_exist()
         print('[OK] test_ftth_modal_exists')

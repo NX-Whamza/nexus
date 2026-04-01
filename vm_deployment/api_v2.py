@@ -25,12 +25,13 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Literal, Optional, Set, Tuple, Union
 from urllib.parse import urljoin
 
 import requests
-from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
 
 try:
     from mt_config_gen.mt_tower import MTTowerConfig
@@ -44,6 +45,1256 @@ from ido_adapter import merge_defaults as ido_merge_defaults
 
 
 router = APIRouter(prefix="/api/v2", tags=["NEXUS API v2"])
+
+
+class ErrorResponse(BaseModel):
+    detail: str = Field(
+        ...,
+        description="Human-readable error detail.",
+        examples=["Authentication required - missing or incorrect API key or Bearer token"],
+    )
+
+
+class EventItem(BaseModel):
+    ts: str = Field(..., description="RFC3339 UTC timestamp")
+    level: str = Field(..., description="Event level", examples=["info"])
+    message: str = Field(..., description="Event message")
+
+
+class JobSummary(BaseModel):
+    job_id: str = Field(..., description="Unique async job id")
+    request_id: str = Field(..., description="Request correlation id")
+    action: str = Field(..., description="Stable action id")
+    submitted_by: str = Field(..., description="Submitting API key id")
+    status: str = Field(..., description="Job lifecycle status")
+    created_at: str = Field(..., description="RFC3339 UTC timestamp")
+    started_at: Optional[str] = Field(default=None, description="RFC3339 UTC timestamp")
+    finished_at: Optional[str] = Field(default=None, description="RFC3339 UTC timestamp")
+    cancel_requested: bool = Field(..., description="Whether cancellation has been requested")
+    result: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+class JobDetail(JobSummary):
+    payload: Dict[str, Any]
+
+
+class HealthData(BaseModel):
+    legacy_api_base: str
+    legacy_health: Dict[str, Any]
+    ido_caps: Dict[str, Any]
+
+
+class HealthEnvelope(BaseModel):
+    request_id: str
+    status: str
+    message: str = ""
+    data: HealthData
+    errors: List[str] = Field(default_factory=list)
+    timestamp: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "request_id": "de34edce-f608-4f1c-a4d6-c76c113cd4e4",
+                "status": "degraded",
+                "message": "v2 health",
+                "data": {
+                    "legacy_api_base": "http://127.0.0.1:5000",
+                    "legacy_health": {"ok": False, "error": "Legacy API unreachable"},
+                    "ido_caps": {"ok": True, "status_code": 200},
+                },
+                "errors": [],
+                "timestamp": "2026-03-30T02:04:30.164Z",
+            }
+        }
+    )
+
+
+class ActionsData(BaseModel):
+    actions: List[str]
+    notes: Dict[str, str]
+
+
+class ActionsEnvelope(BaseModel):
+    request_id: str
+    status: str
+    message: str = ""
+    data: ActionsData
+    errors: List[str] = Field(default_factory=list)
+    timestamp: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "request_id": "b5f8c93f-0c66-4764-a651-c3a4302fcad8",
+                "status": "ok",
+                "message": "",
+                "data": {
+                    "actions": ["health.get", "ftth.generate_bng", "aviat.run"],
+                    "notes": {
+                        "mt.*": "Native renderer actions",
+                        "legacy.proxy": "Whitelisted generic proxy to legacy /api/* endpoint",
+                    },
+                },
+                "errors": [],
+                "timestamp": "2026-03-30T02:04:30.164Z",
+            }
+        }
+    )
+
+
+class WhoAmIData(BaseModel):
+    api_key: str
+    scopes: List[str]
+
+
+class WhoAmIEnvelope(BaseModel):
+    request_id: str
+    status: str
+    message: str = ""
+    data: WhoAmIData
+    errors: List[str] = Field(default_factory=list)
+    timestamp: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "request_id": "8ddf1092-21e5-4edf-a5f4-f4f53f8f0ec0",
+                "status": "ok",
+                "message": "",
+                "data": {"api_key": "omni-prod-key", "scopes": ["admin"]},
+                "errors": [],
+                "timestamp": "2026-03-30T02:04:30.164Z",
+            }
+        }
+    )
+
+
+class ResourceLink(BaseModel):
+    method: str
+    path: str
+
+
+class BootstrapData(BaseModel):
+    api_version: str
+    service: str
+    base_url_hint: str
+    methods_supported: List[str]
+    resources: Dict[str, ResourceLink]
+    notes: Dict[str, str]
+
+
+class BootstrapEnvelope(BaseModel):
+    request_id: str
+    status: str
+    message: str = ""
+    data: BootstrapData
+    errors: List[str] = Field(default_factory=list)
+    timestamp: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "request_id": "f913489f-97c8-4d5e-9ec7-4c6f5a4f1de5",
+                "status": "ok",
+                "message": "OMNI bootstrap contract",
+                "data": {
+                    "api_version": "v2",
+                    "service": "noc-configmaker",
+                    "base_url_hint": "/api/v2",
+                    "methods_supported": ["GET", "POST", "PUT", "PATCH"],
+                    "resources": {
+                        "health": {"method": "GET", "path": "/api/v2/omni/health"},
+                        "job_submit": {"method": "POST", "path": "/api/v2/omni/jobs"},
+                    },
+                    "notes": {
+                        "read_method": "READ maps to GET in HTTP semantics",
+                        "auth": "X-API-Key or Authorization: Bearer <key>",
+                        "idempotency": "Mutating endpoints require Idempotency-Key",
+                    },
+                },
+                "errors": [],
+                "timestamp": "2026-03-30T02:04:30.164Z",
+            }
+        }
+    )
+
+
+class WorkflowsData(BaseModel):
+    workflows: Dict[str, Any]
+    parity_doc: str
+    actions_count: int
+
+
+class WorkflowsEnvelope(BaseModel):
+    request_id: str
+    status: str
+    message: str = ""
+    data: WorkflowsData
+    errors: List[str] = Field(default_factory=list)
+    timestamp: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "request_id": "86d57fe9-a32e-44a3-bf33-eae2e8ff0f26",
+                "status": "ok",
+                "message": "OMNI workflow/action mappings",
+                "data": {
+                    "workflows": {"dashboard": {"health": "health.get"}},
+                    "parity_doc": "/docs/UI_API_PARITY.md",
+                    "actions_count": 90,
+                },
+                "errors": [],
+                "timestamp": "2026-03-30T02:04:30.164Z",
+            }
+        }
+    )
+
+
+class SubmitJobRequest(BaseModel):
+    action: str = Field(..., description="Stable action id from GET /api/v2/omni/actions")
+    payload: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Action-specific payload. If omitted, extra top-level fields are folded into payload.",
+    )
+
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
+            "examples": [
+                {
+                    "action": "ftth.generate_bng",
+                    "payload": {
+                        "deployment_type": "outstate",
+                        "router_identity": "RTR-MT2216-AR1.NE-WESTERN-WE-1",
+                        "loopback_ip": "10.249.7.137/32",
+                        "olt_network": "10.249.180.0/29",
+                        "olt_name_primary": "NE-WESTERN-MF2-1",
+                    },
+                },
+                {
+                    "action": "health.get",
+                    "payload": {
+                        "path": "/api/health",
+                        "method": "GET",
+                    },
+                },
+            ]
+        }
+    )
+
+
+class LegacyProxyPayload(BaseModel):
+    method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"] = Field(
+        ..., description="HTTP verb used when calling the whitelisted legacy backend route."
+    )
+    path: str = Field(..., description="Whitelisted legacy backend path beginning with /api/.")
+    params: Optional[Dict[str, Any]] = Field(default=None, description="Optional query parameters.")
+    headers: Optional[Dict[str, str]] = Field(default=None, description="Optional request headers.")
+    body: Optional[Dict[str, Any]] = Field(default=None, description="Optional JSON request body.")
+    timeout: int = Field(default=120, ge=1, le=600, description="Upstream timeout in seconds.")
+
+
+class HealthGetJobRequest(BaseModel):
+    action: Literal["health.get"] = Field(..., description="Run a health check against the published service surface.")
+    payload: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Health requests do not require a payload.",
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "health.get",
+                "payload": {},
+            }
+        }
+    )
+
+
+class LegacyProxyJobRequest(BaseModel):
+    action: Literal["legacy.proxy"] = Field(..., description="Generic legacy proxy for approved internal routes.")
+    payload: LegacyProxyPayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "legacy.proxy",
+                "payload": {
+                    "method": "GET",
+                    "path": "/api/health",
+                    "params": {},
+                    "timeout": 120,
+                },
+            }
+        }
+    )
+
+
+class FtthGenerateBngPayload(BaseModel):
+    deployment_type: str = Field(..., description="Template/deployment profile identifier selected by the tenant.")
+    router_identity: str = Field(..., description="Target router identity/hostname.")
+    loopback_ip: str = Field(..., description="Loopback address with prefix.")
+    olt_network: str = Field(..., description="Assigned OLT network block.")
+    olt_name_primary: str = Field(..., description="Primary OLT name.")
+    cpe_network: Optional[str] = Field(default=None, description="Subscriber-facing CPE network block.")
+    cgnat_private: Optional[str] = Field(default=None, description="Private CGNAT address space.")
+    access_policy: Optional[str] = Field(default=None, description="Tenant-defined policy/template reference.")
+    tenant_code: Optional[str] = Field(default=None, description="Tenant identifier for downstream automation.")
+
+
+class FtthGenerateBngJobRequest(BaseModel):
+    action: Literal["ftth.generate_bng"] = Field(..., description="Generate FTTH BNG configuration output.")
+    payload: FtthGenerateBngPayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "ftth.generate_bng",
+                "payload": {
+                    "deployment_type": "standard-bng",
+                    "router_identity": "RTR-EDGE-01",
+                    "loopback_ip": "10.249.7.137/32",
+                    "olt_network": "10.249.180.0/29",
+                    "olt_name_primary": "OLT-WEST-01",
+                    "cpe_network": "100.64.32.0/19",
+                    "cgnat_private": "100.64.0.0/10",
+                    "access_policy": "fiber-default",
+                    "tenant_code": "tenant-a",
+                },
+            }
+        }
+    )
+
+
+class FtthPreviewBngPayload(BaseModel):
+    loopback_ip: str = Field(..., description="Loopback address with prefix.")
+    cpe_cidr: str = Field(..., description="Subscriber/CPE CIDR block.")
+    cgnat_cidr: str = Field(..., description="CGNAT CIDR block.")
+
+
+class FtthPreviewBngJobRequest(BaseModel):
+    action: Literal["ftth.preview_bng"] = Field(..., description="Preview FTTH address plan outputs without generating config.")
+    payload: FtthPreviewBngPayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "ftth.preview_bng",
+                "payload": {
+                    "loopback_ip": "10.249.7.137/32",
+                    "cpe_cidr": "10.249.184.0/21",
+                    "cgnat_cidr": "100.64.0.0/10",
+                },
+            }
+        }
+    )
+
+
+class NokiaBackhaulItem(BaseModel):
+    name: str = Field(..., description="Backhaul interface or logical service name.")
+    peer_ip: Optional[str] = Field(default=None, description="Peer address when applicable.")
+    vlan: Optional[int] = Field(default=None, description="VLAN id when applicable.")
+    description: Optional[str] = Field(default=None, description="Tenant-facing description.")
+
+
+class NokiaGenerate7250Payload(BaseModel):
+    system_name: str = Field(..., description="Router hostname/system name.")
+    system_ip: str = Field(..., description="System loopback address.")
+    location: str = Field(..., description="Site or market label.")
+    backhauls: List[NokiaBackhaulItem] = Field(..., description="Backhaul definitions for the node.")
+    tenant_code: Optional[str] = Field(default=None, description="Tenant identifier for generated artifacts.")
+
+
+class NokiaGenerate7250JobRequest(BaseModel):
+    action: Literal["nokia.generate_7250"] = Field(..., description="Generate Nokia 7250 configuration output.")
+    payload: NokiaGenerate7250Payload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "nokia.generate_7250",
+                "payload": {
+                    "system_name": "PE1-WEST-01",
+                    "system_ip": "10.10.10.1",
+                    "location": "West Hub",
+                    "backhauls": [
+                        {"name": "to-core-a", "peer_ip": "10.10.20.1", "vlan": 2100, "description": "Primary uplink"}
+                    ],
+                    "tenant_code": "tenant-a",
+                },
+            }
+        }
+    )
+
+
+class TaranaGeneratePayload(BaseModel):
+    config: str = Field(..., description="Source configuration text or normalized device input.")
+    device: str = Field(..., description="Device or sector identifier.")
+    routeros_version: str = Field(..., description="Target RouterOS version.")
+    tenant_code: Optional[str] = Field(default=None, description="Tenant identifier for downstream automation.")
+
+
+class TaranaGenerateJobRequest(BaseModel):
+    action: Literal["tarana.generate"] = Field(..., description="Generate tenant-neutral Tarana configuration output.")
+    payload: TaranaGeneratePayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "tarana.generate",
+                "payload": {
+                    "config": "set interface ge-1/1/1 description backhaul",
+                    "device": "tarana-sector-a",
+                    "routeros_version": "7.16.2",
+                    "tenant_code": "tenant-a",
+                },
+            }
+        }
+    )
+
+
+class AviatRunPayload(BaseModel):
+    ips: List[str] = Field(..., description="Target radio management IP addresses.")
+    tasks: List[str] = Field(..., description="Requested maintenance tasks.")
+    firmware: Optional[str] = Field(default=None, description="Optional firmware target or package identifier.")
+    username: Optional[str] = Field(default=None, description="Device login username when required.")
+    password: Optional[str] = Field(default=None, description="Device login password when required.")
+    requested_by: Optional[str] = Field(default=None, description="Operator or calling system identity.")
+
+
+class AviatRunJobRequest(BaseModel):
+    action: Literal["aviat.run"] = Field(..., description="Run Aviat radio maintenance workflow.")
+    payload: AviatRunPayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "aviat.run",
+                "payload": {
+                    "ips": ["10.247.180.66"],
+                    "tasks": ["backup", "upgrade", "verify"],
+                    "firmware": "CTR-4.2.0",
+                    "requested_by": "omni-automation",
+                },
+            }
+        }
+    )
+
+
+class ConfigsSavePayload(BaseModel):
+    config_type: str = Field(..., description="Configuration family or generator type.")
+    device_name: str = Field(..., description="Operator-facing device identifier.")
+    device_type: str = Field(..., description="Platform/model identifier.")
+    loopback_ip: Optional[str] = Field(default=None, description="Loopback or management IP when applicable.")
+    config_content: str = Field(..., description="Rendered configuration text.")
+    site_name: Optional[str] = Field(default=None, description="Site or market label.")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional tenant-defined metadata.")
+
+
+class ConfigsSaveJobRequest(BaseModel):
+    action: Literal["configs.save"] = Field(..., description="Persist a generated configuration artifact.")
+    payload: ConfigsSavePayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "configs.save",
+                "payload": {
+                    "config_type": "tower-config",
+                    "device_name": "RTR-EDGE-01",
+                    "device_type": "CCR2004",
+                    "loopback_ip": "10.249.7.137/32",
+                    "config_content": "/system identity set name=RTR-EDGE-01",
+                    "site_name": "West Hub",
+                    "metadata": {"tenant_code": "tenant-a", "workflow": "mikrotik.render"},
+                },
+            }
+        }
+    )
+
+
+class ConfigsGetPayload(BaseModel):
+    config_id: int = Field(..., ge=1, description="Saved configuration record id.")
+
+
+class ConfigsGetJobRequest(BaseModel):
+    action: Literal["configs.get"] = Field(..., description="Fetch a saved configuration artifact by id.")
+    payload: ConfigsGetPayload
+
+    model_config = ConfigDict(
+        json_schema_extra={"example": {"action": "configs.get", "payload": {"config_id": 42}}}
+    )
+
+
+class DeviceFetchConfigSshPayload(BaseModel):
+    host: str = Field(..., description="Device hostname or management IP.")
+    port: int = Field(default=22, ge=1, le=65535, description="SSH port.")
+    username: str = Field(..., description="SSH username.")
+    password: str = Field(..., description="SSH password.")
+    command: str = Field(..., description="Read-only device command used to fetch running/exported config.")
+
+
+class DeviceFetchConfigSshJobRequest(BaseModel):
+    action: Literal["device.fetch_config_ssh"] = Field(..., description="Fetch device configuration over SSH.")
+    payload: DeviceFetchConfigSshPayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "device.fetch_config_ssh",
+                "payload": {
+                    "host": "10.249.10.10",
+                    "port": 22,
+                    "username": "admin",
+                    "password": "redacted",
+                    "command": "/export terse",
+                },
+            }
+        }
+    )
+
+
+class ComplianceApplyPayload(BaseModel):
+    config: str = Field(..., description="Rendered config text to be normalized or validated.")
+    loopback_ip: Optional[str] = Field(default=None, description="Loopback or router identifier used for policy matching.")
+    policy_name: Optional[str] = Field(default=None, description="Tenant policy/template reference.")
+
+
+class ComplianceApplyJobRequest(BaseModel):
+    action: Literal["compliance.apply"] = Field(..., description="Apply compliance overlays to generated configuration.")
+    payload: ComplianceApplyPayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "compliance.apply",
+                "payload": {
+                    "config": "/routing ospf instance set default router-id=10.249.7.137",
+                    "loopback_ip": "10.249.7.137/32",
+                    "policy_name": "standard-edge",
+                },
+            }
+        }
+    )
+
+
+class CompliancePolicyGetPayload(BaseModel):
+    policy_name: str = Field(..., description="Tenant policy/template identifier.")
+
+
+class CompliancePolicyGetJobRequest(BaseModel):
+    action: Literal["compliance.policies.get"] = Field(..., description="Fetch a single named compliance policy.")
+    payload: CompliancePolicyGetPayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {"action": "compliance.policies.get", "payload": {"policy_name": "standard-edge"}}
+        }
+    )
+
+
+class FeedbackSubmitPayload(BaseModel):
+    type: str = Field(..., description="Feedback type such as feedback, bug, or feature.")
+    rating: Optional[int] = Field(default=None, ge=1, le=5, description="Optional rating score.")
+    message: str = Field(..., description="User-facing feedback content.")
+    email: Optional[str] = Field(default=None, description="Contact email for follow-up.")
+    tab: Optional[str] = Field(default=None, description="UI tab/workflow where the feedback originated.")
+
+
+class FeedbackSubmitJobRequest(BaseModel):
+    action: Literal["feedback.submit"] = Field(..., description="Submit user feedback into the shared review queue.")
+    payload: FeedbackSubmitPayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "feedback.submit",
+                "payload": {
+                    "type": "feature",
+                    "rating": 5,
+                    "message": "Need tenant-specific defaults in the Nokia workflow.",
+                    "email": "ops@example.com",
+                    "tab": "nokia-configurator",
+                },
+            }
+        }
+    )
+
+
+class IdoPingPayload(BaseModel):
+    host: str = Field(..., description="Device management IP or hostname.")
+
+
+class IdoPingJobRequest(BaseModel):
+    action: Literal["ido.ping"] = Field(..., description="Ping a device through the IDO backend.")
+    payload: IdoPingPayload
+
+    model_config = ConfigDict(
+        json_schema_extra={"example": {"action": "ido.ping", "payload": {"host": "10.249.10.10"}}}
+    )
+
+
+class IdoDeviceInfoPayload(BaseModel):
+    host: str = Field(..., description="Device management IP or hostname.")
+    username: str = Field(..., description="Device login username.")
+    password: str = Field(..., description="Device login password.")
+
+
+class IdoGenericDeviceInfoJobRequest(BaseModel):
+    action: Literal["ido.generic.device_info"] = Field(..., description="Fetch generic device facts through IDO.")
+    payload: IdoDeviceInfoPayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "ido.generic.device_info",
+                "payload": {"host": "10.249.10.10", "username": "admin", "password": "redacted"},
+            }
+        }
+    )
+
+
+class NokiaConfiguratorPayload(BaseModel):
+    model: str = Field(..., description="Target Nokia platform or model.")
+    profile: str = Field(..., description="Tenant profile or template name.")
+    system_name: str = Field(..., description="Router/system hostname.")
+    system_ip: str = Field(..., description="System loopback IP address.")
+    tenant_code: Optional[str] = Field(default=None, description="Tenant identifier used for policy/template lookup.")
+
+
+class NokiaConfiguratorJobRequest(BaseModel):
+    action: Literal["nokia.configurator.generate"] = Field(
+        ..., description="Generate Nokia configurator output for the unified Nokia workflow."
+    )
+    payload: NokiaConfiguratorPayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "nokia.configurator.generate",
+                "payload": {
+                    "model": "7750",
+                    "profile": "edge-standard",
+                    "system_name": "PE1-WEST-01",
+                    "system_ip": "10.10.10.1",
+                    "tenant_code": "tenant-a",
+                },
+            }
+        }
+    )
+
+
+class ParseMikrotikForNokiaPayload(BaseModel):
+    config: str = Field(..., description="Raw MikroTik configuration or export text.")
+
+
+class ParseMikrotikForNokiaJobRequest(BaseModel):
+    action: Literal["migration.parse_mikrotik_for_nokia"] = Field(
+        ..., description="Parse MikroTik config into Nokia migration helper output."
+    )
+    payload: ParseMikrotikForNokiaPayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "migration.parse_mikrotik_for_nokia",
+                "payload": {"config": "/interface bridge\nadd name=bridge1"},
+            }
+        }
+    )
+
+
+class FtthFiberCustomerPayload(BaseModel):
+    routerboard: str = Field(..., description="Target routerboard model.")
+    routeros: str = Field(..., description="Target RouterOS version.")
+    provider: str = Field(..., description="Tenant/provider profile name.")
+    address: str = Field(..., description="Customer/service IP address.")
+    network: str = Field(..., description="Customer/service network block.")
+    port: Optional[str] = Field(default=None, description="Access port label.")
+    loopback_ip: Optional[str] = Field(default=None, description="Router loopback IP.")
+    vlan_mode: Optional[str] = Field(default=None, description="VLAN mode such as none or tagged.")
+    vlan_id: Optional[str] = Field(default=None, description="VLAN id when tagged.")
+    apply_compliance: bool = Field(default=True, description="Apply compliance overlays before returning output.")
+
+
+class FtthFiberCustomerJobRequest(BaseModel):
+    action: Literal["ftth.fiber_customer"] = Field(..., description="Generate FTTH fiber customer handoff configuration.")
+    payload: FtthFiberCustomerPayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "ftth.fiber_customer",
+                "payload": {
+                    "routerboard": "CCR2004",
+                    "routeros": "7.19.4",
+                    "provider": "tenant-a",
+                    "address": "132.147.10.2/30",
+                    "network": "132.147.10.0/30",
+                    "port": "sfp-sfpplus1",
+                    "vlan_mode": "tagged",
+                    "vlan_id": "2100",
+                    "apply_compliance": True,
+                },
+            }
+        }
+    )
+
+
+class FtthFiberSitePayload(BaseModel):
+    tower_name: str = Field(..., description="Site/tower name.")
+    loopback_1072: str = Field(..., description="Loopback for the 1072 node.")
+    loopback_1036: str = Field(..., description="Loopback for the 1036 node.")
+    bh1_subnet: str = Field(..., description="Primary backhaul subnet.")
+    link_1072_1036_a: str = Field(..., description="Link A between 1072 and 1036.")
+    link_1072_1036_b: str = Field(..., description="Link B between 1072 and 1036.")
+    fiber_port_ip: str = Field(..., description="Fiber uplink IP address.")
+    backhauls: Optional[List[Dict[str, Any]]] = Field(default=None, description="Optional additional backhaul definitions.")
+    apply_compliance: bool = Field(default=True, description="Apply compliance overlays before returning output.")
+
+
+class FtthFiberSiteJobRequest(BaseModel):
+    action: Literal["ftth.fiber_site"] = Field(..., description="Generate paired FTTH fiber site configurations.")
+    payload: FtthFiberSitePayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "ftth.fiber_site",
+                "payload": {
+                    "tower_name": "WEST-HUB",
+                    "loopback_1072": "10.249.50.1/32",
+                    "loopback_1036": "10.249.50.2/32",
+                    "bh1_subnet": "10.249.60.0/30",
+                    "link_1072_1036_a": "10.249.61.0/31",
+                    "link_1072_1036_b": "10.249.61.2/31",
+                    "fiber_port_ip": "10.249.62.1/30",
+                    "apply_compliance": True,
+                },
+            }
+        }
+    )
+
+
+class FtthIsdFiberPayload(BaseModel):
+    router_type: str = Field(..., description="Target router type.")
+    tower_name: str = Field(..., description="Site/tower name.")
+    loopback_subnet: str = Field(..., description="Loopback subnet or IP.")
+    private_ip: str = Field(..., description="Private service IP.")
+    public_ip: str = Field(..., description="Public service IP.")
+    fiber_port_ip: str = Field(..., description="Fiber port IP.")
+    backhauls: Optional[List[Dict[str, Any]]] = Field(default=None, description="Optional backhaul definitions.")
+    apply_compliance: bool = Field(default=True, description="Apply compliance overlays before returning output.")
+
+
+class FtthIsdFiberJobRequest(BaseModel):
+    action: Literal["ftth.isd_fiber"] = Field(..., description="Generate ISD fiber configuration and port map.")
+    payload: FtthIsdFiberPayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "ftth.isd_fiber",
+                "payload": {
+                    "router_type": "CCR1036",
+                    "tower_name": "WEST-HUB",
+                    "loopback_subnet": "10.249.70.1/32",
+                    "private_ip": "10.249.71.1/30",
+                    "public_ip": "132.147.20.1/30",
+                    "fiber_port_ip": "10.249.72.1/30",
+                    "apply_compliance": True,
+                },
+            }
+        }
+    )
+
+
+class BulkGeneratePayload(BaseModel):
+    config_type: str = Field(..., description="Generator/config type to run in bulk.")
+    rows: List[Dict[str, Any]] = Field(..., description="Normalized bulk input rows.")
+    save_completed: bool = Field(default=True, description="Persist generated configs after successful execution.")
+
+
+class BulkGenerateJobRequest(BaseModel):
+    action: Literal["bulk.generate"] = Field(..., description="Generate multiple configs in a single batch.")
+    payload: BulkGeneratePayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "bulk.generate",
+                "payload": {
+                    "config_type": "tower",
+                    "rows": [{"site_name": "WEST-HUB", "loopback_subnet": "10.249.7.137/32"}],
+                    "save_completed": True,
+                },
+            }
+        }
+    )
+
+
+class BulkSshFetchPayload(BaseModel):
+    rows: List[Dict[str, Any]] = Field(..., description="Bulk SSH fetch targets with host and credential fields.")
+    command: Optional[str] = Field(default=None, description="Optional override command used for each target.")
+
+
+class BulkSshFetchJobRequest(BaseModel):
+    action: Literal["bulk.ssh_fetch"] = Field(..., description="Fetch configs from multiple devices over SSH.")
+    payload: BulkSshFetchPayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "bulk.ssh_fetch",
+                "payload": {
+                    "rows": [{"host": "10.249.10.10", "username": "admin", "password": "redacted"}],
+                    "command": "/export terse",
+                },
+            }
+        }
+    )
+
+
+class BulkMigrationAnalyzePayload(BaseModel):
+    rows: List[Dict[str, Any]] = Field(..., description="Bulk migration source rows.")
+
+
+class BulkMigrationAnalyzeJobRequest(BaseModel):
+    action: Literal["bulk.migration_analyze"] = Field(..., description="Analyze multiple migration inputs before execution.")
+    payload: BulkMigrationAnalyzePayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "bulk.migration_analyze",
+                "payload": {"rows": [{"site_name": "WEST-HUB", "source_config": "/interface bridge add name=bridge1"}]},
+            }
+        }
+    )
+
+
+class BulkMigrationExecutePayload(BaseModel):
+    rows: List[Dict[str, Any]] = Field(..., description="Prepared migration execution rows.")
+    save_completed: bool = Field(default=True, description="Persist generated outputs after successful execution.")
+
+
+class BulkMigrationExecuteJobRequest(BaseModel):
+    action: Literal["bulk.migration_execute"] = Field(..., description="Execute a prepared bulk migration batch.")
+    payload: BulkMigrationExecutePayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "bulk.migration_execute",
+                "payload": {
+                    "rows": [{"site_name": "WEST-HUB", "source_config": "/interface bridge add name=bridge1"}],
+                    "save_completed": True,
+                },
+            }
+        }
+    )
+
+
+class BulkComplianceScanPayload(BaseModel):
+    rows: List[Dict[str, Any]] = Field(..., description="Configs or devices to scan in bulk.")
+    mode: Optional[str] = Field(default=None, description="Optional scan mode/profile.")
+
+
+class BulkComplianceScanJobRequest(BaseModel):
+    action: Literal["bulk.compliance_scan"] = Field(..., description="Run bulk compliance scanning workflow.")
+    payload: BulkComplianceScanPayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "bulk.compliance_scan",
+                "payload": {"rows": [{"site_name": "WEST-HUB", "config": "/routing ospf instance set default"}]},
+            }
+        }
+    )
+
+
+class SshPushConfigPayload(BaseModel):
+    rows: List[Dict[str, Any]] = Field(..., description="Target devices plus config content to push.")
+    dry_run: bool = Field(default=False, description="Validate connectivity without applying config.")
+
+
+class SshPushConfigJobRequest(BaseModel):
+    action: Literal["device.ssh_push_config"] = Field(..., description="Push prepared configs to multiple devices over SSH.")
+    payload: SshPushConfigPayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "device.ssh_push_config",
+                "payload": {
+                    "rows": [{"host": "10.249.10.10", "username": "admin", "password": "redacted", "config": "/system identity set name=RTR-EDGE-01"}],
+                    "dry_run": False,
+                },
+            }
+        }
+    )
+
+
+class CambiumRunPayload(BaseModel):
+    radios: List[Dict[str, Any]] = Field(..., description="Cambium radios queued for maintenance or upgrade.")
+    tasks: List[str] = Field(..., description="Requested task list such as backup, firmware, or verify.")
+    firmware_version: Optional[str] = Field(default=None, description="Target firmware version when applicable.")
+    firmware_source: Optional[str] = Field(default=None, description="Firmware catalog/source selector.")
+    requested_by: Optional[str] = Field(default=None, description="Operator or calling system identity.")
+
+
+class CambiumRunJobRequest(BaseModel):
+    action: Literal["cambium.run"] = Field(..., description="Run Cambium radio workflow for backup, firmware, and verification.")
+    payload: CambiumRunPayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "cambium.run",
+                "payload": {
+                    "radios": [{"ip": "10.247.180.66", "username": "admin", "password": "redacted"}],
+                    "tasks": ["backup", "firmware", "verify"],
+                    "firmware_version": "5.10.4-13433",
+                    "firmware_source": "stable",
+                    "requested_by": "omni-automation",
+                },
+            }
+        }
+    )
+
+
+class MikrotikToNokiaMigrationPayload(BaseModel):
+    source_config: str = Field(..., description="Source MikroTik configuration text.")
+    preserve_ips: bool = Field(default=True, description="Preserve source IP addressing during conversion.")
+    tenant_code: Optional[str] = Field(default=None, description="Tenant identifier for template/policy lookups.")
+
+
+class MikrotikToNokiaMigrationJobRequest(BaseModel):
+    action: Literal["migration.mikrotik_to_nokia"] = Field(
+        ..., description="Convert MikroTik configuration to Nokia SR OS format."
+    )
+    payload: MikrotikToNokiaMigrationPayload
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "action": "migration.mikrotik_to_nokia",
+                "payload": {
+                    "source_config": "/interface bridge add name=bridge1",
+                    "preserve_ips": True,
+                    "tenant_code": "tenant-a",
+                },
+            }
+        }
+    )
+
+
+PublishedSubmitJobRequest = Union[
+    HealthGetJobRequest,
+    LegacyProxyJobRequest,
+    FtthGenerateBngJobRequest,
+    FtthPreviewBngJobRequest,
+    NokiaGenerate7250JobRequest,
+    TaranaGenerateJobRequest,
+    AviatRunJobRequest,
+    ConfigsSaveJobRequest,
+    ConfigsGetJobRequest,
+    DeviceFetchConfigSshJobRequest,
+    ComplianceApplyJobRequest,
+    CompliancePolicyGetJobRequest,
+    FeedbackSubmitJobRequest,
+    IdoPingJobRequest,
+    IdoGenericDeviceInfoJobRequest,
+    NokiaConfiguratorJobRequest,
+    ParseMikrotikForNokiaJobRequest,
+    FtthFiberCustomerJobRequest,
+    FtthFiberSiteJobRequest,
+    FtthIsdFiberJobRequest,
+    BulkGenerateJobRequest,
+    BulkSshFetchJobRequest,
+    BulkMigrationAnalyzeJobRequest,
+    BulkMigrationExecuteJobRequest,
+    BulkComplianceScanJobRequest,
+    SshPushConfigJobRequest,
+    CambiumRunJobRequest,
+    MikrotikToNokiaMigrationJobRequest,
+    SubmitJobRequest,
+]
+
+
+class JobAcceptedData(BaseModel):
+    job_id: str
+    request_id: str
+    action: str
+    status: str
+
+
+class JobAcceptedEnvelope(BaseModel):
+    request_id: str
+    status: str
+    message: str = ""
+    data: JobAcceptedData
+    errors: List[str] = Field(default_factory=list)
+    timestamp: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "request_id": "9fcb9791-198c-43e3-8e5a-5f6aa7f15a03",
+                "status": "accepted",
+                "message": "Job accepted",
+                "data": {
+                    "job_id": "089d0977-cec4-4cd8-9961-5c2dc9bbb34f",
+                    "request_id": "9fcb9791-198c-43e3-8e5a-5f6aa7f15a03",
+                    "action": "ftth.generate_bng",
+                    "status": "queued",
+                },
+                "errors": [],
+                "timestamp": "2026-03-30T02:04:30.164Z",
+            }
+        }
+    )
+
+
+class JobsListData(BaseModel):
+    jobs: List[JobSummary]
+    count: int
+
+
+class JobsListEnvelope(BaseModel):
+    request_id: str
+    status: str
+    message: str = ""
+    data: JobsListData
+    errors: List[str] = Field(default_factory=list)
+    timestamp: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "request_id": "f8966fcb-98e2-44f8-8740-9ad2400c4bf7",
+                "status": "ok",
+                "message": "",
+                "data": {
+                    "jobs": [
+                        {
+                            "job_id": "089d0977-cec4-4cd8-9961-5c2dc9bbb34f",
+                            "request_id": "9fcb9791-198c-43e3-8e5a-5f6aa7f15a03",
+                            "action": "health.get",
+                            "submitted_by": "omni-prod-key",
+                            "status": "success",
+                            "created_at": "2026-03-30T02:04:30.164Z",
+                            "started_at": "2026-03-30T02:04:31.164Z",
+                            "finished_at": "2026-03-30T02:04:32.164Z",
+                            "cancel_requested": False,
+                            "result": {"http_status": 200, "ok": True},
+                            "error": None,
+                        }
+                    ],
+                    "count": 1,
+                },
+                "errors": [],
+                "timestamp": "2026-03-30T02:04:30.164Z",
+            }
+        }
+    )
+
+
+class JobDetailEnvelope(BaseModel):
+    request_id: str
+    status: str
+    message: str = ""
+    data: JobDetail
+    errors: List[str] = Field(default_factory=list)
+    timestamp: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "request_id": "15a4df1c-3f32-483b-ab59-2874521ca2f5",
+                "status": "ok",
+                "message": "",
+                "data": {
+                    "job_id": "089d0977-cec4-4cd8-9961-5c2dc9bbb34f",
+                    "request_id": "9fcb9791-198c-43e3-8e5a-5f6aa7f15a03",
+                    "action": "ftth.generate_bng",
+                    "submitted_by": "omni-prod-key",
+                    "status": "running",
+                    "created_at": "2026-03-30T02:04:30.164Z",
+                    "started_at": "2026-03-30T02:04:31.164Z",
+                    "finished_at": None,
+                    "cancel_requested": False,
+                    "result": None,
+                    "error": None,
+                    "payload": {"deployment_type": "outstate"},
+                },
+                "errors": [],
+                "timestamp": "2026-03-30T02:04:30.164Z",
+            }
+        }
+    )
+
+
+class JobEventsData(BaseModel):
+    job_id: str
+    status: str
+    events: List[EventItem]
+
+
+class JobEventsEnvelope(BaseModel):
+    request_id: str
+    status: str
+    message: str = ""
+    data: JobEventsData
+    errors: List[str] = Field(default_factory=list)
+    timestamp: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "request_id": "5a5e5db4-4ed6-4f26-ac87-d48eb7efc9f8",
+                "status": "ok",
+                "message": "",
+                "data": {
+                    "job_id": "089d0977-cec4-4cd8-9961-5c2dc9bbb34f",
+                    "status": "running",
+                    "events": [
+                        {"ts": "2026-03-30T02:04:30.164Z", "level": "info", "message": "Started action"},
+                        {"ts": "2026-03-30T02:04:31.164Z", "level": "success", "message": "Action completed"},
+                    ],
+                },
+                "errors": [],
+                "timestamp": "2026-03-30T02:04:30.164Z",
+            }
+        }
+    )
+
+
+class CancelJobData(BaseModel):
+    job_id: str
+    status: str
+    cancel_requested: bool
+
+
+class CancelJobEnvelope(BaseModel):
+    request_id: str
+    status: str
+    message: str = ""
+    data: CancelJobData
+    errors: List[str] = Field(default_factory=list)
+    timestamp: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "request_id": "7dc6cb40-fc08-4e53-ad4d-8afeb1fdf0e0",
+                "status": "ok",
+                "message": "Cancel request accepted",
+                "data": {
+                    "job_id": "089d0977-cec4-4cd8-9961-5c2dc9bbb34f",
+                    "status": "running",
+                    "cancel_requested": True,
+                },
+                "errors": [],
+                "timestamp": "2026-03-30T02:04:30.164Z",
+            }
+        }
+    )
+
+
+class PatchJobRequest(BaseModel):
+    op: Optional[str] = Field(default=None, description="Use 'cancel' to request cancellation.")
+    action: Optional[str] = Field(default=None, description="Legacy alias for op. 'stop' is also accepted.")
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {"op": "cancel"},
+                {"action": "stop"},
+            ]
+        }
+    )
+
+
+COMMON_ERROR_RESPONSES = {
+    400: {
+        "model": ErrorResponse,
+        "description": "Bad request / missing Idempotency-Key",
+        "content": {"application/json": {"example": {"detail": "Missing Idempotency-Key"}}},
+    },
+    401: {
+        "model": ErrorResponse,
+        "description": "Missing auth or invalid signing headers",
+        "content": {"application/json": {"example": {"detail": "Missing API key"}}},
+    },
+    403: {
+        "model": ErrorResponse,
+        "description": "Invalid API key or insufficient scope",
+        "content": {"application/json": {"example": {"detail": "Insufficient scope; need 'job.submit'"}}},
+    },
+    404: {
+        "model": ErrorResponse,
+        "description": "Resource not found",
+        "content": {"application/json": {"example": {"detail": "Job not found"}}},
+    },
+    409: {
+        "model": ErrorResponse,
+        "description": "Idempotency or replay conflict",
+        "content": {"application/json": {"example": {"detail": "Idempotency-Key reused with different payload"}}},
+    },
+    422: {
+        "model": ErrorResponse,
+        "description": "Validation failure",
+        "content": {"application/json": {"example": {"detail": "Missing 'action'"}}},
+    },
+    503: {
+        "model": ErrorResponse,
+        "description": "API key or signing config missing on server",
+        "content": {
+            "application/json": {
+                "example": {
+                    "detail": "API keys are not configured for /api/v2 (set NOC_API_KEYS_JSON or NOC_API_KEYS)"
+                }
+            }
+        },
+    },
+}
+
+
+PUBLIC_ACTION_NOTES: Dict[str, str] = {
+    "health.get": "Tenant-neutral health probe for the published service.",
+    "configs.save": "Persist rendered configuration artifacts and associated metadata.",
+    "configs.get": "Retrieve one saved configuration artifact by id.",
+    "ftth.generate_bng": "Generate FTTH BNG artifacts using tenant-selected templates and policy references.",
+    "ftth.preview_bng": "Preview FTTH address planning output before generation.",
+    "nokia.generate_7250": "Generate Nokia 7250 artifacts from tenant-neutral structured input.",
+    "tarana.generate": "Generate Tarana-related configuration output.",
+    "aviat.run": "Run Aviat maintenance workflow for backup, status, verification, and upgrade operations.",
+    "device.fetch_config_ssh": "Fetch current device configuration over SSH using operator-supplied credentials.",
+    "compliance.apply": "Apply compliance overlays or normalization rules to configuration text.",
+    "compliance.policies.get": "Retrieve a named tenant policy/template definition.",
+    "feedback.submit": "Submit operator feedback, bug reports, or feature requests.",
+    "ido.ping": "Probe device reachability through the IDO backend.",
+    "ido.generic.device_info": "Retrieve generic device facts through the IDO backend.",
+    "nokia.configurator.generate": "Generate Nokia configurator output for the unified Nokia workflow.",
+    "migration.parse_mikrotik_for_nokia": "Parse MikroTik exports into Nokia migration helper structures.",
+    "ftth.fiber_customer": "Generate FTTH customer handoff configuration.",
+    "ftth.fiber_site": "Generate paired FTTH fiber site configurations.",
+    "ftth.isd_fiber": "Generate ISD fiber configuration output.",
+    "bulk.generate": "Execute batch config generation workflow.",
+    "bulk.ssh_fetch": "Fetch device configs in bulk over SSH.",
+    "bulk.migration_analyze": "Analyze bulk migration inputs before execution.",
+    "bulk.migration_execute": "Execute bulk migration jobs.",
+    "bulk.compliance_scan": "Run compliance scan across a bulk input set.",
+    "device.ssh_push_config": "Push prepared configs to devices over SSH.",
+    "cambium.run": "Run Cambium backup, firmware, and verify workflow.",
+    "migration.mikrotik_to_nokia": "Convert MikroTik configuration into Nokia SR OS format.",
+    "legacy.proxy": "Escape hatch for approved internal routes while native contract coverage is completed.",
+}
 
 
 def _utc_now() -> datetime:
@@ -1605,6 +2856,7 @@ _ACTION_HANDLERS: Dict[str, Callable[[Dict[str, Any]], Any]] = {
     "configs.portmap.extract": _legacy_post("/api/extract-port-map"),
 
     # Migration / translation
+    "migration.parse_mikrotik_for_nokia": _legacy_post("/api/parse-mikrotik-for-nokia"),
     "migration.parse_mikrotik": _legacy_post("/api/parse-mikrotik-for-nokia"),
     "migration.mikrotik_to_nokia": _legacy_post("/api/migrate-mikrotik-to-nokia"),
     "migration.config": _legacy_post("/api/migrate-config"),
@@ -1622,9 +2874,13 @@ _ACTION_HANDLERS: Dict[str, Callable[[Dict[str, Any]], Any]] = {
     "ftth.generate_fiber_site": _legacy_post("/api/generate-ftth-fiber-site"),
     "ftth.generate_isd_fiber": _legacy_post("/api/generate-ftth-isd-fiber"),
     "ftth.mf2_package": _legacy_post("/api/ftth-home/mf2-package"),
+    "ftth.fiber_customer": _legacy_post("/api/generate-ftth-fiber-customer"),
+    "ftth.fiber_site": _legacy_post("/api/generate-ftth-fiber-site"),
+    "ftth.isd_fiber": _legacy_post("/api/generate-ftth-isd-fiber"),
 
     # Nokia
     "nokia.generate_7250": _legacy_post("/api/generate-nokia7250"),
+    "nokia.configurator.generate": _legacy_post("/api/generate-nokia-configurator"),
     "nokia.defaults": _legacy_get("/api/nokia7250-defaults"),
     "nokia.configurator.defaults": _legacy_get("/api/nokia-configurator-defaults"),
     "nokia.configurator.generate": _legacy_post("/api/generate-nokia-configurator"),
@@ -1653,6 +2909,14 @@ _ACTION_HANDLERS: Dict[str, Callable[[Dict[str, Any]], Any]] = {
     # Feedback
     "feedback.submit": _legacy_post("/api/feedback"),
     "feedback.status.mine": _legacy_get("/api/feedback/my-status"),
+
+    # Bulk / orchestration
+    "bulk.generate": _legacy_post("/api/bulk-generate"),
+    "bulk.ssh_fetch": _legacy_post("/api/bulk-ssh-fetch"),
+    "bulk.migration_analyze": _legacy_post("/api/bulk-migration-analyze"),
+    "bulk.migration_execute": _legacy_post("/api/bulk-migration-execute"),
+    "bulk.compliance_scan": _legacy_post("/api/bulk-compliance-scan"),
+    "device.ssh_push_config": _legacy_post("/api/ssh-push-config"),
 
     # Admin
     "admin.feedback.list": _legacy_get("/api/admin/feedback"),
@@ -1724,6 +2988,9 @@ _ACTION_HANDLERS: Dict[str, Callable[[Dict[str, Any]], Any]] = {
     "bulk.migration.analyze": _legacy_post("/api/bulk-migration-analyze"),
     "bulk.migration.execute": _legacy_post("/api/bulk-migration-execute"),
     "bulk.compliance.scan": _legacy_post("/api/bulk-compliance-scan"),
+
+    # Cambium
+    "cambium.run": _legacy_post("/api/cambium/run"),
 }
 
 
@@ -1755,6 +3022,14 @@ _NEXUS_WORKFLOWS: Dict[str, Any] = {
         "label": "Non-MPLS Enterprise",
         "delivery": "api",
         "actions": ["enterprise.generate_non_mpls"],
+    },
+    "nokia_7250": {
+        "defaults": "nokia.defaults",
+        "generate": "nokia.generate_7250",
+        "configurator_generate": "nokia.configurator.generate",
+        "generate_ido": "ido.nokia7250.generate",
+        "parse_mikrotik": "migration.parse_mikrotik_for_nokia",
+        "migrate_from_mikrotik": "migration.mikrotik_to_nokia",
     },
     "mpls_enterprise": {
         "label": "MPLS Enterprise",
@@ -1832,6 +3107,30 @@ _NEXUS_WORKFLOWS: Dict[str, Any] = {
             "config.translate",
             "config.autofill_from_export",
         ],
+    },
+    "ftth": {
+        "preview_bng": "ftth.preview_bng",
+        "generate_bng": "ftth.generate_bng",
+        "mf2_package": "ftth.mf2_package",
+        "fiber_customer": "ftth.fiber_customer",
+        "fiber_site": "ftth.fiber_site",
+        "isd_fiber": "ftth.isd_fiber",
+    },
+    "bulk_operations": {
+        "generate": "bulk.generate",
+        "ssh_fetch": "bulk.ssh_fetch",
+        "migration_analyze": "bulk.migration_analyze",
+        "migration_execute": "bulk.migration_execute",
+        "compliance_scan": "bulk.compliance_scan",
+        "ssh_push_config": "device.ssh_push_config",
+    },
+    "cambium": {
+        "run": "cambium.run",
+    },
+    "tenant_api_direction": {
+        "label": "Tenant-neutral contract direction",
+        "delivery": "api",
+        "notes": "Payloads should use tenant templates, policies, and explicit addressing inputs instead of provider-specific hidden defaults.",
     },
     "aviat_backhaul": {
         "label": "Aviat Backhaul Updater",
@@ -2355,11 +3654,35 @@ def _job_to_dict(job: JobRecord, include_payload: bool = False, include_events: 
     return out
 
 
+def _request_model_to_action_payload(payload: BaseModel) -> Tuple[str, Dict[str, Any]]:
+    payload_dict = payload.model_dump(exclude_none=True)
+    action = str(payload_dict.get("action") or "").strip()
+    if not action:
+        raise HTTPException(status_code=422, detail="Missing 'action'")
+
+    job_payload = payload_dict.get("payload")
+    if isinstance(job_payload, BaseModel):
+        job_payload = job_payload.model_dump(exclude_none=True)
+
+    if isinstance(job_payload, dict):
+        return action, job_payload
+
+    extra_payload: Dict[str, Any] = {}
+    model_extra = getattr(payload, "model_extra", None) or {}
+    if isinstance(model_extra, dict):
+        extra_payload.update({k: v for k, v in model_extra.items() if k != "action"})
+
+    for key, value in payload_dict.items():
+        if key != "action":
+            extra_payload.setdefault(key, value)
+    return action, extra_payload
+
+
 def _normalize_idempotency_key(value: Optional[str]) -> str:
     return (value or "").strip()
 
 
-@router.get("/health")
+@router.get("/health", include_in_schema=False)
 def v2_health(_: Dict[str, Any] = Depends(_require_scope("health.read"))):
     checks: Dict[str, Any] = {"legacy_api_base": _legacy_api_base(), "legacy_health": {"ok": False}, "ido_caps": {"ok": False}}
     try:
@@ -2379,7 +3702,13 @@ def v2_health(_: Dict[str, Any] = Depends(_require_scope("health.read"))):
     return _envelope(status=status, data=checks, message="v2 health")
 
 
-@router.get("/omni/health")
+@router.get(
+    "/omni/health",
+    response_model=HealthEnvelope,
+    summary="Health check",
+    tags=["OMNI Health"],
+    responses=COMMON_ERROR_RESPONSES,
+)
 def v2_omni_health(_: Dict[str, Any] = Depends(_require_scope("health.read"))):
     return v2_health(_)
 
@@ -2389,23 +3718,30 @@ def v2_nexus_health(_: Dict[str, Any] = Depends(_require_scope("health.read"))):
     return v2_health(_)
 
 
-@router.get("/actions")
+@router.get("/actions", include_in_schema=False)
 def v2_actions(_: Dict[str, Any] = Depends(_require_scope("actions.read"))):
     return _envelope(
         status="ok",
         data={
             "actions": sorted(_ACTION_HANDLERS.keys()),
             "notes": {
-                "mt.*": "Native renderer actions",
+                **PUBLIC_ACTION_NOTES,
+                "mt.*": "Native renderer actions for MikroTik-oriented configuration workflows.",
+                "activity.list/configs.list": "Convenience wrappers for common list endpoints.",
                 "legacy.proxy": "Whitelisted generic proxy to legacy /api/* endpoint",
-                "activity.list/configs.list": "Convenience wrappers for common list endpoints",
                 "frontend_only_tabs": "See /api/v2/nexus/workflows for tabs that still need backend promotion",
             },
         },
     )
 
 
-@router.get("/omni/actions")
+@router.get(
+    "/omni/actions",
+    response_model=ActionsEnvelope,
+    summary="List supported actions",
+    tags=["OMNI Discovery"],
+    responses=COMMON_ERROR_RESPONSES,
+)
 def v2_omni_actions(_: Dict[str, Any] = Depends(_require_scope("actions.read"))):
     return v2_actions(_)
 
@@ -2415,12 +3751,18 @@ def v2_nexus_actions(_: Dict[str, Any] = Depends(_require_scope("actions.read"))
     return v2_actions(_)
 
 
-@router.get("/whoami")
+@router.get("/whoami", include_in_schema=False)
 def v2_whoami(auth: Dict[str, Any] = Depends(_require_scope("health.read"))):
     return _envelope(status="ok", data={"api_key": auth["api_key"], "scopes": auth["scopes"]})
 
 
-@router.get("/omni/whoami")
+@router.get(
+    "/omni/whoami",
+    response_model=WhoAmIEnvelope,
+    summary="Show current API identity",
+    tags=["OMNI Discovery"],
+    responses=COMMON_ERROR_RESPONSES,
+)
 def v2_omni_whoami(auth: Dict[str, Any] = Depends(_require_scope("health.read"))):
     return v2_whoami(auth)
 
@@ -2430,7 +3772,13 @@ def v2_nexus_whoami(auth: Dict[str, Any] = Depends(_require_scope("health.read")
     return v2_whoami(auth)
 
 
-@router.get("/omni/bootstrap")
+@router.get(
+    "/omni/bootstrap",
+    response_model=BootstrapEnvelope,
+    summary="Bootstrap contract metadata",
+    tags=["OMNI Discovery"],
+    responses=COMMON_ERROR_RESPONSES,
+)
 def v2_omni_bootstrap(auth: Dict[str, Any] = Depends(_require_scope("actions.read"))):
     return v2_nexus_bootstrap(auth)
 
@@ -2460,19 +3808,26 @@ def v2_nexus_bootstrap(auth: Dict[str, Any] = Depends(_require_scope("actions.re
             },
             "notes": {
                 "read_method": "READ maps to GET in HTTP semantics",
-                "auth": "X-API-Key + HMAC signature headers",
+                "auth": "Use X-API-Key or Authorization: Bearer <key>; signing headers are optional unless tenant policy requires them.",
                 "idempotency": "Mutating endpoints require Idempotency-Key",
                 "compatibility_aliases": [
                     "/api/v2/jobs",
                     "/api/v2/omni/jobs",
                 ],
+                "tenant_model": "Public payloads should reference tenant templates/policies instead of provider-specific hardcoded behavior.",
             },
         },
         message="NEXUS bootstrap contract",
     )
 
 
-@router.get("/omni/workflows")
+@router.get(
+    "/omni/workflows",
+    response_model=WorkflowsEnvelope,
+    summary="List workflow to action mappings",
+    tags=["OMNI Discovery"],
+    responses=COMMON_ERROR_RESPONSES,
+)
 def v2_omni_workflows(_: Dict[str, Any] = Depends(_require_scope("actions.read"))):
     return v2_nexus_workflows(_)
 
@@ -2697,10 +4052,10 @@ def v2_nexus_delete_maintenance_window(
     return _envelope(status="ok", data={"window_id": window_id}, message="Maintenance window deleted")
 
 
-@router.post("/jobs")
+@router.post("/jobs", include_in_schema=False)
 def v2_submit_job(
     request: Request,
-    payload: Dict[str, Any] = Body(default_factory=dict, openapi_examples=_JOB_SUBMIT_OPENAPI_EXAMPLES),
+    payload: SubmitJobRequest = Body(...),
     idempotency_key: Optional[str] = Header(default=None, alias="Idempotency-Key"),
     auth: Dict[str, Any] = Depends(_require_scope("job.submit")),
 ):
@@ -2721,12 +4076,7 @@ def v2_submit_job(
             status_code, body = existing
             return JSONResponse(status_code=status_code, content=body)
 
-    action = (payload.get("action") or "").strip()
-    if not action:
-        raise HTTPException(status_code=422, detail="Missing 'action'")
-    job_payload = payload.get("payload")
-    if not isinstance(job_payload, dict):
-        job_payload = {k: v for k, v in payload.items() if k != "action"}
+    action, job_payload = _request_model_to_action_payload(payload)
     rid = request.headers.get("X-Request-ID") or _request_id()
     job = _JOBS.submit(action=action, payload=job_payload, submitted_by=auth["api_key"], request_id=rid)
     response_body = _envelope(
@@ -2753,16 +4103,29 @@ def v2_submit_job(
     return JSONResponse(status_code=202, content=response_body)
 
 
-@router.post("/omni/jobs")
+@router.post(
+    "/omni/jobs",
+    response_model=JobAcceptedEnvelope,
+    status_code=202,
+    summary="Submit async job",
+    tags=["OMNI Jobs"],
+    responses=COMMON_ERROR_RESPONSES,
+)
 def v2_omni_submit_job(
     request: Request,
-    payload: Dict[str, Any] = Body(default_factory=dict, openapi_examples=_JOB_SUBMIT_OPENAPI_EXAMPLES),
+    payload: PublishedSubmitJobRequest = Body(
+        ...,
+        description=(
+            "Curated published job contract. High-value actions use explicit tenant-neutral payload schemas; "
+            "the generic action+payload fallback remains available for actions not yet modeled."
+        ),
+    ),
     idempotency_key: Optional[str] = Header(default=None, alias="Idempotency-Key"),
     auth: Dict[str, Any] = Depends(_require_scope("job.submit")),
 ):
     return v2_submit_job(
         request=request,
-        payload=payload,
+        payload=SubmitJobRequest.model_validate(payload.model_dump(exclude_none=True)),
         idempotency_key=idempotency_key,
         auth=auth,
     )
@@ -2771,7 +4134,7 @@ def v2_omni_submit_job(
 @router.post("/nexus/jobs")
 def v2_nexus_submit_job(
     request: Request,
-    payload: Dict[str, Any] = Body(default_factory=dict, openapi_examples=_JOB_SUBMIT_OPENAPI_EXAMPLES),
+    payload: SubmitJobRequest = Body(..., openapi_examples=_JOB_SUBMIT_OPENAPI_EXAMPLES),
     idempotency_key: Optional[str] = Header(default=None, alias="Idempotency-Key"),
     auth: Dict[str, Any] = Depends(_require_scope("job.submit")),
 ):
@@ -2783,9 +4146,9 @@ def v2_nexus_submit_job(
     )
 
 
-@router.get("/jobs")
+@router.get("/jobs", include_in_schema=False)
 def v2_list_jobs(
-    limit: int = 100,
+    limit: int = Query(default=100, ge=1, le=500, description="Maximum number of jobs to return"),
     auth: Dict[str, Any] = Depends(_require_scope("job.read")),
 ):
     _ = auth
@@ -2793,9 +4156,15 @@ def v2_list_jobs(
     return _envelope(status="ok", data={"jobs": rows, "count": len(rows)})
 
 
-@router.get("/omni/jobs")
+@router.get(
+    "/omni/jobs",
+    response_model=JobsListEnvelope,
+    summary="List jobs",
+    tags=["OMNI Jobs"],
+    responses=COMMON_ERROR_RESPONSES,
+)
 def v2_omni_list_jobs(
-    limit: int = 100,
+    limit: int = Query(default=100, ge=1, le=500, description="Maximum number of jobs to return"),
     auth: Dict[str, Any] = Depends(_require_scope("job.read")),
 ):
     return v2_list_jobs(limit=limit, auth=auth)
@@ -2809,7 +4178,7 @@ def v2_nexus_list_jobs(
     return v2_list_jobs(limit=limit, auth=auth)
 
 
-@router.get("/jobs/{job_id}")
+@router.get("/jobs/{job_id}", include_in_schema=False)
 def v2_get_job(job_id: str, auth: Dict[str, Any] = Depends(_require_scope("job.read"))):
     _ = auth
     job = _JOBS.get(job_id)
@@ -2818,7 +4187,13 @@ def v2_get_job(job_id: str, auth: Dict[str, Any] = Depends(_require_scope("job.r
     return _envelope(status="ok", data=_job_to_dict(job, include_payload=True, include_events=False))
 
 
-@router.get("/omni/jobs/{job_id}")
+@router.get(
+    "/omni/jobs/{job_id}",
+    response_model=JobDetailEnvelope,
+    summary="Get job detail",
+    tags=["OMNI Jobs"],
+    responses=COMMON_ERROR_RESPONSES,
+)
 def v2_omni_get_job(job_id: str, auth: Dict[str, Any] = Depends(_require_scope("job.read"))):
     return v2_get_job(job_id=job_id, auth=auth)
 
@@ -2828,7 +4203,7 @@ def v2_nexus_get_job(job_id: str, auth: Dict[str, Any] = Depends(_require_scope(
     return v2_get_job(job_id=job_id, auth=auth)
 
 
-@router.get("/jobs/{job_id}/events")
+@router.get("/jobs/{job_id}/events", include_in_schema=False)
 def v2_get_job_events(job_id: str, auth: Dict[str, Any] = Depends(_require_scope("job.read"))):
     _ = auth
     job = _JOBS.get(job_id)
@@ -2844,7 +4219,13 @@ def v2_get_job_events(job_id: str, auth: Dict[str, Any] = Depends(_require_scope
     )
 
 
-@router.get("/omni/jobs/{job_id}/events")
+@router.get(
+    "/omni/jobs/{job_id}/events",
+    response_model=JobEventsEnvelope,
+    summary="Get job event stream snapshot",
+    tags=["OMNI Jobs"],
+    responses=COMMON_ERROR_RESPONSES,
+)
 def v2_omni_get_job_events(job_id: str, auth: Dict[str, Any] = Depends(_require_scope("job.read"))):
     return v2_get_job_events(job_id=job_id, auth=auth)
 
@@ -2854,7 +4235,7 @@ def v2_nexus_get_job_events(job_id: str, auth: Dict[str, Any] = Depends(_require
     return v2_get_job_events(job_id=job_id, auth=auth)
 
 
-@router.post("/jobs/{job_id}/cancel")
+@router.post("/jobs/{job_id}/cancel", include_in_schema=False)
 def v2_cancel_job(
     request: Request,
     job_id: str,
@@ -2899,7 +4280,13 @@ def v2_cancel_job(
     return response_body
 
 
-@router.post("/omni/jobs/{job_id}/cancel")
+@router.post(
+    "/omni/jobs/{job_id}/cancel",
+    response_model=CancelJobEnvelope,
+    summary="Cancel job via POST",
+    tags=["OMNI Jobs"],
+    responses=COMMON_ERROR_RESPONSES,
+)
 def v2_omni_cancel_job(
     request: Request,
     job_id: str,
@@ -2929,7 +4316,7 @@ def v2_nexus_cancel_job(
     )
 
 
-@router.put("/jobs/{job_id}/cancel")
+@router.put("/jobs/{job_id}/cancel", include_in_schema=False)
 def v2_cancel_job_put(
     request: Request,
     job_id: str,
@@ -2944,7 +4331,13 @@ def v2_cancel_job_put(
     )
 
 
-@router.put("/omni/jobs/{job_id}/cancel")
+@router.put(
+    "/omni/jobs/{job_id}/cancel",
+    response_model=CancelJobEnvelope,
+    summary="Cancel job via PUT",
+    tags=["OMNI Jobs"],
+    responses=COMMON_ERROR_RESPONSES,
+)
 def v2_omni_cancel_job_put(
     request: Request,
     job_id: str,
@@ -2974,15 +4367,15 @@ def v2_nexus_cancel_job_put(
     )
 
 
-@router.patch("/jobs/{job_id}")
+@router.patch("/jobs/{job_id}", include_in_schema=False)
 def v2_patch_job(
     request: Request,
     job_id: str,
-    payload: Dict[str, Any] = Body(default_factory=dict),
+    payload: PatchJobRequest = Body(...),
     idempotency_key: Optional[str] = Header(default=None, alias="Idempotency-Key"),
     auth: Dict[str, Any] = Depends(_require_scope("job.cancel")),
 ):
-    op = str(payload.get("op") or payload.get("action") or "").strip().lower()
+    op = str(payload.op or payload.action or "").strip().lower()
     if op not in {"cancel", "stop"}:
         raise HTTPException(status_code=422, detail="Supported PATCH ops: cancel")
     return v2_cancel_job(
@@ -2993,11 +4386,17 @@ def v2_patch_job(
     )
 
 
-@router.patch("/omni/jobs/{job_id}")
+@router.patch(
+    "/omni/jobs/{job_id}",
+    response_model=CancelJobEnvelope,
+    summary="Cancel job via PATCH",
+    tags=["OMNI Jobs"],
+    responses=COMMON_ERROR_RESPONSES,
+)
 def v2_omni_patch_job(
     request: Request,
     job_id: str,
-    payload: Dict[str, Any] = Body(default_factory=dict),
+    payload: PatchJobRequest = Body(...),
     idempotency_key: Optional[str] = Header(default=None, alias="Idempotency-Key"),
     auth: Dict[str, Any] = Depends(_require_scope("job.cancel")),
 ):

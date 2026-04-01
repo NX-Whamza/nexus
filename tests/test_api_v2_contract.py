@@ -146,7 +146,7 @@ def test_openapi_contains_nexus_job_examples(monkeypatch):
     assert "/api/v2/nexus/jobs" in schema["paths"]
     req = schema["paths"]["/api/v2/nexus/jobs"]["post"]["requestBody"]["content"]["application/json"]["schema"]
     examples = schema["paths"]["/api/v2/nexus/jobs"]["post"]["requestBody"]["content"]["application/json"]["examples"]
-    assert req["type"] == "object"
+    assert req.get("type") == "object" or "$ref" in req
     assert "switch_generate_mikrotik" in examples
     assert "nokia_configurator_generate" in examples
     assert "enterprise_generate_mpls" in examples
