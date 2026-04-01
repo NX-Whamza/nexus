@@ -47,6 +47,7 @@ def test_docs_openapi_contains_nexus_contract_endpoints_only():
     assert "/api/v2/nexus/bootstrap" in paths
     assert "/api/v2/nexus/workflows" in paths
     assert "/api/v2/nexus/catalog/actions" in paths
+    assert "/api/v2/nexus/tenant/defaults" in paths
     assert "/api/v2/nexus/jobs" in paths
     assert "/api/v2/nexus/jobs/{job_id}" in paths
     assert "/api/v2/nexus/jobs/{job_id}/events" in paths

@@ -63,6 +63,10 @@ try:
 except Exception:
     from vm_deployment.routes.ftth import create_ftth_blueprint
     from vm_deployment.routes.runtime import create_runtime_blueprint
+try:
+    from tenant_defaults import load_infrastructure_defaults, load_nokia_defaults
+except Exception:
+    from vm_deployment.tenant_defaults import load_infrastructure_defaults, load_nokia_defaults
 
 # Ensure local module imports work regardless of process working directory.
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -10886,13 +10890,7 @@ def nokia7250_defaults():
     Return Nokia 7250 credentials/secrets from environment variables.
     Frontend fetches these at generate-time so secrets are never hardcoded in HTML.
     """
-    return jsonify({
-        'snmp_community': os.getenv('NOKIA7250_SNMP_COMMUNITY', '').strip(),
-        'nlroot_pw':      os.getenv('NOKIA7250_NLROOT_PW', '').strip(),
-        'admin_pw':       os.getenv('NOKIA7250_ADMIN_PW', '').strip(),
-        'bgp_auth_key':   os.getenv('NOKIA7250_BGP_AUTH_KEY', '').strip(),
-        'ospf_auth_key':  os.getenv('NOKIA7250_OSPF_AUTH_KEY', '').strip() or os.getenv('NOKIA7250_BGP_AUTH_KEY', '').strip(),
-    })
+    return jsonify(load_nokia_defaults())
 
 
 @app.route('/api/nokia-configurator-defaults', methods=['GET'])
@@ -10901,13 +10899,7 @@ def nokia_configurator_defaults():
 
 
 def _get_nokia_configurator_creds():
-    return {
-        'snmp_community': os.getenv('NOKIA7250_SNMP_COMMUNITY', '').strip(),
-        'nlroot_pw': os.getenv('NOKIA7250_NLROOT_PW', '').strip(),
-        'admin_pw': os.getenv('NOKIA7250_ADMIN_PW', '').strip(),
-        'bgp_auth_key': os.getenv('NOKIA7250_BGP_AUTH_KEY', '').strip(),
-        'ospf_auth_key': os.getenv('NOKIA7250_OSPF_AUTH_KEY', '').strip() or os.getenv('NOKIA7250_BGP_AUTH_KEY', '').strip(),
-    }
+    return load_nokia_defaults()
 
 
 def _nokia_config_header(title: str):
@@ -13906,37 +13898,7 @@ def infrastructure_config():
     This endpoint can include operational defaults/secrets (e.g., RADIUS secret) so NOC users
     don't have to manually paste them into the UI, improving consistency and reducing human error.
     """
-    def _csv(value: str):
-        return [v.strip() for v in (value or '').split(',') if v.strip()]
-
-    dns_primary = os.getenv('NEXTLINK_DNS_PRIMARY', '142.147.112.3').strip()
-    dns_secondary = os.getenv('NEXTLINK_DNS_SECONDARY', '142.147.112.19').strip()
-    shared_key = os.getenv('NEXTLINK_SHARED_KEY', '').strip()
-
-    radius_secret = os.getenv('NEXTLINK_RADIUS_SECRET', 'Nl22021234').strip() or 'Nl22021234'
-    radius_dhcp_servers = _csv(os.getenv('NEXTLINK_RADIUS_DHCP_SERVERS', ''))
-    radius_login_servers = _csv(os.getenv('NEXTLINK_RADIUS_LOGIN_SERVERS', ''))
-
-    # If a secret is provided but server lists are not, ship common defaults.
-    if radius_secret and not radius_dhcp_servers and not radius_login_servers:
-        radius_dhcp_servers = ['142.147.112.17', '142.147.112.18']
-        radius_login_servers = ['142.147.112.17', '142.147.112.18']
-
-    return jsonify({
-        'dns_servers': {
-            'primary': dns_primary,
-            'secondary': dns_secondary,
-        },
-        'shared_key': shared_key or None,
-        'snmp': {
-            'contact': os.getenv('NEXTLINK_SNMP_CONTACT', 'netops@team.nxlink.com').strip(),
-        },
-        'radius': {
-            'secret': radius_secret,
-            'dhcp_servers': radius_dhcp_servers,
-            'login_servers': radius_login_servers,
-        },
-    })
+    return jsonify(load_infrastructure_defaults())
 
 @app.route('/api/feedback/my-status', methods=['GET'])
 def get_my_feedback_status():

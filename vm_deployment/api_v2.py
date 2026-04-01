@@ -42,6 +42,10 @@ except Exception:
 
 from ido_adapter import apply_compliance as ido_apply_compliance
 from ido_adapter import merge_defaults as ido_merge_defaults
+try:
+    from tenant_defaults import load_tenant_defaults
+except Exception:
+    from vm_deployment.tenant_defaults import load_tenant_defaults
 
 
 router = APIRouter(prefix="/api/v2", tags=["NEXUS API v2"])
@@ -1267,6 +1271,7 @@ COMMON_ERROR_RESPONSES = {
 
 PUBLIC_ACTION_NOTES: Dict[str, str] = {
     "health.get": "Tenant-neutral health probe for the published service.",
+    "tenant.defaults.get": "Retrieve shared tenant defaults and audit metadata for UI/API consumers.",
     "configs.save": "Persist rendered configuration artifacts and associated metadata.",
     "configs.get": "Retrieve one saved configuration artifact by id.",
     "ftth.generate_bng": "Generate FTTH BNG artifacts using tenant-selected templates and policy references.",
@@ -2828,6 +2833,7 @@ _ACTION_HANDLERS: Dict[str, Callable[[Dict[str, Any]], Any]] = {
 
     # Dashboard / shared reads
     "health.get": _legacy_get("/api/health"),
+    "tenant.defaults.get": _legacy_get("/api/tenant/defaults"),
     "app.config.get": _legacy_get("/api/app-config"),
     "infrastructure.get": _legacy_get("/api/infrastructure"),
     "routerboards.list": _legacy_get("/api/get-routerboards"),
@@ -3620,6 +3626,14 @@ _NEXUS_ACTION_CATALOG: Dict[str, Dict[str, Any]] = {
             "ticket_url": "https://example.invalid/NOC-1234",
         },
     },
+    "tenant.defaults.get": {
+        "tab": "Home / Defaults",
+        "delivery": "api",
+        "summary": "Return tenant-neutral shared defaults, policy metadata, and audit hints.",
+        "backend_path": "/api/v2/nexus/tenant/defaults",
+        "tenant_ready": True,
+        "payload_example": {},
+    },
 }
 
 _JOB_SUBMIT_OPENAPI_EXAMPLES: Dict[str, Any] = {
@@ -3860,6 +3874,15 @@ def v2_nexus_catalog_actions(_: Dict[str, Any] = Depends(_require_scope("actions
             "coverage_note": "Tabs marked frontend_only in /api/v2/nexus/workflows still need backend promotion before Omni-native UI parity.",
         },
         message="NEXUS action catalog",
+    )
+
+
+@router.get("/nexus/tenant/defaults", tags=["NEXUS Discovery"], summary="Get tenant defaults")
+def v2_nexus_tenant_defaults(_: Dict[str, Any] = Depends(_require_scope("actions.read"))):
+    return _envelope(
+        status="ok",
+        data=load_tenant_defaults(include_sensitive=False),
+        message="Tenant defaults",
     )
 
 
