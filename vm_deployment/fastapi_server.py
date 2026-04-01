@@ -50,7 +50,15 @@ from ido_adapter import (
     get_templates as ido_get_templates,
     merge_defaults as ido_merge_defaults,
 )
-from api_v2 import router as api_v2_router
+from api_v2 import (
+    router as api_v2_router,
+    _command_vault_catalog,
+    _maintenance_create,
+    _maintenance_delete,
+    _maintenance_get,
+    _maintenance_list,
+    _maintenance_update,
+)
 
 
 @asynccontextmanager
@@ -673,7 +681,7 @@ async def ido_proxy(target_path: str, request: Request):
             return JSONResponse(content=_ido_local_generic(ip, _ido_to_bool(qp.get("run_tests"), False)))
         raise HTTPException(
             status_code=503,
-            detail=f"IDO backend URL is not configured. Embedded fallback supports only /api/ping and /api/generic/device_info (requested: {rel})",
+            detail=f"Device-access backend URL is not configured. Embedded fallback supports only /api/ping and /api/generic/device_info (requested: {rel})",
         )
 
     url = urljoin(backend_url.rstrip("/") + "/", target_path.lstrip("/"))
@@ -896,6 +904,42 @@ def ido_render(config_type: str, payload: Dict[str, Any] = Body(default_factory=
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/api/maintenance/windows")
+def maintenance_windows_list(status: str = "all", limit: int = 250):
+    return JSONResponse(content={"windows": _maintenance_list(status=status, limit=limit)})
+
+
+@app.post("/api/maintenance/windows")
+def maintenance_windows_create(payload: Dict[str, Any] = Body(default_factory=dict)):
+    created_by = "nexus-ui"
+    try:
+        created_by = (payload.get("created_by") or payload.get("createdBy") or "nexus-ui").strip() or "nexus-ui"
+    except Exception:
+        pass
+    return JSONResponse(content=_maintenance_create(payload, created_by=created_by), status_code=201)
+
+
+@app.get("/api/maintenance/windows/{window_id}")
+def maintenance_windows_get(window_id: str):
+    return JSONResponse(content=_maintenance_get(window_id))
+
+
+@app.put("/api/maintenance/windows/{window_id}")
+def maintenance_windows_update(window_id: str, payload: Dict[str, Any] = Body(default_factory=dict)):
+    return JSONResponse(content=_maintenance_update(window_id, payload))
+
+
+@app.delete("/api/maintenance/windows/{window_id}")
+def maintenance_windows_delete(window_id: str):
+    _maintenance_delete(window_id)
+    return JSONResponse(content={"window_id": window_id, "status": "deleted"})
+
+
+@app.post("/api/command-vault/catalog")
+def command_vault_catalog(payload: Dict[str, Any] = Body(default_factory=dict)):
+    return JSONResponse(content=_command_vault_catalog(payload))
 
 
 # Mount all existing Flask routes at root

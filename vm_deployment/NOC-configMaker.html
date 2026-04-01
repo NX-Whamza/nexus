@@ -4608,7 +4608,7 @@
                         <!-- NEW MODE HINT -->
                         <div id="newModeHint"
                             style="padding: 12px; background: #e8f5e9; border-radius: 4px; font-size: 14px;">
-                             <strong>New Device:</strong> Fill form below, click Generate. Nextlink defaults will be
+                             <strong>New Device:</strong> Fill form below, click Generate. Tenant defaults will be
                             auto-loaded.
                         </div>
 
@@ -5485,7 +5485,7 @@
                             <input type="text" id="snmpCommunity" value="" placeholder="Enter SNMP community">
                             <label for="dhcpSecret">DHCP Secret:</label>
                             <input type="text" id="dhcpSecret" placeholder="Enter DHCP secret" value="">
-                            <label for="dnsServers">DNS Servers (comma-separated, NextLink DNS servers):</label>
+                            <label for="dnsServers">DNS Servers (comma-separated):</label>
                             <input type="text" id="dnsServers" value=""
                                 placeholder="Enter DNS servers (comma-separated)">
                         </div>
@@ -5530,7 +5530,7 @@
                 <div class="container">
                     <h1>Field Config Studio</h1>
                     <p style="color: var(--text-color-secondary); margin-bottom: 14px;">
-                        Unified device configurator workspace (ported from netlaunch Configure tools). Uses IDO proxy backends.
+                        Unified device configurator workspace for shared device-access backends and tenant-aware provisioning flows.
                     </p>
                     <div class="ido-tools-card">
                         <div class="ido-tools-header">
@@ -5591,7 +5591,7 @@
             <div class="content-pane" id="enterprise-pane">
                 <div class="container">
                     <h1> Non-MPLS Enterprise Configuration Generator</h1>
-                    <p style="text-align: center; color: var(--text-color);">Nextlink-compliant enterprise customer
+                    <p style="text-align: center; color: var(--text-color);">Policy-compliant enterprise customer
                         configuration with standardized port assignments and simplified IP routing (no MPLS/BGP/OSPF).
                     </p>
                     <p
@@ -5868,7 +5868,7 @@
                              Generate Enterprise Configuration
                         </button>
                         <div style="margin-top: 10px; font-size: 14px; color: #666;">
-                            Includes automatic validation, AI suggestions, and Nextlink policy compliance
+                            Includes automatic validation, AI suggestions, and tenant policy compliance
                         </div>
 
                         <!-- Status Display -->
@@ -5918,7 +5918,7 @@
             <div class="content-pane" id="enterprise-mpls-pane">
                 <div class="container">
                     <h1> MPLS Enterprise Configuration Generator</h1>
-                    <p style="text-align: center; color: var(--text-color);">Nextlink-compliant MPLS enterprise
+                    <p style="text-align: center; color: var(--text-color);">Policy-compliant MPLS enterprise
                         configuration with OSPF, BGP, VPLS, and standardized port assignments.</p>
                     <p
                         style="text-align: center; color: var(--text-color-secondary); font-size: 14px; margin-top: 10px;">
@@ -6066,7 +6066,7 @@
             <div class="content-pane" id="ccr2004-pane">
                 <div class="container">
                     <h1> 6GHz Configuration Generator</h1>
-                    <p style="text-align: center; color: var(--text-color);">Nextlink-compliant 6GHz switch
+                    <p style="text-align: center; color: var(--text-color);">Policy-compliant 6GHz switch
                         configuration with VLAN 3000/4000, standardized port assignments, bonding, and DHCP pools.</p>
                     <p
                         style="text-align: center; color: var(--text-color-secondary); font-size: 14px; margin-top: 10px;">
@@ -6135,7 +6135,7 @@
                                 <div>
                                     <label for="ghz_dns">DNS Servers:</label>
                                     <input type="text" id="ghz_dns"
-                                        placeholder="NextLink DNS servers (comma-separated)">
+                                        placeholder="Platform DNS servers (comma-separated)">
                                 </div>
                             </div>
 
@@ -6284,7 +6284,7 @@
                             <div style="margin-bottom: 20px;">
                                 <label style="display:flex; align-items:center; gap:10px;">
                                     <input type="checkbox" id="switch_maker_apply_compliance" checked>
-                                    Apply Nextlink compliance blocks
+                                    Apply policy compliance blocks
                                 </label>
                             </div>
 
@@ -6398,7 +6398,7 @@
                             <div style="margin-bottom: 20px;">
                                 <label style="display:flex; align-items:center; gap:10px;">
                                     <input type="checkbox" id="switch_outstate_apply_compliance" checked>
-                                    Apply Nextlink compliance blocks
+                                    Apply policy compliance blocks
                                 </label>
                             </div>
 
@@ -6486,7 +6486,7 @@
             <div class="content-pane" id="tarana-pane">
                 <div class="container">
                     <h1> Tarana Sector Configuration Generator</h1>
-                    <p style="text-align: center; color: var(--text-color);">Nextlink-compliant Tarana sector
+                    <p style="text-align: center; color: var(--text-color);">Policy-compliant Tarana sector
                         configuration with standardized port assignments for ALPHA/BETA/GAMMA/DELTA sectors.</p>
                     <p
                         style="text-align: center; color: var(--text-color-secondary); font-size: 14px; margin-top: 10px;">
@@ -6677,7 +6677,7 @@
             <div class="content-pane" id="enterprise-feeding-pane">
                 <div class="container">
                     <h1> Enterprise Feeding Side Configuration</h1>
-                    <p style="text-align: center; color: var(--text-color);">Nextlink-compliant enterprise uplink
+                    <p style="text-align: center; color: var(--text-color);">Policy-compliant enterprise uplink
                         provisioning with standardized port assignments and commercial/enterprise configurations.</p>
                     <p
                         style="text-align: center; color: var(--text-color-secondary); font-size: 14px; margin-top: 10px;">
@@ -8188,7 +8188,7 @@
                             </div>
                             <label style="display:flex; align-items:center; gap:8px; margin-top: 14px; cursor:pointer;">
                                 <input type="checkbox" id="ftthFiberApplyCompliance" checked>
-                                <span>Apply Nextlink compliance blocks</span>
+                                <span>Apply policy compliance blocks</span>
                             </label>
                             <div style="margin-top: 16px; display:flex; gap:10px; flex-wrap:wrap;">
                                 <button type="button" onclick="generateFtthFiberCustomerConfig()" style="background: var(--accent-color); color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">Generate Fiber Customer Config</button>
@@ -8234,7 +8234,7 @@
                             </div>
                             <label style="display:flex; align-items:center; gap:8px; margin-top: 14px; cursor:pointer;">
                                 <input type="checkbox" id="ftthSiteApplyCompliance" checked>
-                                <span>Apply Nextlink compliance blocks to both router configs</span>
+                                <span>Apply policy compliance blocks to both router configs</span>
                             </label>
                             <div class="section" style="margin-top: 18px;">
                                 <h3 style="margin-top: 0;">Backhauls</h3>
@@ -8279,7 +8279,7 @@
                             </div>
                             <label style="display:flex; align-items:center; gap:8px; margin-top: 14px; cursor:pointer;">
                                 <input type="checkbox" id="ftthIsdApplyCompliance" checked>
-                                <span>Apply Nextlink compliance blocks</span>
+                                <span>Apply policy compliance blocks</span>
                             </label>
                             <div class="section" style="margin-top: 18px;">
                                 <h3 style="margin-top: 0;">Backhauls</h3>
@@ -8648,7 +8648,7 @@
                             placeholder="Search commands (example: lease, sdp, stp, ipoe, sla)..."
                             oninput="filterNokiaVaultCommands()">
 
-                        <div class="command-guide-grid">
+                        <div class="command-guide-grid" id="nokiaVault7750Grid">
                             <article class="command-guide-card nokia-command-card" data-search="ipoe session sap plan ip session type mac">
                                 <h4>Lookup IPOE Session/SAP/Plan/IP/Session Type</h4>
                                 <p>MAC must be lowercase.</p>
@@ -8783,7 +8783,7 @@
                         placeholder="Search Cisco commands (example: bgp, ospf, interface, route, arp)..."
                         oninput="filterCiscoVaultCommands()">
 
-                    <div class="command-guide-grid">
+                    <div class="command-guide-grid" id="ciscoVaultGrid">
                         <article class="command-guide-card cisco-command-card" data-search="interface status up down error">
                             <h4>Interface Status Overview</h4>
                             <p>Quick health check for all interfaces.</p>
@@ -8886,7 +8886,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                         oninput="filterMikrotikVaultCommands()">
 
                     <h3 style="margin: 4px 0 10px;">Hierarchy Map (Top-Level Paths)</h3>
-                    <div class="command-hierarchy-grid">
+                    <div class="command-hierarchy-grid" id="mikrotikVaultGrid">
                         <div class="command-hierarchy-item mikrotik-command-card" data-search="interface bridge vlan ethernet bonding vpls">
                             <code>/interface *</code>
                             <span>Physical and logical interfaces: ethernet, bridge, vlan, bonding, vpls, bridge ports.</span>
@@ -9500,7 +9500,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:20px">
                 <div>
                     <h1 style="margin:0;color:var(--text-color);">🛡️ Compliance Scanner</h1>
-                    <p style="margin:4px 0 0;color:var(--text-color-secondary);font-size:13px">Scan device configs against <strong>RFC-09-10-25</strong> NextLink standards — 22 hard checks + 4 soft checks</p>
+                    <p style="margin:4px 0 0;color:var(--text-color-secondary);font-size:13px">Scan device configs against your configured policy baseline — 22 hard checks + 4 soft checks</p>
                 </div>
             </div>
 
@@ -9745,13 +9745,13 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
         style="position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg-color); border-top: 2px solid var(--border-color); z-index: 1000; max-height: 70vh; overflow-y: auto; display: none; box-shadow: 0 -2px 10px rgba(0,0,0,0.2);">
         <div style="padding: 20px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                <h2 style="margin: 0; color: var(--text-color);"> Nextlink Policy Reference</h2>
+                <h2 style="margin: 0; color: var(--text-color);"> Policy Reference</h2>
                 <button onclick="togglePolicyReference()"
                     style="background: #dc3545; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold;">
                     Close</button>
             </div>
             <div id="policyContent" style="color: var(--text-color); line-height: 1.6;">
-                <p><strong>This tool automatically follows Nextlink Internet Policy for all generated
+                <p><strong>This tool automatically follows your configured network policy for all generated
                         configurations.</strong></p>
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 20px;">
@@ -9914,15 +9914,15 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     style="margin-top: 30px; padding: 20px; background: var(--container-bg); border-radius: 8px; border-left: 4px solid #2196F3; border: 1px solid var(--border-color);">
                     <h3 style="color: var(--text-color); margin-top: 0;">General Policy Principles</h3>
                     <ul style="margin-bottom: 0;">
-                        <li><strong>Device Port Assignments:</strong> Based on RouterBoard model and Nextlink standards
+                        <li><strong>Device Port Assignments:</strong> Based on RouterBoard model and configured policy standards
                         </li>
-                        <li><strong>IP Address Management:</strong> Dynamic calculation following Nextlink conventions
+                        <li><strong>IP Address Management:</strong> Dynamic calculation following configured policy conventions
                         </li>
-                        <li><strong>OSPF/BGP Configuration:</strong> Compliant with Nextlink routing policies</li>
-                        <li><strong>Firewall Rules:</strong> Standard Nextlink security baselines</li>
+                        <li><strong>OSPF/BGP Configuration:</strong> Compliant with configured routing policies</li>
+                        <li><strong>Firewall Rules:</strong> Standard security baselines</li>
                         <li><strong>DHCP Pools:</strong> Calculated dynamically based on subnet size</li>
-                        <li><strong>VLAN Assignments:</strong> Following Nextlink VLAN standards</li>
-                        <li><strong>MPLS/VPLS:</strong> Configured per Nextlink enterprise policies</li>
+                        <li><strong>VLAN Assignments:</strong> Following configured VLAN standards</li>
+                        <li><strong>MPLS/VPLS:</strong> Configured per your enterprise policy set</li>
                     </ul>
                 </div>
 
@@ -9936,9 +9936,9 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
     <!-- Policy Reference Toggle Button (moved to sidebar) -->
     <button onclick="togglePolicyReference()" id="policyToggleBtn" style="display:none !important;"></button>
 
-    <!-- Nextlink Constants - Inlined -->
+    <!-- Tenant Constants - Inlined -->
     <script>
-        // Nextlink Configuration Constants (Inlined from nextlink_constants.js)
+        // Tenant configuration constants (inlined from nextlink_constants.js)
         const NEXTLINK_INFRASTRUCTURE = {
             dnsServers: {
                 primary: '142.147.112.3',
@@ -9963,7 +9963,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
         function getSyslogServer() { return NEXTLINK_INFRASTRUCTURE.syslogServer; }
         function getNtpServers() { return NEXTLINK_INFRASTRUCTURE.ntpServers; }
 
-        console.log('Nextlink constants loaded (inlined)');
+        console.log('Tenant default constants loaded (inlined)');
     </script>
     <script>
         // ========================================
@@ -10323,7 +10323,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
         }
 
         function getDNSList() {
-            // Get DNS servers from NextLink infrastructure configuration (no fallbacks)
+            // Get DNS servers from infrastructure configuration (no fallbacks)
             const primary = getInfrastructureValue('dnsServers.primary', '');
             const secondary = getInfrastructureValue('dnsServers.secondary', '');
             if (!primary || !secondary) {
@@ -11522,7 +11522,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 const vlan4000Subnet = document.getElementById('ghz_subnet4000').value.trim();
                 const poolOffset = parseInt(document.getElementById('ghz_poolOffset').value || '0', 10);
 
-                // Get DNS from user input or NextLink infrastructure
+                // Get DNS from user input or infrastructure defaults
                 let dnsServers = document.getElementById('ghz_dns').value.trim();
                 if (!dnsServers) {
                     dnsServers = getDNSList();
@@ -16346,7 +16346,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     if (summary) summary.textContent = `Status: ${configured} | Backend: ${backend} | Excluded: ${excluded}`;
                     if (typeof renderFieldConfigToolState === 'function') renderFieldConfigToolState();
                 } catch (err) {
-                    if (summary) summary.textContent = `IDO status check failed: ${err.message}`;
+                    if (summary) summary.textContent = `Device access status check failed: ${err.message}`;
                     window.__idoCapabilities = { configured: false, embedded_endpoints: ['/api/ping', '/api/generic/device_info'] };
                     if (typeof renderFieldConfigToolState === 'function') renderFieldConfigToolState();
                 }
@@ -16442,7 +16442,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             const FIELD_CONFIG_TOOL_MAP = {
                 'ap': {
                     label: 'AP',
-                    desc: 'AP preview and live configure using the IDO AP backend.',
+                    desc: 'AP preview and live configure using the shared device-access backend.',
                     deviceTypes: ['CNEP3K', 'CNEP3KL', 'CN4600', 'TYN301'],
                     primaryActionLabel: 'Configure',
                     actions: {
@@ -16454,7 +16454,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 },
                 'sm': {
                     label: 'SM',
-                    desc: 'SM preview and live configure using the IDO AP backend.',
+                    desc: 'SM preview and live configure using the shared device-access backend.',
                     deviceTypes: ['F4600C', 'F4525', 'F300-13', 'F300-16', 'F300-25', 'F300-CSM', 'TYN302'],
                     primaryActionLabel: 'Configure',
                     actions: {
@@ -16815,7 +16815,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 }
                 const caps = window.__idoCapabilities || {};
                 if (!caps.configured) {
-                    setFieldConfigStatus(`Active tool: ${tool.label} | IDO backend not configured. Only embedded fallback endpoints are available.`);
+                    setFieldConfigStatus(`Active tool: ${tool.label} | device-access backend not configured. Only embedded fallback endpoints are available.`);
                 } else {
                     setFieldConfigStatus(`Active tool: ${tool.label}`);
                 }
@@ -16830,7 +16830,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     return;
                 }
                 if (!isFieldActionAvailableByCapabilities(action.path)) {
-                    throw new Error(`IDO backend is not configured for ${tool.label} ${actionKey}. Configure NETLAUNCH_IDO_BACKEND_URL or enable integrated IDO service in backend.`);
+                    throw new Error(`Device-access backend is not configured for ${tool.label} ${actionKey}. Configure NETLAUNCH_IDO_BACKEND_URL or enable the integrated backend service.`);
                 }
 
                 const inputs = getFieldConfigInputs();
@@ -18122,7 +18122,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 const time = timestamp.split('T')[1].split('.')[0];
 
                 let header = `# ========================================\n`;
-                header += `# NextLink MikroTik Configuration Generator\n`;
+                header += `# NEXUS MikroTik Configuration Generator\n`;
                 header += `# ========================================\n`;
                 header += `# Site: ${siteName}\n`;
                 header += `# Target Device: ${deviceConfig.name}\n`;
@@ -18133,7 +18133,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     header += `# RouterOS Upgrade: ${currentRouterOS}  ${targetRouterOS}\n`;
                 }
                 header += `# Generated: ${date} ${time} UTC\n`;
-                header += `# Compliance: NextLink Standards\n`;
+                header += `# Compliance: Tenant Policy Standards\n`;
                 header += `# Features: ${deviceConfig.features.join(', ')}\n`;
                 header += `# Max Uplinks: ${deviceConfig.maxUplinks}\n`;
                 header += `# Ports: ${deviceConfig.ports.length} ethernet, ${deviceConfig.sfpPorts.length} SFP+\n`;
@@ -18853,7 +18853,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             }
 
             // Initialize all event handlers and main functionality
-            console.log('NextLink MikroTik Configuration Generator v2.0 Loaded');
+            console.log('NEXUS MikroTik Configuration Generator v2.0 loaded');
             console.log('Device Support: RB1009, RB2011, CCR1036, RB5009, CCR2004, CCR2216');
             console.log('RouterOS generation baseline: 7.19.4 or newer');
             console.log('Features: Dynamic device selection, compliance validation, auto-configuration');
@@ -19118,7 +19118,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             const natSel = document.getElementById('ent_natInterface');
             const bhSel = document.getElementById('ent_backhaulInterface');
 
-            // Auto-select interfaces based on device type and Nextlink policy
+            // Auto-select interfaces based on device type and tenant policy
             let publicPort, natPort, backhaulPort;
             const profile = getEnterpriseDeviceProfile(dev);
 
@@ -19436,10 +19436,10 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                         }
                     }
 
-                    updateProgressStep('Generating configuration with Nextlink policy compliance...');
+                    updateProgressStep('Generating configuration with tenant policy compliance...');
                     updateProgressPercent(45);
-                    addProgressLog('info', 'Applying Nextlink standards and policies');
-                    showAIStatus(' Generating configuration with Nextlink policy compliance...', 'info');
+                    addProgressLog('info', 'Applying tenant policy standards and defaults');
+                    showAIStatus(' Generating configuration with tenant policy compliance...', 'info');
 
                     // Stage 2: Generate final config
                     startedEnterpriseGeneration = true;
@@ -19454,10 +19454,10 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                         addProgressLog('warning', 'AI suggestions unavailable; continuing without suggestions');
                         showAIStatus('AI suggestions unavailable; generating config without them...', 'warning');
 
-                        updateProgressStep('Generating configuration with Nextlink policy compliance...');
+                        updateProgressStep('Generating configuration with tenant policy compliance...');
                         updateProgressPercent(45);
-                        addProgressLog('info', 'Applying Nextlink standards and policies');
-                        showAIStatus('Generating configuration with Nextlink policy compliance...', 'info');
+                        addProgressLog('info', 'Applying tenant policy standards and defaults');
+                        showAIStatus('Generating configuration with tenant policy compliance...', 'info');
 
                         startedEnterpriseGeneration = true;
                         return robustFetch(`${AI_API_BASE}/gen-enterprise-non-mpls`, {
@@ -19874,7 +19874,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     }
                 });
             }
-            // Get DNS and syslog from NextLink infrastructure configuration (no fallbacks)
+            // Get DNS and syslog from infrastructure configuration (no fallbacks)
             const dnsList = getDNSList();
             if (!dnsList) {
                 alert('DNS servers must be configured in nextlink_constants.js. Please configure dnsServers.primary and dnsServers.secondary.');
@@ -27746,6 +27746,93 @@ Ready for translation!`);
         // ========================================
         // COMMAND VAULT
         // ========================================
+        function escapeVaultText(value) {
+            if (typeof window.escHtml === 'function') return window.escHtml(value == null ? '' : String(value));
+            return String(value == null ? '' : value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function getCommandVaultApiBase() {
+            return (typeof resolveApiBase === 'function')
+                ? resolveApiBase()
+                : ((typeof AI_API_BASE !== 'undefined' ? AI_API_BASE : window.AI_API_BASE) || '/api');
+        }
+
+        function buildCommandVaultCardHtml(entry, options = {}) {
+            const title = escapeVaultText(entry?.title || 'Command');
+            const command = escapeVaultText(entry?.command || '');
+            const note = escapeVaultText(entry?.note || options.defaultNote || 'Quick copy command reference.');
+            const tags = Array.isArray(entry?.tags) ? entry.tags.join(' ') : '';
+            const cardClass = options.cardClass || 'command-guide-card';
+            const escapedCommandLiteral = JSON.stringify(String(entry?.command || ''));
+            return `<article class="${cardClass}" data-search="${escapeVaultText(`${title} ${tags} ${entry?.command || ''}`)}">
+                <h4>${title}</h4>
+                <p>${note}</p>
+                <div class="command-snippet">${command}</div>
+                <div class="command-card-actions">
+                    <button type="button" class="command-copy-btn" onclick='copyVaultCommand(this, ${escapedCommandLiteral})'>Copy</button>
+                </div>
+            </article>`;
+        }
+
+        function applyCommandVaultCatalogResults(results) {
+            if (!Array.isArray(results) || !results.length) return;
+            results.forEach(family => {
+                const familyKey = family?.family;
+                if (familyKey === 'nokia') {
+                    const bngSection = Array.isArray(family.sections) ? family.sections.find(section => section.key === '7750-bng') : null;
+                    const grid = document.getElementById('nokiaVault7750Grid');
+                    if (grid && Array.isArray(bngSection?.entries) && bngSection.entries.length) {
+                        grid.innerHTML = bngSection.entries.map(entry => buildCommandVaultCardHtml(entry, {
+                            cardClass: 'command-guide-card nokia-command-card',
+                            defaultNote: 'Backend-published Nokia command reference.'
+                        })).join('');
+                    }
+                } else if (familyKey === 'cisco') {
+                    const section = Array.isArray(family.sections) ? family.sections.find(item => item.type === 'family_entries') : null;
+                    const grid = document.getElementById('ciscoVaultGrid');
+                    if (grid && Array.isArray(section?.entries) && section.entries.length) {
+                        grid.innerHTML = section.entries.map(entry => buildCommandVaultCardHtml(entry, {
+                            cardClass: 'command-guide-card cisco-command-card',
+                            defaultNote: 'Backend-published Cisco command reference.'
+                        })).join('');
+                    }
+                } else if (familyKey === 'mikrotik') {
+                    const section = Array.isArray(family.sections) ? family.sections.find(item => item.type === 'family_entries') : null;
+                    const grid = document.getElementById('mikrotikVaultGrid');
+                    if (grid && Array.isArray(section?.entries) && section.entries.length) {
+                        grid.innerHTML = section.entries.map(entry => {
+                            const command = String(entry?.command || '');
+                            const title = String(entry?.title || 'Command');
+                            return `<div class="command-hierarchy-item mikrotik-command-card" data-search="${escapeVaultText(`${title} ${command} ${(entry?.tags || []).join(' ')}`)}">
+                                <code>${escapeVaultText(command)}</code>
+                                <span>${escapeVaultText(entry?.note || title)}</span>
+                            </div>`;
+                        }).join('');
+                    }
+                }
+            });
+        }
+
+        async function syncCommandVaultCatalog() {
+            try {
+                const resp = await fetch(`${getCommandVaultApiBase()}/command-vault/catalog`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const data = await resp.json();
+                applyCommandVaultCatalogResults(data.results || []);
+            } catch (error) {
+                console.warn('[COMMAND VAULT] Backend catalog sync failed; using bundled UI catalog.', error);
+            }
+        }
+
         function setCommandVaultSubTabState(tabKey) {
             const sections = document.querySelectorAll('#command-vault-pane .command-vault-section');
             const tabs = document.querySelectorAll('#command-vault-pane .command-vault-tab');
@@ -27840,6 +27927,7 @@ Ready for translation!`);
             if (!pane.querySelector('.command-vault-section.active')) {
                 setCommandVaultSubTabState('nokia');
             }
+            syncCommandVaultCatalog();
             // Initialize Nokia sub-tab dropdown
             initNokiaVaultDropdown();
         }
@@ -32652,13 +32740,61 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
         /* ──────────────────────────────────────────────────
            6. SCHEDULED MAINTENANCE
            ────────────────────────────────────────────────── */
-        const MAINT_KEY = 'noc_maintenance_windows';
+        const MAINT_KEY = 'nexus_maintenance_windows_cache';
         let maintWindows = [];
 
-        function maintLoad() {
-            try { maintWindows = JSON.parse(localStorage.getItem(MAINT_KEY) || '[]'); } catch { maintWindows = []; }
+        function normalizeMaintWindow(raw) {
+            return {
+                id: raw.window_id || raw.id,
+                name: raw.name || '',
+                scheduledAt: raw.scheduled_at || raw.scheduledAt || '',
+                duration: raw.duration_minutes || raw.duration || 120,
+                priority: raw.priority || 'normal',
+                devices: Array.isArray(raw.devices) ? raw.devices : [],
+                tasks: Array.isArray(raw.tasks) ? raw.tasks : [],
+                notes: raw.notes || '',
+                ticketNum: raw.ticket_number || raw.ticketNum || '',
+                ticketUrl: raw.ticket_url || raw.ticketUrl || '',
+                status: raw.status || 'scheduled',
+                createdAt: raw.created_at || raw.createdAt || '',
+                updatedAt: raw.updated_at || raw.updatedAt || '',
+                createdBy: raw.created_by || raw.createdBy || 'nexus-ui'
+            };
         }
         function maintSave() { localStorage.setItem(MAINT_KEY, JSON.stringify(maintWindows)); }
+        async function maintLoad() {
+            const apiBase = (typeof resolveApiBase === 'function') ? resolveApiBase() : ((typeof AI_API_BASE !== 'undefined' ? AI_API_BASE : window.AI_API_BASE) || '/api');
+            try {
+                const resp = await fetch(`${apiBase}/maintenance/windows?status=all&limit=250`);
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const data = await resp.json();
+                maintWindows = (data.windows || []).map(normalizeMaintWindow);
+                maintSave();
+                return;
+            } catch (err) {
+                console.warn('[MAINT] Backend load failed, using cached windows:', err);
+            }
+            try { maintWindows = JSON.parse(localStorage.getItem(MAINT_KEY) || '[]'); } catch { maintWindows = []; }
+        }
+        async function maintPersist(method, path, payload) {
+            const apiBase = (typeof resolveApiBase === 'function') ? resolveApiBase() : ((typeof AI_API_BASE !== 'undefined' ? AI_API_BASE : window.AI_API_BASE) || '/api');
+            const options = {
+                method,
+                headers: { 'Content-Type': 'application/json' }
+            };
+            if (payload !== undefined) options.body = JSON.stringify(payload);
+            const resp = await fetch(`${apiBase}${path}`, options);
+            if (!resp.ok) {
+                let detail = `HTTP ${resp.status}`;
+                try {
+                    const data = await resp.json();
+                    detail = data.detail || data.error || detail;
+                } catch {}
+                throw new Error(detail);
+            }
+            if (resp.status === 204) return null;
+            return await resp.json();
+        }
 
         window.openMaintModal = function () {
             document.getElementById('maintModal').classList.add('show');
@@ -32674,7 +32810,7 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
             document.getElementById('maintModal').classList.remove('show');
         };
 
-        window.maintCreate = function (e) {
+        window.maintCreate = async function (e) {
             e.preventDefault();
             const name = document.getElementById('maintName').value.trim();
             const dateStr = document.getElementById('maintDate').value;
@@ -32689,28 +32825,39 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
             if (!name || !dateStr || !devices.length) { nocToast('Fill in all required fields', 'warning'); return; }
             if (!tasks.length) { nocToast('Select at least one task', 'warning'); return; }
 
-            const mw = {
-                id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-                name, scheduledAt: dateStr, duration, priority,
-                devices, tasks, notes, ticketNum, ticketUrl,
+            const createdBy = (() => { try { return JSON.parse(localStorage.getItem('user_info') || '{}').email || 'unknown'; } catch { return 'unknown'; } })();
+            const payload = {
+                name,
+                scheduled_at: new Date(dateStr).toISOString(),
+                duration_minutes: duration,
+                priority,
+                devices,
+                tasks,
+                notes,
+                ticket_number: ticketNum,
+                ticket_url: ticketUrl,
                 status: 'scheduled',
-                createdAt: new Date().toISOString(),
-                createdBy: (() => { try { return JSON.parse(localStorage.getItem('user_info') || '{}').email || 'unknown'; } catch { return 'unknown'; } })()
+                created_by: createdBy
             };
-            maintWindows.unshift(mw);
-            maintSave();
-            maintRender();
-            maintUpdateHomeMetrics();
-            closeMaintModal();
-            document.getElementById('maintForm').reset();
-            nocToast(`Maintenance window "${name}" created`, 'success');
-
-            // Log to backend activity
-            maintLogActivity('maintenance-scheduled', mw);
+            try {
+                const created = await maintPersist('POST', '/maintenance/windows', payload);
+                const mw = normalizeMaintWindow(created || payload);
+                maintWindows = [mw, ...maintWindows.filter(w => w.id !== mw.id)];
+                maintSave();
+                await maintRender();
+                await maintUpdateHomeMetrics();
+                closeMaintModal();
+                document.getElementById('maintForm').reset();
+                nocToast(`Maintenance window "${name}" created`, 'success');
+                maintLogActivity('maintenance-scheduled', mw);
+            } catch (err) {
+                console.error('[MAINT] Create failed:', err);
+                nocToast(`Failed to create maintenance window: ${err.message}`, 'error');
+            }
         };
 
-        window.maintRender = function () {
-            maintLoad();
+        window.maintRender = async function () {
+            await maintLoad();
             const filter = document.getElementById('maintFilter').value;
             const filtered = filter === 'all' ? maintWindows : maintWindows.filter(w => w.status === filter);
 
@@ -32765,34 +32912,63 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
             }).join('');
         };
 
-        window.maintUpdateStatus = function (id, status) {
-            maintLoad();
+        window.maintUpdateStatus = async function (id, status) {
+            await maintLoad();
             const w = maintWindows.find(w => w.id === id);
             if (w) {
-                w.status = status;
-                w.updatedAt = new Date().toISOString();
-                maintSave();
-                maintRender();
-                maintUpdateHomeMetrics();
-                nocToast(`Window "${w.name}" marked as ${status}`, status === 'completed' ? 'success' : status === 'failed' ? 'error' : 'info');
-                // Log to backend activity + log history
-                maintLogActivity('maintenance-' + status, w);
+                try {
+                    const updated = await maintPersist('PUT', `/maintenance/windows/${encodeURIComponent(id)}`, {
+                        name: w.name,
+                        scheduled_at: w.scheduledAt,
+                        duration_minutes: w.duration,
+                        priority: w.priority,
+                        devices: w.devices,
+                        tasks: w.tasks,
+                        notes: w.notes,
+                        ticket_number: w.ticketNum,
+                        ticket_url: w.ticketUrl,
+                        status
+                    });
+                    const normalized = normalizeMaintWindow(updated || { ...w, status });
+                    maintWindows = maintWindows.map(item => item.id === id ? normalized : item);
+                    maintSave();
+                    await maintRender();
+                    await maintUpdateHomeMetrics();
+                    nocToast(`Window "${w.name}" marked as ${status}`, status === 'completed' ? 'success' : status === 'failed' ? 'error' : 'info');
+                    maintLogActivity('maintenance-' + status, normalized);
+                } catch (err) {
+                    console.error('[MAINT] Status update failed:', err);
+                    nocToast(`Failed to update maintenance window: ${err.message}`, 'error');
+                }
             }
         };
 
-        window.maintDelete = function (id) {
+        window.maintDelete = async function (id) {
             if (!confirm('Delete this maintenance window?')) return;
-            maintLoad();
-            maintWindows = maintWindows.filter(w => w.id !== id);
-            maintSave(); maintRender();
-            nocToast('Maintenance window deleted', 'info');
+            try {
+                await maintPersist('DELETE', `/maintenance/windows/${encodeURIComponent(id)}`);
+                maintWindows = maintWindows.filter(w => w.id !== id);
+                maintSave();
+                await maintRender();
+                await maintUpdateHomeMetrics();
+                nocToast('Maintenance window deleted', 'info');
+            } catch (err) {
+                console.error('[MAINT] Delete failed:', err);
+                nocToast(`Failed to delete maintenance window: ${err.message}`, 'error');
+            }
         };
 
-        window.maintClearCompleted = function () {
-            maintLoad();
+        window.maintClearCompleted = async function () {
+            await maintLoad();
+            const completedIds = maintWindows.filter(w => w.status === 'completed').map(w => w.id);
+            for (const id of completedIds) {
+                try { await maintPersist('DELETE', `/maintenance/windows/${encodeURIComponent(id)}`); } catch {}
+            }
             const before = maintWindows.length;
             maintWindows = maintWindows.filter(w => w.status !== 'completed');
-            maintSave(); maintRender();
+            maintSave();
+            await maintRender();
+            await maintUpdateHomeMetrics();
             nocToast(`Cleared ${before - maintWindows.length} completed windows`, 'info');
         };
 
@@ -32811,8 +32987,8 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
         }
 
         /* ── Update home dashboard maintenance metrics ── */
-        window.maintUpdateHomeMetrics = function () {
-            maintLoad();
+        window.maintUpdateHomeMetrics = async function () {
+            await maintLoad();
             const el = (id) => document.getElementById(id);
             if (el('homeMaintBadge')) el('homeMaintBadge').textContent = maintWindows.length;
             if (el('homeMaintTotal')) el('homeMaintTotal').textContent = maintWindows.length;
@@ -32847,8 +33023,8 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
         if (origNav) {
             window.navigateToTab = async function (tabId) {
                 await origNav(tabId);
-                if (tabId === 'maintenance') maintRender();
-                if (tabId === 'home') maintUpdateHomeMetrics();
+                if (tabId === 'maintenance') await maintRender();
+                if (tabId === 'home') await maintUpdateHomeMetrics();
             };
         }
 

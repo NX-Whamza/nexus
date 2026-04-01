@@ -82,6 +82,9 @@ def test_frontend_endpoint_wiring_has_backend_routes():
         '/api/bulk-migration-execute',
         '/api/bulk-compliance-scan',
         '/api/ssh-push-config',
+        '/api/maintenance/windows',
+        '/api/maintenance/windows/X',
+        '/api/command-vault/catalog',
     }
     missing = sorted(ep for ep in frontend_endpoints if ep not in routes)
     assert not missing, f"Frontend endpoints missing backend routes: {missing}"

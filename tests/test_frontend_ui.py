@@ -197,6 +197,26 @@ def test_sidebar_and_nokia_7250_layout_updates_exist():
     assert 'Uplink ${index + 1} IP/CIDR is invalid' in content, 'Missing Nokia 7250 uplink CIDR validation message'
 
 
+def test_command_vault_and_maintenance_tabs_use_backend_contracts():
+    content = UI_FILE.read_text(encoding='utf-8')
+    assert "fetch(`${getCommandVaultApiBase()}/command-vault/catalog`" in content, 'Command Vault should sync from the backend catalog endpoint'
+    assert 'function syncCommandVaultCatalog()' in content, 'Missing Command Vault backend sync helper in NOC-configMaker.html'
+    assert 'id="nokiaVault7750Grid"' in content, 'Missing Nokia Command Vault backend target grid in NOC-configMaker.html'
+    assert 'id="ciscoVaultGrid"' in content, 'Missing Cisco Command Vault backend target grid in NOC-configMaker.html'
+    assert 'id="mikrotikVaultGrid"' in content, 'Missing MikroTik Command Vault backend target grid in NOC-configMaker.html'
+    assert "fetch(`${apiBase}/maintenance/windows?status=all&limit=250`)" in content, 'Scheduled Maintenance should load from the backend endpoint'
+    assert "const MAINT_KEY = 'nexus_maintenance_windows_cache';" in content, 'Scheduled Maintenance should use the NEXUS cache key'
+
+
+def test_frontend_copy_is_tenant_neutral_for_shared_tools():
+    content = UI_FILE.read_text(encoding='utf-8')
+    assert 'Uses IDO proxy backends.' not in content, 'Field Config Studio copy should not expose legacy IDO wording'
+    assert 'IDO status check failed:' not in content, 'Field Config Studio status copy should use tenant-neutral wording'
+    assert 'IDO backend is not configured' not in content, 'Field Config Studio error copy should use tenant-neutral wording'
+    assert 'Unified device configurator workspace for shared device-access backends' in content, 'Field Config Studio should describe the shared device-access backend'
+    assert 'device-access backend not configured' in content, 'Field Config Studio should reference the shared device-access backend'
+
+
 def test_nokia_7250_port_setup_uses_safe_field_reader_and_clean_labels():
     content = UI_FILE.read_text(encoding='utf-8')
     assert 'function getCellFieldValue(tr, cellIndex, selector, options = {})' in content, 'Missing shared Nokia 7250 port-table field reader helper'
