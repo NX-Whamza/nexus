@@ -11487,7 +11487,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
 
                 const apiBase = (typeof getApiBase === 'function')
                     ? getApiBase()
-                    : (window.AI_API_BASE || 'http://127.0.0.1:5000/api');
+                    : (window.AI_API_BASE || '/api');
                 const targetUrl = `${apiBase.replace(/\/+$/, '')}/generate-mt-switch-config`;
                 const response = await fetch(targetUrl, {
                     method: 'POST',

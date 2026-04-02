@@ -262,7 +262,14 @@ def _collect_health_checks(force: bool = False):
     if not force and cached_checks is not None and (now - cached_at) < _HEALTH_CHECKS_TTL_SECONDS:
         return cached_checks
 
+<<<<<<< ours
     checks = _collect_health_checks(force=request.args.get('refresh') == '1')
+=======
+    checks = [
+        _health_check_secure_data(),
+        _health_check_ido_backend(),
+    ]
+>>>>>>> theirs
     _HEALTH_CHECKS_CACHE['checks'] = checks
     _HEALTH_CHECKS_CACHE['timestamp'] = now
     return checks
@@ -1777,8 +1784,35 @@ def _collect_role_matches(text_value):
     return matches
 
 
+GENERIC_LOGICAL_LABEL_PATTERNS = [
+    r'^lan-bridge$',
+    r'^nat-public-bridge$',
+    r'^bridge\d*$',
+    r'^loop0$',
+    r'^vlan\d+$',
+    r'^cpe(?:/tower gear)?$',
+    r'^tower gear$',
+    r'^unauth$',
+    r'^cgnat(?: public| private)?$',
+    r'^customer(?:s)?$',
+    r'^cust$',
+    r'^public$',
+    r'^private$',
+    r'^lan$',
+]
+
+
+def _is_generic_logical_label(text_value):
+    normalized = re.sub(r'\s+', ' ', (text_value or '').strip().strip('"').lower())
+    if not normalized:
+        return True
+    return any(re.fullmatch(pattern, normalized) for pattern in GENERIC_LOGICAL_LABEL_PATTERNS)
+
+
 def _add_role_matches_from_text(port_name, text_value, evidence_prefix, role_signals, source_ports):
     if port_name not in source_ports:
+        return
+    if evidence_prefix != 'comment' and _is_generic_logical_label(text_value):
         return
     for role_name, hits in _collect_role_matches(text_value).items():
         weight = 5 if evidence_prefix == 'comment' else 4
@@ -1820,6 +1854,122 @@ def _all_device_ports(device_key):
     for group_ports in device.get('ports', {}).values():
         ports.extend(group_ports)
     return ports
+
+
+def _extract_physical_interface_tokens(config_text):
+    pattern = r'\b(ether\d+|sfp\d+(?:-\d+)?|sfp-sfpplus\d+|sfp28-\d+|qsfpplus\d+-\d+|qsfp28-\d+-\d+|qsfp\d+(?:-\d+)?|combo\d+)\b'
+    seen = set()
+    physical = []
+    for match in re.finditer(pattern, config_text or ''):
+        port = match.group(1)
+        if port not in seen:
+            seen.add(port)
+            physical.append(port)
+    return physical
+
+
+def _infer_routerboard_model_from_port_usage(config_text):
+    physical_ports = _extract_physical_interface_tokens(config_text)
+    if not physical_ports:
+        return None, {}
+
+    scores = {}
+    for model_key in ROUTERBOARD_INTERFACES:
+        known_ports = set(_all_device_ports(model_key))
+        overlap = [port for port in physical_ports if port in known_ports]
+        if overlap:
+            scores[model_key] = {
+                'matched_ports': overlap,
+                'score': len(overlap),
+            }
+
+    if not scores:
+        return None, {}
+
+    best_model, meta = max(
+        scores.items(),
+        key=lambda item: (
+            item[1]['score'],
+            ROUTERBOARD_INTERFACES[item[0]].get('total_ports', 0),
+            item[0],
+        ),
+    )
+    return best_model, scores
+
+
+def _rewrite_migration_identity_for_target(identity_name: str, source_model: str, target_model: str) -> str:
+    name = (identity_name or '').strip()
+    if not name:
+        target_digits = re.search(r'(\d{3,4})', target_model or '')
+        return f"RTR-MT{target_digits.group(1)}-UNKNOWN" if target_digits else "RTR-UNKNOWN"
+
+    src_digits = re.search(r'(\d{3,4})', source_model or '')
+    tgt_digits = re.search(r'(\d{3,4})', target_model or '')
+
+    if src_digits and tgt_digits:
+        name = re.sub(rf'(?i)\bMT{re.escape(src_digits.group(1))}\b', f"MT{tgt_digits.group(1)}", name)
+        name = re.sub(rf'(?i)\b{re.escape(src_digits.group(1))}\b', tgt_digits.group(1), name)
+    elif tgt_digits and re.fullmatch(r'\d{3,4}', name):
+        name = tgt_digits.group(1)
+
+    old_model_short = (source_model.split('-')[0] if source_model else '').strip()
+    new_model_short = (target_model.split('-')[0] if target_model else '').strip()
+    if old_model_short and new_model_short and old_model_short.lower() != 'unknown' and new_model_short.lower() != 'unknown':
+        name = re.sub(rf'(?i)\b{re.escape(old_model_short)}\b', new_model_short, name)
+
+    return name
+
+
+def _rewrite_migration_metadata(config_text: str, source_model: str, target_model: str, target_version: str) -> str:
+    text = config_text or ''
+
+    if target_version:
+        text = re.sub(r'(?m)^(#.*by RouterOS )\d+(?:\.\d+)+', rf'\g<1>{target_version}', text)
+        text = re.sub(r'(?m)^(#.*RouterOS )\d+(?:\.\d+)+', rf'\g<1>{target_version}', text)
+
+    if target_model:
+        if re.search(r'(?m)^#\s*model\s*=.*$', text):
+            text = re.sub(r'(?m)^#\s*model\s*=.*$', f"# model ={target_model}", text)
+        else:
+            header_match = re.search(r'(?m)^(#.*RouterOS .*)$', text)
+            if header_match:
+                insert_at = header_match.end()
+                text = text[:insert_at] + f"\n# model ={target_model}" + text[insert_at:]
+
+    def _format_identity_for_set(name: str) -> str:
+        s = (name or '').strip()
+        if re.search(r'[^A-Za-z0-9._-]', s):
+            s = s.replace('"', "'")
+            return f'"{s}"'
+        return s
+
+    block_pattern = r'(?ms)^/system identity\s*\n\s*set\s+name=([^\n]+)\s*$'
+    inline_pattern = r'(?m)^\s*/system identity\s+set\s+name=([^\n]+)\s*$'
+    current_identity = None
+    match = re.search(block_pattern, text)
+    if match:
+        current_identity = match.group(1).strip().strip('"').strip("'")
+        updated_identity = _rewrite_migration_identity_for_target(current_identity, source_model, target_model)
+        text = re.sub(
+            block_pattern,
+            f"/system identity\nset name={_format_identity_for_set(updated_identity)}",
+            text,
+        )
+    else:
+        match = re.search(inline_pattern, text)
+        if match:
+            current_identity = match.group(1).strip().strip('"').strip("'")
+            updated_identity = _rewrite_migration_identity_for_target(current_identity, source_model, target_model)
+            text = re.sub(
+                inline_pattern,
+                f"/system identity\nset name={_format_identity_for_set(updated_identity)}",
+                text,
+            )
+        else:
+            updated_identity = _rewrite_migration_identity_for_target('', source_model, target_model)
+            text = text.rstrip() + f"\n\n/system identity\nset name={_format_identity_for_set(updated_identity)}\n"
+
+    return text
 
 
 def resolve_routerboard_model_key(device_name):
@@ -2078,14 +2228,28 @@ def analyze_nextlink_port_mapping(config_text, source_device, target_device):
     for port, comment in comment_map.items():
         upper = comment.upper()
         _add_role_matches_from_text(port, comment, 'comment', role_signals, source_ports)
-        if any(token in upper for token in ['BACKHAUL', ' BH', 'BH ', 'FIBER', 'UPLINK', 'TRANSPORT']) or re.search(r'\b(TX|KS|IL|NE|IA|MO|OK)-', upper):
+        explicit_access_role = bool(role_signals.get(port, {}).get('switch') or role_signals.get(port, {}).get('olt'))
+        if (
+            not explicit_access_role and
+            (
+                any(token in upper for token in ['BACKHAUL', ' BH', 'BH ', 'FIBER', 'UPLINK', 'TRANSPORT']) or
+                re.search(r'\b(TX|KS|IL|NE|IA|MO|OK)-', upper)
+            )
+        ):
             add_signal(port, 'backhaul', f'comment:{comment}', 5)
 
     for logical_iface, logical_comment in logical_comments.items():
         for port in resolve_physical_ports(logical_iface):
             _add_role_matches_from_text(port, logical_comment, f'logical_comment:{logical_iface}', role_signals, source_ports)
             upper = logical_comment.upper()
-            if any(token in upper for token in ['BACKHAUL', 'FIBER', 'UPLINK', 'TRANSPORT']) or re.search(r'\b(TX|KS|IL|NE|IA|MO|OK)-', upper):
+            explicit_access_role = bool(role_signals.get(port, {}).get('switch') or role_signals.get(port, {}).get('olt'))
+            if (
+                not explicit_access_role and
+                (
+                    any(token in upper for token in ['BACKHAUL', 'FIBER', 'UPLINK', 'TRANSPORT']) or
+                    re.search(r'\b(TX|KS|IL|NE|IA|MO|OK)-', upper)
+                )
+            ):
                 add_signal(port, 'backhaul', f'logical_comment:{logical_iface}:{logical_comment}', 4)
 
     for logical_iface, comments in address_comments.items():
@@ -2094,10 +2258,14 @@ def analyze_nextlink_port_mapping(config_text, source_device, target_device):
                 _add_role_matches_from_text(port, address_comment, f'address_comment:{logical_iface}', role_signals, source_ports)
 
     for logical_iface in set(vlan_parent) | set(bond_members) | set(bridge_members) | set(bridge_interfaces):
+        if _is_generic_logical_label(logical_iface):
+            continue
         for port in resolve_physical_ports(logical_iface):
             _add_role_matches_from_text(port, logical_iface, 'logical_interface', role_signals, source_ports)
 
     for bridge_name, members in bridge_members.items():
+        if _is_generic_logical_label(bridge_name):
+            continue
         for member in members:
             for port in resolve_physical_ports(member):
                 _add_role_matches_from_text(port, bridge_name, 'bridge_name', role_signals, source_ports)
@@ -2109,6 +2277,8 @@ def analyze_nextlink_port_mapping(config_text, source_device, target_device):
 
     for logical_iface, prefixes in list(prefix_map.items()):
         if logical_iface in source_ports:
+            continue
+        if _is_generic_logical_label(logical_iface):
             continue
         for port in resolve_physical_ports(logical_iface):
             for prefix in prefixes:
@@ -2134,6 +2304,8 @@ def analyze_nextlink_port_mapping(config_text, source_device, target_device):
             add_signal(port, 'backhaul', f'mpls_ldp:{iface_name}', 2)
 
     for logical_iface, ips in logical_ip_map.items():
+        if logical_iface not in source_ports and _is_generic_logical_label(logical_iface):
+            continue
         for ip_addr in ips:
             if re.search(rf'(?m)^/routing bgp connection\s+add[^\n]*\b(local\.address|update-source)={re.escape(ip_addr)}\b', config_text):
                 for port in resolve_physical_ports(logical_iface):
@@ -2454,16 +2626,18 @@ def migrate_interface_config(config_text, interface_map):
     if re.search(r'\bcombo\d+\b', migrated_config):
         migrated_config = re.sub(r'\bcombo1\b', 'sfp-sfpplus1', migrated_config)
     
-    # Sort by length (longest first) to avoid partial replacements
-    # e.g., replace "ether10" before "ether1"
+    # Use placeholders to avoid chained remaps, e.g. A->B and B->C should not turn A into C.
     sorted_interfaces = sorted(interface_map.items(), key=lambda x: len(x[0]), reverse=True)
-    
-    for old_interface, new_interface in sorted_interfaces:
-        # Use word boundaries to avoid partial matches
-        # Pattern matches interface name with word boundaries
-        # This ensures we don't replace "ether1" in "ether10"
+    placeholders = {}
+
+    for index, (old_interface, _new_interface) in enumerate(sorted_interfaces):
+        placeholder = f"__IFACE_REMAP_{index}__"
+        placeholders[placeholder] = interface_map[old_interface]
         pattern = r'\b' + re.escape(old_interface) + r'\b'
-        migrated_config = re.sub(pattern, new_interface, migrated_config)
+        migrated_config = re.sub(pattern, placeholder, migrated_config)
+
+    for placeholder, new_interface in placeholders.items():
+        migrated_config = migrated_config.replace(placeholder, new_interface)
     
     return migrated_config
 
@@ -13330,10 +13504,7 @@ def health():
     Backend is considered 'online' if this endpoint responds.
     The backend will handle AI provider availability and fallbacks internally.
     """
-    checks = [
-        _health_check_secure_data(),
-        _health_check_ido_backend(),
-    ]
+    checks = _collect_health_checks(force=request.args.get('refresh') == '1')
     degraded = any(not check.get('ok') for check in checks)
     return jsonify({
         'status': 'online',
@@ -14218,39 +14389,62 @@ def migrate_config():
                 'available_devices': list(ROUTERBOARD_INTERFACES.keys())
             }), 400
         
+        inferred_source_device, inferred_scores = _infer_routerboard_model_from_port_usage(config)
+        effective_source_device = source_device
+        source_match_warning = None
+        if inferred_source_device and inferred_source_device in ROUTERBOARD_INTERFACES:
+            declared_score = inferred_scores.get(source_device, {}).get('score', 0)
+            inferred_score = inferred_scores.get(inferred_source_device, {}).get('score', 0)
+            if inferred_source_device != source_device and inferred_score > declared_score:
+                effective_source_device = inferred_source_device
+                source_match_warning = (
+                    f'Source model metadata says {source_device}, but interfaces match '
+                    f'{inferred_source_device}; using actual port layout for migration policy.'
+                )
+
         # Determine what migrations are needed
         needs_syntax_migration = (source_version == 6 and target_version == '7')
         needs_device_migration = (source_device != target_device)
-        
+
         migrated_config = config
-        mapping_analysis = analyze_nextlink_port_mapping(config, source_device, target_device)
+        mapping_analysis = analyze_nextlink_port_mapping(config, effective_source_device, target_device)
         interface_map = mapping_analysis.get('interface_map') or {}
         port_analysis = mapping_analysis.get('port_analysis') or []
         policy_summary = mapping_analysis.get('policy_summary') or {}
         manual_review_required = bool(mapping_analysis.get('manual_review_required'))
         migration_warnings = list(mapping_analysis.get('warnings') or [])
-        
-        # Step 1: Device migration (interface renaming)
-        if needs_device_migration:
-            safe_print(f"[MIGRATION] Device: {source_device} → {target_device}")
-            
-            # Build deterministic Nextlink policy mapping
-            if not interface_map:
+        if source_match_warning:
+            migration_warnings.insert(0, source_match_warning)
+            manual_review_required = True
+        needs_interface_normalization = any(src != dst for src, dst in interface_map.items())
+
+        # Step 1: Device migration / target-policy normalization (interface renaming)
+        if needs_device_migration or needs_interface_normalization:
+            safe_print(f"[MIGRATION] Device: {effective_source_device} → {target_device}")
+
+            if not interface_map and needs_device_migration:
                 return jsonify({
-                    'error': f'No migration path available from {source_device} to {target_device}'
+                    'error': f'No migration path available from {effective_source_device} to {target_device}'
                 }), 400
-            
-            # Apply interface migration
-            migrated_config = migrate_interface_config(migrated_config, interface_map)
-            
+
+            if interface_map:
+                migrated_config = migrate_interface_config(migrated_config, interface_map)
+
             safe_print(f"[MIGRATION] Mapped {len(interface_map)} interfaces")
-            for old, new in list(interface_map.items())[:5]:  # Show first 5
+            for old, new in list(interface_map.items())[:5]:
                 safe_print(f"[MIGRATION]   {old} → {new}")
-        
+
         # Step 2: Syntax migration (ROS6 → ROS7)
         if needs_syntax_migration:
             safe_print(f"[MIGRATION] Syntax: ROS{source_version} → ROS{target_version}")
             migrated_config = apply_ros6_to_ros7_syntax(migrated_config)
+
+        migrated_config = _rewrite_migration_metadata(
+            migrated_config,
+            source_device,
+            target_device,
+            target_version,
+        )
         
         if apply_compliance and HAS_ENGINEERING_COMPLIANCE:
             loopback_ip = extract_loopback_ip(migrated_config)
@@ -14262,10 +14456,11 @@ def migrate_config():
                 item for item in (
                     'v6→v7' if needs_syntax_migration else '',
                     f'{source_device}→{target_device}' if needs_device_migration else '',
+                    f'policy-normalize:{target_device}' if (not needs_device_migration and needs_interface_normalization) else '',
                 ) if item
             ]) or 'config-audit',
             'needs_version_migration': needs_syntax_migration,
-            'needs_device_migration': needs_device_migration,
+            'needs_device_migration': needs_device_migration or needs_interface_normalization,
             'interface_map': interface_map or {},
             'port_analysis': port_analysis,
             'policy_summary': policy_summary,
@@ -14282,14 +14477,14 @@ def migrate_config():
                 'mpls': '/mpls' in config or '/interface vpls' in config,
             }
         }
-        if needs_device_migration and interface_map:
-            source_ports = ROUTERBOARD_INTERFACES[source_device]['total_ports']
+        if (needs_device_migration or needs_interface_normalization) and interface_map:
+            source_ports = ROUTERBOARD_INTERFACES[effective_source_device]['total_ports']
             target_ports = ROUTERBOARD_INTERFACES[target_device]['total_ports']
             if source_ports > target_ports:
                 migration_analysis['warnings'].append(
                     f'Port count mismatch: source has {source_ports} ports, target has {target_ports}. Some ports may need reassignment.'
                 )
-        elif not needs_device_migration:
+        elif not needs_device_migration and not needs_interface_normalization:
             migration_analysis['warnings'].append('Source and target are the same model - version upgrade only')
 
         # Prepare response
@@ -14302,16 +14497,17 @@ def migrate_config():
             'source_version': source_version,
             'target_version': target_version,
             'detected_source_device': source_device if not data.get('source_device') else None,
+            'effective_source_device': effective_source_device,
             'detected_source_version': detected_version,
             'syntax_migrated': needs_syntax_migration,
-            'device_migrated': needs_device_migration,
-            'interfaces_mapped': len(interface_map) if (needs_device_migration and interface_map) else 0,
+            'device_migrated': needs_device_migration or needs_interface_normalization,
+            'interfaces_mapped': len(interface_map) if interface_map else 0,
             'compliance_applied': bool(apply_compliance and HAS_ENGINEERING_COMPLIANCE),
             'validation': validation,
             'migration_analysis': migration_analysis,
             'source_info': {
-                'model': source_device,
-                'type': ROUTERBOARD_INTERFACES[source_device]['series'].lower(),
+                'model': effective_source_device,
+                'type': ROUTERBOARD_INTERFACES[effective_source_device]['series'].lower(),
             },
             'target_info': {
                 'model': target_device,
@@ -14320,8 +14516,8 @@ def migrate_config():
             },
             'migration_summary': {
                 'ether1_preserved': 'ether1' in interface_map and interface_map['ether1'] == 'ether1' if interface_map else False,
-                'total_interfaces': len(interface_map) if (needs_device_migration and interface_map) else 0,
-                'source_ports': ROUTERBOARD_INTERFACES[source_device]['total_ports'],
+                'total_interfaces': len(interface_map) if interface_map else 0,
+                'source_ports': ROUTERBOARD_INTERFACES[effective_source_device]['total_ports'],
                 'target_ports': ROUTERBOARD_INTERFACES[target_device]['total_ports']
             }
         }

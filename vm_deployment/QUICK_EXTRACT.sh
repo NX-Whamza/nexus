@@ -47,8 +47,9 @@ if [ $? -eq 0 ]; then
     echo "✅ Extraction complete!"
     echo ""
     echo "Files extracted. Next steps:"
-    echo "  chmod +x setup_vm.sh configure_nginx_domain.sh"
-    echo "  bash configure_nginx_domain.sh"
+    echo "  cd ~/noc-configmaker"
+    echo "  docker compose up -d --build"
+    echo "  bash vm_deployment/configure_nginx_domain.sh"
     echo ""
 else
     echo ""
