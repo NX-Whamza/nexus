@@ -248,6 +248,26 @@ def _health_check_ido_backend():
     return result
 
 
+_HEALTH_CHECKS_CACHE: dict[str, object] = {
+    'timestamp': 0.0,
+    'checks': None,
+}
+_HEALTH_CHECKS_TTL_SECONDS = 30.0
+
+
+def _collect_health_checks(force: bool = False):
+    now = time.time()
+    cached_checks = _HEALTH_CHECKS_CACHE.get('checks')
+    cached_at = float(_HEALTH_CHECKS_CACHE.get('timestamp') or 0.0)
+    if not force and cached_checks is not None and (now - cached_at) < _HEALTH_CHECKS_TTL_SECONDS:
+        return cached_checks
+
+    checks = _collect_health_checks(force=request.args.get('refresh') == '1')
+    _HEALTH_CHECKS_CACHE['checks'] = checks
+    _HEALTH_CHECKS_CACHE['timestamp'] = now
+    return checks
+
+
 APP_VERSION_CONFIG_PATH = Path(__file__).parent / 'assets' / 'app-version.json'
 DEFAULT_APP_VERSION_CONFIG = {
     'product': 'NEXUS',
@@ -17492,7 +17512,13 @@ def cambium_stream_global():
             yield f"data: {json.dumps(entry)}\n\n"
         try:
             while True:
-                item = q.get()
+                try:
+                    item = q.get(timeout=15)
+                except queue.Empty:
+                    # Keep the stream active and give disconnected clients a chance
+                    # to unwind so stale tabs do not pin a worker forever.
+                    yield ": keep-alive\n\n"
+                    continue
                 yield f"data: {json.dumps(item)}\n\n"
         finally:
             cambium_global_log_queues.discard(q)
