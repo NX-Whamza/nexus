@@ -17492,7 +17492,13 @@ def cambium_stream_global():
             yield f"data: {json.dumps(entry)}\n\n"
         try:
             while True:
-                item = q.get()
+                try:
+                    item = q.get(timeout=15)
+                except queue.Empty:
+                    # Keep the stream active and give disconnected clients a chance
+                    # to unwind so stale tabs do not pin a worker forever.
+                    yield ": keep-alive\n\n"
+                    continue
                 yield f"data: {json.dumps(item)}\n\n"
         finally:
             cambium_global_log_queues.discard(q)
