@@ -14494,13 +14494,34 @@ def update_feedback_status(feedback_id):
         cursor = conn.cursor()
         
         cursor.execute('''
-            UPDATE feedback 
+            UPDATE feedback
             SET status = ?, admin_notes = ?
             WHERE id = ? AND tenant_id = ?
         ''', (new_status, admin_notes, feedback_id, tenant.get('id')))
 
+        # Fetch submitter info to notify them
+        conn.row_factory = sqlite3.Row
+        cursor2 = conn.cursor()
+        cursor2.execute('SELECT email, subject FROM feedback WHERE id = ?', (feedback_id,))
+        fb_row = cursor2.fetchone()
+
         conn.commit()
         conn.close()
+
+        # Create notification for the submitter
+        if fb_row and fb_row['email']:
+            status_labels = {
+                'new': 'received',
+                'reviewed': 'being reviewed',
+                'in_progress': 'in progress',
+                'resolved': 'resolved',
+                'closed': 'closed',
+            }
+            status_label = status_labels.get(new_status, new_status)
+            msg = f'Your feedback has been marked as {status_label}.'
+            if admin_notes:
+                msg += f' Note from admin: {admin_notes}'
+            _create_notification(feedback_id, fb_row['email'], fb_row['subject'], msg)
 
         return jsonify({'success': True, 'message': 'Feedback status updated'})
         
@@ -15479,6 +15500,23 @@ def _build_compliance_checks(tenant_settings=None):
     if radius2:
         checks.append({'name': f'RADIUS Secondary ({radius2})', 'pattern': radius2, 'required': True, 'category': 'RADIUS'})
     return checks
+
+
+def _create_notification(feedback_id, user_email, subject, message):
+    """Create a notification for a feedback submitter. Fails silently."""
+    try:
+        if not user_email:
+            return
+        feedback_db = init_feedback_db()
+        conn = sqlite3.connect(str(feedback_db))
+        conn.execute(
+            'INSERT INTO notifications (user_email, feedback_id, subject, message) VALUES (?, ?, ?, ?)',
+            (user_email.strip().lower(), feedback_id, subject, message)
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[NOTIFY] Failed to create notification: {e}")
 
 
 def _write_audit_log(event_type, detail=None, target_user_id=None, target_email=None, tenant_id=None, tenant_slug=None):
@@ -16538,6 +16576,71 @@ def session_bootstrap():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/notifications', methods=['GET'])
+@require_auth
+def get_notifications():
+    """Get notifications for the current user (matched by email)."""
+    try:
+        user_info = getattr(request, 'current_user', None)
+        email = (user_info or {}).get('email', '').strip().lower()
+        if not email:
+            return jsonify({'notifications': [], 'unread_count': 0})
+        feedback_db = init_feedback_db()
+        conn = sqlite3.connect(str(feedback_db))
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute(
+            'SELECT * FROM notifications WHERE user_email = ? ORDER BY created_at DESC LIMIT 50',
+            (email,)
+        )
+        notifs = [dict(r) for r in c.fetchall()]
+        c.execute('SELECT COUNT(*) FROM notifications WHERE user_email = ? AND is_read = 0', (email,))
+        unread = c.fetchone()[0]
+        conn.close()
+        return jsonify({'notifications': notifs, 'unread_count': unread})
+    except Exception as e:
+        return jsonify({'notifications': [], 'unread_count': 0})
+
+
+@app.route('/api/notifications/<int:notif_id>/read', methods=['POST'])
+@require_auth
+def mark_notification_read(notif_id):
+    """Mark a single notification as read."""
+    try:
+        user_info = getattr(request, 'current_user', None)
+        email = (user_info or {}).get('email', '').strip().lower()
+        feedback_db = init_feedback_db()
+        conn = sqlite3.connect(str(feedback_db))
+        conn.execute(
+            'UPDATE notifications SET is_read = 1 WHERE id = ? AND user_email = ?',
+            (notif_id, email)
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/notifications/read-all', methods=['POST'])
+@require_auth
+def mark_all_notifications_read():
+    """Mark all notifications as read for the current user."""
+    try:
+        user_info = getattr(request, 'current_user', None)
+        email = (user_info or {}).get('email', '').strip().lower()
+        feedback_db = init_feedback_db()
+        conn = sqlite3.connect(str(feedback_db))
+        conn.execute(
+            'UPDATE notifications SET is_read = 1 WHERE user_email = ?', (email,)
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/session/heartbeat', methods=['POST'])
 @require_auth
 def session_heartbeat():
@@ -16694,6 +16797,20 @@ def init_feedback_db():
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_feedback_timestamp ON feedback(timestamp)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback(status)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_feedback_tenant_id ON feedback(tenant_id)')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_email TEXT NOT NULL,
+            feedback_id INTEGER,
+            subject TEXT,
+            message TEXT NOT NULL,
+            is_read INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_notif_email ON notifications(user_email)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_notif_read ON notifications(is_read)')
 
     cursor.execute("PRAGMA table_info(feedback)")
     existing_cols = {row[1] for row in cursor.fetchall()}
