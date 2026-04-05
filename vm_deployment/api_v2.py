@@ -227,6 +227,12 @@ def _init_db() -> None:
             """
         )
         cur.execute("CREATE INDEX IF NOT EXISTS idx_v2_jobs_created_at ON v2_jobs(created_at DESC)")
+        # Additive migration: add tenant_id column if missing
+        cur.execute("PRAGMA table_info(v2_jobs)")
+        existing_cols = {r[1] for r in cur.fetchall()}
+        if 'tenant_id' not in existing_cols:
+            cur.execute("ALTER TABLE v2_jobs ADD COLUMN tenant_id INTEGER")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_v2_jobs_tenant_id ON v2_jobs(tenant_id)")
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS v2_job_events (
@@ -604,6 +610,7 @@ class JobRecord:
     error: Optional[str] = None
     cancel_requested: bool = False
     events: List[JobEvent] = field(default_factory=list)
+    tenant_id: Optional[int] = None
 
 
 class JobManager:
@@ -668,8 +675,8 @@ class JobManager:
                 """
                 INSERT OR REPLACE INTO v2_jobs(
                     job_id, request_id, action, submitted_by, payload_json, status, created_at, started_at, finished_at,
-                    result_json, error_text, cancel_requested
-                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+                    result_json, error_text, cancel_requested, tenant_id
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     job.job_id,
@@ -684,6 +691,7 @@ class JobManager:
                     _json_dumps(job.result) if job.result is not None else None,
                     job.error,
                     1 if job.cancel_requested else 0,
+                    job.tenant_id,
                 ),
             )
             conn.commit()
@@ -795,6 +803,17 @@ class JobManager:
 
 
 _JOBS = JobManager()
+
+
+def _get_tenant_id_for_api_key(api_key, conn):
+    """Get the default tenant_id for an API key owner. Returns None if not resolvable."""
+    try:
+        # V2 API keys are not directly tied to users in the current model
+        # Default to the platform default tenant for backward compatibility
+        from vm_deployment.api_server import _get_default_tenant_id
+        return _get_default_tenant_id(conn)
+    except Exception:
+        return None
 
 
 _ACTION_HANDLERS: Dict[str, Callable[[Dict[str, Any]], Any]] = {
@@ -1170,6 +1189,15 @@ def v2_submit_job(
         job_payload = {k: v for k, v in payload.items() if k != "action"}
     rid = request.headers.get("X-Request-ID") or _request_id()
     job = _JOBS.submit(action=action, payload=job_payload, submitted_by=auth["api_key"], request_id=rid)
+    # Stamp tenant_id for audit trail (additive; no filtering change)
+    try:
+        _tj_conn = _db_conn()
+        job.tenant_id = _get_tenant_id_for_api_key(auth["api_key"], _tj_conn)
+        _tj_conn.close()
+        if job.tenant_id is not None:
+            _JOBS._persist_job(job)
+    except Exception:
+        pass
     response_body = _envelope(
         status="accepted",
         data={

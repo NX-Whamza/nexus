@@ -2951,6 +2951,30 @@
             background: #dc3545;
         }
 
+        /* ── Who's Online Widget ── */
+        #onlineUsersWidget { display: none; position: relative; align-items: center; gap: 6px; cursor: pointer; }
+        #onlineAvatarStack { display: flex; align-items: center; }
+        #onlineAvatarStack .oa { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--container-bg); overflow: hidden; margin-left: -8px; flex-shrink: 0; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; text-transform: uppercase; color: #fff; transition: transform 0.15s; cursor: pointer; }
+        #onlineAvatarStack .oa:first-child { margin-left: 0; }
+        #onlineAvatarStack .oa:hover { transform: scale(1.15); z-index: 2; }
+        #onlineAvatarStack .oa img { width: 100%; height: 100%; object-fit: cover; }
+        #onlineCountBadge { font-size: 9px; color: var(--text-muted); white-space: nowrap; }
+        #onlineDropdown { display: none; position: absolute; top: calc(100% + 8px); right: 0; min-width: 260px; background: var(--container-bg); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.3); z-index: 9999; overflow: hidden; }
+        #onlineDropdown.open { display: block; }
+        #onlineDropdown .od-header { padding: 10px 14px 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 6px; }
+        #onlineDropdown .od-header .od-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; flex-shrink: 0; box-shadow: 0 0 6px #22c55e88; }
+        #onlineDropdown .od-list { max-height: 280px; overflow-y: auto; }
+        #onlineDropdown .od-item { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--border-color); transition: background 0.1s; }
+        #onlineDropdown .od-item:last-child { border-bottom: none; }
+        #onlineDropdown .od-item:hover { background: var(--hover-bg, rgba(255,255,255,0.04)); }
+        #onlineDropdown .od-avatar { width: 32px; height: 32px; border-radius: 50%; overflow: hidden; flex-shrink: 0; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; color: #fff; }
+        #onlineDropdown .od-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        #onlineDropdown .od-info { flex: 1; min-width: 0; }
+        #onlineDropdown .od-name { font-size: 12px; font-weight: 600; color: var(--text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #onlineDropdown .od-meta { font-size: 10px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #onlineDropdown .od-ago { font-size: 9px; color: var(--text-muted); flex-shrink: 0; }
+        #onlineDropdown .od-empty { padding: 20px 14px; text-align: center; font-size: 11px; color: var(--text-muted); }
+
         .monthly-tracker {
             display: flex;
             flex-direction: column;
@@ -3891,6 +3915,22 @@
                     style="font-size: 9px; padding: 4px 8px;"> SEARCH</button>
                 <span id="userEmailDisplay"
                     style="color: var(--text-muted); font-size: 9px; text-transform: uppercase;"></span>
+                <span id="roleBadge"
+                    style="display:none; color: var(--text-color); font-size: 9px; text-transform: uppercase; padding: 4px 8px; border-radius: 999px; border: 1px solid var(--border-color); background: var(--container-bg);"></span>
+                <span id="tenantBadge"
+                    style="display:none; color: var(--text-color); font-size: 9px; text-transform: uppercase; padding: 4px 8px; border-radius: 999px; border: 1px solid var(--border-color); background: var(--card-bg);"></span>
+                <select id="tenantSwitcher"
+                    style="display:none; max-width: 180px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--border-color); border-radius: 999px; padding: 4px 10px; font-size: 10px; text-transform: uppercase;"
+                    title="Switch active tenant"></select>
+                <!-- Who's Online widget (admin only) -->
+                <div id="onlineUsersWidget" title="Who's online now">
+                    <div id="onlineAvatarStack"></div>
+                    <span id="onlineCountBadge"></span>
+                    <div id="onlineDropdown">
+                        <div class="od-header"><span class="od-dot"></span><span id="onlineDropdownTitle">Online Now</span></div>
+                        <div id="onlineDropdownList" class="od-list"></div>
+                    </div>
+                </div>
                 <div class="header-status" id="globalUpdatedPill" title="App version">
                     <span class="status-dot" id="globalUpdatedDot" style="width: 6px; height: 6px;"></span>
                     <span class="status-kv"><span class="k">Version</span><span class="v"
@@ -6984,53 +7024,238 @@
             <!-- ADMIN PANEL TAB -->
             <div class="content-pane" id="admin-panel-pane">
                 <div class="container">
-                    <h1> Admin Panel - Feedback Management</h1>
-                    <p style="text-align: center; color: var(--text-color-secondary);">View and manage user feedback,
-                        bug reports, and feature requests.</p>
+                    <h1> Admin Panel</h1>
 
-                    <!-- Filters and Actions -->
-                    <div class="section">
-                        <h2>Filters & Actions</h2>
-                        <div
-                            style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 15px; margin-bottom: 15px;">
-                            <div>
-                                <label for="adminFeedbackStatusFilter">Status:</label>
-                                <select id="adminFeedbackStatusFilter" style="width: 100%; padding: 10px;">
-                                    <option value="all">All Status</option>
-                                    <option value="new">New</option>
-                                    <option value="reviewed">Reviewed</option>
-                                    <option value="resolved">Resolved</option>
-                                    <option value="closed">Closed</option>
-                                </select>
+                    <!-- Admin internal tab bar -->
+                    <div style="display:flex; gap:8px; margin-bottom:18px; border-bottom:1px solid var(--border-color); padding-bottom:10px;">
+                        <button id="adminTabFeedback" onclick="switchAdminTab('feedback')" style="background:var(--primary-color); color:#fff; border:none; border-radius:6px; padding:6px 16px; font-size:12px; cursor:pointer;">Feedback</button>
+                        <span id="adminSettingsTabWrapper" style="display:none;">
+                            <button id="adminTabSettings" onclick="switchAdminTab('settings')" style="background:transparent; color:var(--text-color); border:1px solid var(--border-color); border-radius:6px; padding:6px 16px; font-size:12px; cursor:pointer;">Tenant Settings</button>
+                        </span>
+                        <span id="adminPlatformTabWrapper" style="display:none;">
+                            <button id="adminTabPlatform" onclick="switchAdminTab('platform')" style="background:transparent; color:var(--text-color); border:1px solid var(--border-color); border-radius:6px; padding:6px 16px; font-size:12px; cursor:pointer;">Platform Management</button>
+                        </span>
+                        <span id="adminAuditTabWrapper" style="display:none;">
+                            <button id="adminTabAudit" onclick="switchAdminTab('audit')" style="background:transparent; color:var(--text-color); border:1px solid var(--border-color); border-radius:6px; padding:6px 16px; font-size:12px; cursor:pointer;">Audit Log</button>
+                        </span>
+                    </div>
+
+                    <!-- Feedback section (existing content wrapped) -->
+                    <div id="adminFeedbackSection">
+                        <p style="text-align: center; color: var(--text-color-secondary);">View and manage user feedback,
+                            bug reports, and feature requests.</p>
+
+                        <!-- Filters and Actions -->
+                        <div class="section">
+                            <h2>Filters & Actions</h2>
+                            <div
+                                style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                                <div>
+                                    <label for="adminFeedbackStatusFilter">Status:</label>
+                                    <select id="adminFeedbackStatusFilter" style="width: 100%; padding: 10px;">
+                                        <option value="all">All Status</option>
+                                        <option value="new">New</option>
+                                        <option value="reviewed">Reviewed</option>
+                                        <option value="resolved">Resolved</option>
+                                        <option value="closed">Closed</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="adminFeedbackTypeFilter">Type:</label>
+                                    <select id="adminFeedbackTypeFilter" style="width: 100%; padding: 10px;">
+                                        <option value="all">All Types</option>
+                                        <option value="feedback">Feedback</option>
+                                        <option value="feature">Feature Request</option>
+                                        <option value="bug">Bug Report</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <button onclick="loadAdminFeedback()"
+                                        style="background: #4CAF50; color: white; padding: 12px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: bold; width: 100%;">
+                                        Refresh</button>
+                                </div>
+                                <div>
+                                    <button onclick="exportAdminFeedback()"
+                                        style="background: #2196F3; color: white; padding: 12px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: bold; width: 100%;">
+                                        Export Excel</button>
+                                </div>
                             </div>
-                            <div>
-                                <label for="adminFeedbackTypeFilter">Type:</label>
-                                <select id="adminFeedbackTypeFilter" style="width: 100%; padding: 10px;">
-                                    <option value="all">All Types</option>
-                                    <option value="feedback">Feedback</option>
-                                    <option value="feature">Feature Request</option>
-                                    <option value="bug">Bug Report</option>
-                                </select>
-                            </div>
-                            <div>
-                                <button onclick="loadAdminFeedback()"
-                                    style="background: #4CAF50; color: white; padding: 12px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: bold; width: 100%;">
-                                    Refresh</button>
-                            </div>
-                            <div>
-                                <button onclick="exportAdminFeedback()"
-                                    style="background: #2196F3; color: white; padding: 12px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: bold; width: 100%;">
-                                    Export Excel</button>
+                        </div>
+
+                        <!-- Feedback List -->
+                        <div class="section">
+                            <h2>Feedback List</h2>
+                            <div id="adminFeedbackList" style="min-height: 400px;">
+                                <p style="text-align: center; color: var(--text-color-secondary); padding: 50px;">Loading
+                                    feedback...</p>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Feedback List -->
-                    <div class="section">
-                        <h2>Feedback List</h2>
-                        <div id="adminFeedbackList" style="min-height: 400px;">
-                            <p style="text-align: center; color: var(--text-color-secondary); padding: 50px;">Loading
-                                feedback...</p>
+                    <!-- Tenant Settings section (adminPanel users) -->
+                    <div id="adminSettingsSection" style="display:none;">
+                        <div class="section" style="margin-bottom:24px;">
+                            <h2 style="font-size:14px; margin-bottom:16px; color:var(--text-color);">Infrastructure Settings</h2>
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+                                <div>
+                                    <label style="font-size:12px; color:var(--text-color-secondary); display:block; margin-bottom:4px;">DNS Primary</label>
+                                    <input id="ts_dns_primary" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                </div>
+                                <div>
+                                    <label style="font-size:12px; color:var(--text-color-secondary); display:block; margin-bottom:4px;">DNS Secondary</label>
+                                    <input id="ts_dns_secondary" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                </div>
+                                <div>
+                                    <label style="font-size:12px; color:var(--text-color-secondary); display:block; margin-bottom:4px;">NTP Primary</label>
+                                    <input id="ts_ntp_primary" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                </div>
+                                <div>
+                                    <label style="font-size:12px; color:var(--text-color-secondary); display:block; margin-bottom:4px;">NTP Secondary</label>
+                                    <input id="ts_ntp_secondary" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                </div>
+                                <div>
+                                    <label style="font-size:12px; color:var(--text-color-secondary); display:block; margin-bottom:4px;">SNMP Community</label>
+                                    <input id="ts_snmp_community" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                </div>
+                                <div>
+                                    <label style="font-size:12px; color:var(--text-color-secondary); display:block; margin-bottom:4px;">SNMP Contact</label>
+                                    <input id="ts_snmp_contact" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                </div>
+                                <div>
+                                    <label style="font-size:12px; color:var(--text-color-secondary); display:block; margin-bottom:4px;">RADIUS Primary</label>
+                                    <input id="ts_radius_primary" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                </div>
+                                <div>
+                                    <label style="font-size:12px; color:var(--text-color-secondary); display:block; margin-bottom:4px;">RADIUS Secondary</label>
+                                    <input id="ts_radius_secondary" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                </div>
+                                <div>
+                                    <label style="font-size:12px; color:var(--text-color-secondary); display:block; margin-bottom:4px;">RADIUS Port</label>
+                                    <input id="ts_radius_port" type="number" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                </div>
+                                <div>
+                                    <label style="font-size:12px; color:var(--text-color-secondary); display:block; margin-bottom:4px;">Compliance Profile</label>
+                                    <select id="ts_compliance_profile" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px;">
+                                        <option value="standard">Standard</option>
+                                        <option value="nextlink">Nextlink</option>
+                                        <option value="strict">Strict</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <!-- Infrastructure -->
+                            <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border-color); grid-column:1/-1;">
+                                <h3 style="font-size:12px; margin-bottom:10px; color:var(--text-color-secondary); text-transform:uppercase;">Infrastructure</h3>
+                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                                    <div>
+                                        <label style="font-size:11px; color:var(--text-color-secondary);">NOC Monitor IP</label>
+                                        <input id="ts_noc_monitor_ip" placeholder="142.147.127.2" style="width:100%; padding:5px 8px; border-radius:5px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                    </div>
+                                    <div>
+                                        <label style="font-size:11px; color:var(--text-color-secondary);">Syslog Server IP</label>
+                                        <input id="ts_syslog_server" placeholder="142.147.116.215" style="width:100%; padding:5px 8px; border-radius:5px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                    </div>
+                                    <div style="grid-column:1/-1;">
+                                        <label style="font-size:11px; color:var(--text-color-secondary);">ATA Provisioning URL</label>
+                                        <input id="ts_ata_provisioning_url" placeholder="http://ndp1-dal.nxlink.com/cfg/$MA.cfg" style="width:100%; padding:5px 8px; border-radius:5px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                    </div>
+                                    <div style="grid-column:1/-1;">
+                                        <label style="font-size:11px; color:var(--text-color-secondary);">SSH Username (for device push)</label>
+                                        <input id="ts_ssh_username" placeholder="admin" style="width:100%; padding:5px 8px; border-radius:5px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Compliance Overrides -->
+                            <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border-color); grid-column:1/-1;">
+                                <h3 style="font-size:12px; margin-bottom:10px; color:var(--text-color-secondary); text-transform:uppercase;">Compliance Check Values</h3>
+                                <p style="font-size:11px; color:var(--text-color-secondary); margin-bottom:8px;">These values are used when scanning device configs for compliance. Leave blank to use DNS/SNMP values above.</p>
+                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                                    <div>
+                                        <label style="font-size:11px; color:var(--text-color-secondary);">Compliance DNS Primary</label>
+                                        <input id="ts_compliance_dns_primary" style="width:100%; padding:5px 8px; border-radius:5px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                    </div>
+                                    <div>
+                                        <label style="font-size:11px; color:var(--text-color-secondary);">Compliance DNS Secondary</label>
+                                        <input id="ts_compliance_dns_secondary" style="width:100%; padding:5px 8px; border-radius:5px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                    </div>
+                                    <div>
+                                        <label style="font-size:11px; color:var(--text-color-secondary);">Compliance NTP</label>
+                                        <input id="ts_compliance_ntp" style="width:100%; padding:5px 8px; border-radius:5px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                    </div>
+                                    <div>
+                                        <label style="font-size:11px; color:var(--text-color-secondary);">Compliance Syslog</label>
+                                        <input id="ts_compliance_syslog" style="width:100%; padding:5px 8px; border-radius:5px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                    </div>
+                                    <div>
+                                        <label style="font-size:11px; color:var(--text-color-secondary);">Compliance SNMP Community</label>
+                                        <input id="ts_compliance_snmp_community" style="width:100%; padding:5px 8px; border-radius:5px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                    </div>
+                                    <div>
+                                        <label style="font-size:11px; color:var(--text-color-secondary);">Compliance RADIUS Primary</label>
+                                        <input id="ts_compliance_radius_primary" style="width:100%; padding:5px 8px; border-radius:5px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                    </div>
+                                    <div>
+                                        <label style="font-size:11px; color:var(--text-color-secondary);">Compliance RADIUS Secondary</label>
+                                        <input id="ts_compliance_radius_secondary" style="width:100%; padding:5px 8px; border-radius:5px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button onclick="saveTenantSettings()" style="background:var(--primary-color); color:#fff; border:none; border-radius:6px; padding:8px 20px; font-size:12px; cursor:pointer; font-weight:600; margin-top:16px; grid-column:1/-1;">Save Settings</button>
+                        </div>
+                    </div>
+
+                    <!-- Audit Log section (platform_admin only) -->
+                    <div id="adminAuditSection" style="display:none;">
+                        <div class="section" style="margin-bottom:24px;">
+                            <h2 style="font-size:14px; margin-bottom:12px; color:var(--text-color);">Security Audit Log</h2>
+                            <div style="display:flex; gap:8px; margin-bottom:12px; align-items:center; flex-wrap:wrap;">
+                                <select id="auditEventTypeFilter" style="padding:6px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px;">
+                                    <option value="">All Events</option>
+                                    <option value="login">login</option>
+                                    <option value="tenant_switch">tenant_switch</option>
+                                    <option value="tenant_create">tenant_create</option>
+                                    <option value="tenant_status_change">tenant_status_change</option>
+                                    <option value="membership_change">membership_change</option>
+                                    <option value="password_reset">password_reset</option>
+                                </select>
+                                <input id="auditActorFilter" placeholder="Filter by actor email" style="padding:6px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; width:200px;" />
+                                <button onclick="loadAuditLog()" style="background:transparent; border:1px solid var(--border-color); border-radius:6px; padding:6px 12px; font-size:11px; color:var(--text-color); cursor:pointer;">Refresh</button>
+                            </div>
+                            <div id="adminAuditList"><span style="color:var(--text-color-secondary)">Loading...</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Platform management section (platform_admin only) -->
+                    <div id="adminPlatformSection" style="display:none;">
+                        <!-- Tenant Management -->
+                        <div class="section" style="margin-bottom:24px;">
+                            <h2 style="font-size:14px; margin-bottom:12px; color:var(--text-color);">Tenant Management</h2>
+                            <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; align-items:flex-end;">
+                                <input id="newTenantSlug" placeholder="slug (e.g. acme)" style="padding:6px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; width:140px;" />
+                                <input id="newTenantName" placeholder="Display Name" style="padding:6px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; width:160px;" />
+                                <select id="newTenantAuthMode" style="padding:6px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px;">
+                                    <option value="microsoft">Microsoft SSO</option>
+                                    <option value="password">Password</option>
+                                </select>
+                                <input id="newTenantAzureId" placeholder="Azure Tenant ID (optional)" style="padding:6px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; width:220px;" />
+                                <button onclick="createTenantAdmin()" style="background:var(--primary-color); color:#fff; border:none; border-radius:6px; padding:6px 14px; font-size:12px; cursor:pointer;">Add Tenant</button>
+                                <button onclick="loadAdminTenants()" style="background:transparent; border:1px solid var(--border-color); border-radius:6px; padding:6px 10px; font-size:11px; color:var(--text-color); cursor:pointer;">Refresh</button>
+                            </div>
+                            <div id="adminTenantList" style="font-size:12px; color:var(--text-color-secondary);">Loading...</div>
+                        </div>
+
+                        <!-- User Management -->
+                        <div class="section">
+                            <h2 style="font-size:14px; margin-bottom:12px; color:var(--text-color);">User Management</h2>
+                            <div style="display:flex; gap:8px; margin-bottom:12px; align-items:center;">
+                                <label style="font-size:12px; color:var(--text-color-secondary);">Filter by tenant:</label>
+                                <select id="adminUserTenantFilter" onchange="loadAdminUsers()" style="padding:6px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px;">
+                                    <option value="">All tenants</option>
+                                </select>
+                                <button onclick="loadAdminUsers()" style="background:transparent; border:1px solid var(--border-color); border-radius:6px; padding:6px 10px; font-size:11px; color:var(--text-color); cursor:pointer;">Refresh</button>
+                            </div>
+                            <div id="adminUserList" style="font-size:12px; color:var(--text-color-secondary);">Loading...</div>
                         </div>
                     </div>
                 </div>
@@ -9713,7 +9938,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     <label class="form-label"> Ticket Reference (optional)</label>
                     <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px">
                         <input type="text" id="maintTicketNum" class="form-input" placeholder="e.g. 136895 or NOC-1234" style="font-size:13px">
-                        <input type="url" id="maintTicketUrl" class="form-input" placeholder="Full link — https://jira.nxlink.com/browse/..." style="font-size:13px">
+                        <input type="url" id="maintTicketUrl" class="form-input" placeholder="Full link — e.g. https://your-jira.example.com/browse/TICKET-123" style="font-size:13px">
                     </div>
                     <div style="font-size:11px;color:var(--text-color-secondary);margin-top:4px">Ticket # shows as a clickable link that opens the URL</div>
                 </div>
@@ -9941,13 +10166,38 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             emailAlerts: { enabled: false, recipient: '', from: '' },
             mpls: { vplsPeer: '10.254.247.3', vplsStaticId: 2245 },
             snmp: { community: 'CHANGE_ME', trapCommunity: 'CHANGE_ME', contact: 'netops@team.nxlink.com' },
-            sharedKeys: { ospfBgpMd5: 'm8M5JwvdYM', default: 'CHANGE_ME' }
+            sharedKeys: { ospfBgpMd5: '', default: 'CHANGE_ME' }
         };
 
         // Helper functions for constants access
         function getDnsServers() { return NEXTLINK_INFRASTRUCTURE.dnsServers; }
         function getSyslogServer() { return NEXTLINK_INFRASTRUCTURE.syslogServer; }
         function getNtpServers() { return NEXTLINK_INFRASTRUCTURE.ntpServers; }
+
+        // Batch 10: tenant infrastructure values loaded from /api/infrastructure
+        window._tenantInfra = {};
+
+        // Batch 10: update FIELD_CONFIG_REGION_OPTIONS from tenant CNM URL list
+        function applyCambiumCnmUrls(cnmUrls) {
+            if (!Array.isArray(cnmUrls) || !cnmUrls.length) return;
+            try {
+                // Build new options array in the format FIELD_CONFIG_REGION_OPTIONS expects
+                const newOpts = cnmUrls.map(function(entry) {
+                    const url = (entry && entry.url) ? entry.url : String(entry);
+                    const label = (entry && entry.label) ? entry.label : url;
+                    // Ensure trailing slash for consistency with existing options
+                    const urlWithSlash = url.endsWith('/') ? url : url + '/';
+                    return { value: urlWithSlash, label: label };
+                });
+                // Override the module-level constant so any subsequent form renders use tenant values
+                if (typeof FIELD_CONFIG_REGION_OPTIONS !== 'undefined') {
+                    FIELD_CONFIG_REGION_OPTIONS.length = 0;
+                    newOpts.forEach(function(opt) { FIELD_CONFIG_REGION_OPTIONS.push(opt); });
+                }
+            } catch (e) {
+                console.warn('[INFRA] Could not update CNM URL options:', e);
+            }
+        }
 
         console.log('Nextlink constants loaded (inlined)');
     </script>
@@ -10009,11 +10259,31 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     } else {
                         // Update user info
                         localStorage.setItem('user_info', JSON.stringify(data.user));
+                        window.currentUser = data.user;
 
                         // Check if password change is required
                         if (data.user.firstLogin) {
                             window.location.href = 'change-password.html?firstLogin=true';
+                            return;
                         }
+
+                        // Non-blocking session bootstrap for tenant-aware context.
+                        fetch(`${API_BASE}/api/session/bootstrap`, {
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            }
+                        })
+                            .then(response => response.ok ? response.json() : null)
+                            .then(session => {
+                                if (!session || !session.success) return;
+                                applySessionBootstrap(session);
+                                updateUserDisplay();
+                                if (typeof applyAdminPanelRoles === 'function') applyAdminPanelRoles(session);
+                                window.dispatchEvent(new CustomEvent('session-bootstrap-loaded', { detail: session }));
+                            })
+                            .catch(error => {
+                                console.warn('[AUTH] Session bootstrap unavailable, continuing with cached tenant context:', error);
+                            });
                     }
                 })
                 .catch(error => {
@@ -12521,7 +12791,8 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
 
             // DHCP Options
             config += `/ip dhcp-server option\n`;
-            config += `add code=66 name=option66-ata value="'http://ndp1-dal.nxlink.com/cfg/\$MA.cfg'"\n`;
+            const _ataUrl = (window._tenantInfra && window._tenantInfra.ataProvisioningUrl) || 'http://ndp1-dal.nxlink.com/cfg/$MA.cfg';
+            config += `add code=66 name=option66-ata value="'${_ataUrl}'"\n`;
             config += `add code=43 name=opt43 value=0x011768747470733a2f2f7573732e6e786c696e6b2e636f6d2f\n`;
             config += `/ip dhcp-server option sets\n`;
             config += `add name=optset options=opt43\n`;
@@ -12623,7 +12894,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             config += `add address=143.55.62.143 list=managerIP\n`;
             config += `add address=143.55.37.42 list=managerIP\n`;
             config += `add address=143.55.37.43 list=managerIP\n`;
-            config += `add address=142.147.127.2 list=managerIP\n`;
+            config += `add address=${(window._tenantInfra && window._tenantInfra.nocMonitorIp) || '142.147.127.2'} list=managerIP\n`;
             config += `add address=132.147.147.67 list=managerIP\n`;
             config += `add address=132.147.147.68 list=managerIP\n`;
             config += `add address=132.147.132.6 list=managerIP\n`;
@@ -12815,7 +13086,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     if (!cur || cur.toUpperCase() === 'CHANGE_ME') el.value = value;
                 };
 
-                setIfEmpty('sharedKey', getInfrastructureValue('sharedKeys.ospfBgpMd5', 'm8M5JwvdYM') || 'm8M5JwvdYM');
+                setIfEmpty('sharedKey', getInfrastructureValue('sharedKeys.ospfBgpMd5', '') || '');
                 setIfEmpty('dnsServers', (typeof getDNSList === 'function' ? getDNSList() : '142.147.112.3,142.147.112.19'));
 
                 const snmpEl = document.getElementById('snmpCommunity');
@@ -12861,6 +13132,17 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                                 NEXTLINK_INFRASTRUCTURE.radiusServers.dhcp = dhcpServers.map(a => ({ address: a, secret: radiusSecret }));
                                 NEXTLINK_INFRASTRUCTURE.radiusServers.login = loginServers.map(a => ({ address: a, secret: radiusSecret, comment: 'RADIUS' }));
                             }
+                        }
+
+                        // Batch 10: store new infrastructure values globally for generator use
+                        window._tenantInfra = window._tenantInfra || {};
+                        if (data.nocMonitorIp) window._tenantInfra.nocMonitorIp = data.nocMonitorIp;
+                        if (data.ataProvisioningUrl) window._tenantInfra.ataProvisioningUrl = data.ataProvisioningUrl;
+                        if (data.syslogServer) window._tenantInfra.syslogServer = data.syslogServer;
+
+                        // Batch 10: override Cambium CNM URL dropdown options from tenant settings
+                        if (data.cambiumCnmUrls && Array.isArray(data.cambiumCnmUrls) && data.cambiumCnmUrls.length) {
+                            applyCambiumCnmUrls(data.cambiumCnmUrls);
                         }
                     } catch (e) {
                         // Non-fatal: UI will fall back to local defaults.
@@ -14001,7 +14283,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
 
                 fetch(`${apiBase}/log-activity`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getAuthHeaders('application/json'),
                     body: JSON.stringify(payload)
                 }).then(response => {
                     if (response.ok) {
@@ -14023,7 +14305,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     const apiBase = resolveApiBase();
 
                     // Fetch ALL activities for metrics (not just last 24 hours)
-                    const response = await fetch(`${apiBase}/get-activity?all=true&limit=10000`);
+                    const response = await fetch(`${apiBase}/get-activity?all=true&limit=10000`, { headers: getAuthHeaders() });
                     if (response.ok) {
                         const data = await response.json();
                         if (data.success && data.activities) {
@@ -14151,7 +14433,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     setTimeout(() => { if (typeof switchMode === 'function') switchMode('upgrade'); }, 120);
 
                     // Try to fetch and display the migrated config from the activity log
-                    fetch(`${resolveApiBase()}/get-activity`)
+                    fetch(`${resolveApiBase()}/get-activity`, { headers: getAuthHeaders() })
                         .then(response => response.json())
                         .then(data => {
                             if (data && data.activities) {
@@ -14271,7 +14553,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     const apiBase = resolveApiBase();
 
                     // Fetch last 24 hours of activity (all=false means last 24 hours only)
-                    const response = await fetch(`${apiBase}/get-activity?limit=50&all=false`);
+                    const response = await fetch(`${apiBase}/get-activity?limit=50&all=false`, { headers: getAuthHeaders() });
                     if (response.ok) {
                         const data = await response.json();
                         if (data.success && data.activities) {
@@ -15658,7 +15940,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     append('user', q);
                     input.value = '';
                     try {
-                        const r = await fetch(`${AI_API_BASE}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: q }) });
+                        const r = await fetch(`${AI_API_BASE}/chat`, { method: 'POST', headers: getAuthHeaders('application/json'), body: JSON.stringify({ message: q }) });
                         const j = await r.json();
                         if (!j.success) throw new Error(j.error || 'Chat failed');
                         append('assistant', j.reply);
@@ -16320,7 +16602,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 const summary = document.getElementById('idoCapabilitiesSummary');
                 try {
                     const apiBase = (typeof resolveApiBase === 'function' ? resolveApiBase() : ((typeof AI_API_BASE !== 'undefined' ? AI_API_BASE : window.AI_API_BASE) || '/api'));
-                    const resp = await fetch(`${apiBase}/ido/capabilities`);
+                    const resp = await fetch(`${apiBase}/ido/capabilities`, { headers: getAuthHeaders() });
                     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                     const data = await resp.json();
                     window.__idoCapabilities = data || {};
@@ -17428,7 +17710,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 const apiBase = (typeof resolveApiBase === 'function' ? resolveApiBase() : ((typeof AI_API_BASE !== 'undefined' ? AI_API_BASE : window.AI_API_BASE) || '/api'));
                 const loopback = (payload?.loopback_subnet || payload?.loop_ip || '10.0.0.1').toString();
                 const loopbackIp = loopback.split('/')[0];
-                const resp = await fetch(`${apiBase}/ido/compliance?loopback_ip=${encodeURIComponent(loopbackIp)}`);
+                const resp = await fetch(`${apiBase}/ido/compliance?loopback_ip=${encodeURIComponent(loopbackIp)}`, { headers: getAuthHeaders() });
                 if (!resp.ok) {
                     return configText;
                 }
@@ -17568,7 +17850,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
 
                 const configResp = await fetch(`${apiBase}/mt/${configType}/config`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getAuthHeaders('application/json'),
                     body: JSON.stringify(payload)
                 });
                 const configData = await parseApiResponse(configResp);
@@ -17589,7 +17871,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
 
                 const portMapResp = await fetch(`${apiBase}/mt/${configType}/portmap`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getAuthHeaders('application/json'),
                     body: JSON.stringify(payload)
                 });
                 const portMapData = await parseApiResponse(portMapResp);
@@ -21816,7 +22098,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
 
                 const response = await fetch(`${AI_API_BASE}/fetch-config-ssh`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getAuthHeaders('application/json'),
                     body: JSON.stringify({
                         host: deviceIP,
                         ros_version: rosVersion,
@@ -23776,9 +24058,7 @@ Ready for translation!`);
             // Save config to backend asynchronously (don't block UI)
             fetch(`${AI_API_BASE}/save-completed-config`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: getAuthHeaders('application/json'),
                 body: JSON.stringify(configData)
             })
                 .then(response => {
@@ -23829,7 +24109,7 @@ Ready for translation!`);
             // Use AI_API_BASE if defined, otherwise construct it
             const apiBase = resolveApiBase();
 
-            fetch(`${apiBase}/get-completed-configs`)
+            fetch(`${apiBase}/get-completed-configs`, { headers: getAuthHeaders() })
                 .then(response => {
                     if (!response.ok) {
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -23867,7 +24147,7 @@ Ready for translation!`);
             if (yearFilter) params.append('year', yearFilter);
             if (typeFilter) params.append('type', typeFilter);
 
-            fetch(`${AI_API_BASE}/get-completed-configs?${params.toString()}`)
+            fetch(`${AI_API_BASE}/get-completed-configs?${params.toString()}`, { headers: getAuthHeaders() })
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -23998,7 +24278,7 @@ Ready for translation!`);
         window.openConfigRouteByType = openConfigRouteByType;
 
         function viewCompletedConfig(configId) {
-            fetch(`${AI_API_BASE}/get-completed-config/${configId}`)
+            fetch(`${AI_API_BASE}/get-completed-config/${configId}`, { headers: getAuthHeaders() })
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -24128,7 +24408,7 @@ Ready for translation!`);
         }
 
         function downloadCompletedConfig(configId) {
-            fetch(`${AI_API_BASE}/get-completed-config/${configId}`)
+            fetch(`${AI_API_BASE}/get-completed-config/${configId}`, { headers: getAuthHeaders() })
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -24239,13 +24519,536 @@ Ready for translation!`);
             if (confirm('Are you sure you want to log out?')) {
                 localStorage.removeItem('auth_token');
                 localStorage.removeItem('user_info');
+                localStorage.removeItem('session_bootstrap');
                 window.location.href = 'login.html';
+            }
+        }
+
+        function getAuthHeaders(contentType = null) {
+            const headers = {};
+            if (contentType) headers['Content-Type'] = contentType;
+            const token = localStorage.getItem('auth_token');
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+            return headers;
+        }
+
+        function applySessionBootstrap(session) {
+            if (!session || typeof session !== 'object') return;
+            window.sessionBootstrap = session;
+            window.currentTenant = session.activeTenant || null;
+            if (session.user) {
+                window.currentUser = session.user;
+                try {
+                    localStorage.setItem('user_info', JSON.stringify(session.user));
+                } catch (e) {
+                    console.warn('[AUTH] Failed to persist user info from session bootstrap:', e);
+                }
+            }
+            try {
+                localStorage.setItem('session_bootstrap', JSON.stringify(session));
+            } catch (e) {
+                console.warn('[AUTH] Failed to persist session bootstrap:', e);
+            }
+            initOnlineWidget(session.permissions);
+        }
+
+        function getCurrentRoleLabel() {
+            const session = window.sessionBootstrap || null;
+            const platformRole = session?.user?.platformRole || 'user';
+            const tenantRole = session?.activeTenant?.role || '';
+            if (platformRole === 'platform_admin') return 'Super Admin';
+            if (platformRole === 'platform_support') return 'Admin';
+            if (tenantRole === 'tenant_admin') return 'Tenant Admin';
+            if (tenantRole === 'tenant_viewer') return 'Viewer';
+            return 'User';
+        }
+
+        function renderTenantContext() {
+            const roleBadge = document.getElementById('roleBadge');
+            const tenantBadge = document.getElementById('tenantBadge');
+            const tenantSwitcher = document.getElementById('tenantSwitcher');
+            const session = window.sessionBootstrap || null;
+            const activeTenant = (session && session.activeTenant) || window.currentTenant || null;
+            const memberships = Array.isArray(session?.memberships) ? session.memberships.filter(m => m && m.status === 'active') : [];
+
+            if (roleBadge) {
+                const roleLabel = getCurrentRoleLabel();
+                roleBadge.textContent = roleLabel;
+                roleBadge.style.display = roleLabel ? 'inline-flex' : 'none';
+            }
+
+            if (tenantBadge) {
+                if (activeTenant && activeTenant.name) {
+                    tenantBadge.textContent = `Tenant: ${activeTenant.name}`;
+                    tenantBadge.style.display = 'inline-flex';
+                } else {
+                    tenantBadge.textContent = '';
+                    tenantBadge.style.display = 'none';
+                }
+            }
+
+            if (tenantSwitcher) {
+                if (memberships.length > 1) {
+                    tenantSwitcher.innerHTML = '';
+                    memberships.forEach(membership => {
+                        const option = document.createElement('option');
+                        option.value = membership.tenantId;
+                        option.textContent = membership.name || membership.slug || `Tenant ${membership.tenantId}`;
+                        if (activeTenant && String(activeTenant.id) === String(membership.tenantId)) {
+                            option.selected = true;
+                        }
+                        tenantSwitcher.appendChild(option);
+                    });
+                    tenantSwitcher.style.display = 'inline-flex';
+                    tenantSwitcher.disabled = false;
+                } else {
+                    tenantSwitcher.innerHTML = '';
+                    tenantSwitcher.style.display = 'none';
+                    tenantSwitcher.disabled = true;
+                }
+            }
+        }
+
+        async function switchActiveTenant(tenantId) {
+            if (!tenantId) return;
+            const tenantSwitcher = document.getElementById('tenantSwitcher');
+            const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : ((typeof AI_API_BASE !== 'undefined' ? AI_API_BASE : window.AI_API_BASE) || '/api');
+            const previousValue = tenantSwitcher ? tenantSwitcher.value : '';
+
+            try {
+                if (tenantSwitcher) tenantSwitcher.disabled = true;
+                const response = await fetch(`${apiBase}/session/switch-tenant`, {
+                    method: 'POST',
+                    headers: getAuthHeaders('application/json'),
+                    body: JSON.stringify({ tenant_id: Number(tenantId) })
+                });
+                const payload = await response.json();
+                if (!response.ok || !payload.success) {
+                    throw new Error(payload.error || `HTTP ${response.status}`);
+                }
+
+                applySessionBootstrap(payload);
+                updateUserDisplay();
+                renderTenantContext();
+                window.dispatchEvent(new CustomEvent('tenant-switched', { detail: payload }));
+
+                if (typeof loadCompletedConfigs === 'function') {
+                    const listContainer = document.getElementById('completedConfigsList');
+                    if (listContainer) loadCompletedConfigs();
+                }
+                if (typeof window.fetchLiveActivity === 'function') {
+                    window.fetchLiveActivity();
+                }
+            } catch (error) {
+                console.error('[AUTH] Failed to switch active tenant:', error);
+                if (tenantSwitcher) tenantSwitcher.value = previousValue;
+                alert(`Failed to switch tenant: ${error.message || 'Unknown error'}`);
+            } finally {
+                if (tenantSwitcher) tenantSwitcher.disabled = false;
+            }
+        }
+
+        function switchAdminTab(tab) {
+            const feedbackSection = document.getElementById('adminFeedbackSection');
+            const platformSection = document.getElementById('adminPlatformSection');
+            const settingsSection = document.getElementById('adminSettingsSection');
+            const auditSection = document.getElementById('adminAuditSection');
+            const feedbackBtn = document.getElementById('adminTabFeedback');
+            const platformBtn = document.getElementById('adminTabPlatform');
+            const settingsBtn = document.getElementById('adminTabSettings');
+            const auditBtn = document.getElementById('adminTabAudit');
+
+            // Hide all sections and reset all buttons
+            [feedbackSection, platformSection, settingsSection, auditSection].forEach(s => { if (s) s.style.display = 'none'; });
+            [feedbackBtn, platformBtn, settingsBtn, auditBtn].forEach(b => {
+                if (b) { b.style.background = 'transparent'; b.style.color = 'var(--text-color)'; b.style.border = '1px solid var(--border-color)'; }
+            });
+
+            if (tab === 'feedback') {
+                if (feedbackSection) feedbackSection.style.display = '';
+                if (feedbackBtn) { feedbackBtn.style.background = 'var(--primary-color)'; feedbackBtn.style.color = '#fff'; feedbackBtn.style.border = 'none'; }
+            } else if (tab === 'settings') {
+                if (settingsSection) settingsSection.style.display = '';
+                if (settingsBtn) { settingsBtn.style.background = 'var(--primary-color)'; settingsBtn.style.color = '#fff'; settingsBtn.style.border = 'none'; }
+                loadTenantSettings();
+            } else if (tab === 'audit') {
+                if (auditSection) auditSection.style.display = '';
+                if (auditBtn) { auditBtn.style.background = 'var(--primary-color)'; auditBtn.style.color = '#fff'; auditBtn.style.border = 'none'; }
+                loadAuditLog();
+            } else {
+                if (platformSection) platformSection.style.display = '';
+                if (platformBtn) { platformBtn.style.background = 'var(--primary-color)'; platformBtn.style.color = '#fff'; platformBtn.style.border = 'none'; }
+                loadAdminTenants();
+                loadAdminUsers();
+            }
+        }
+
+        // ── Who's Online ────────────────────────────────────────────────────────
+        const _ONLINE_COLORS = ['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6'];
+        function _onlineInitials(name) {
+            if (!name) return '?';
+            const parts = name.trim().split(/\s+/);
+            if (parts.length >= 2) return (parts[0][0] + parts[parts.length-1][0]).toUpperCase();
+            return name.slice(0,2).toUpperCase();
+        }
+        function _onlineColor(str) {
+            let h = 0;
+            for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+            return _ONLINE_COLORS[h % _ONLINE_COLORS.length];
+        }
+        function _buildAvatar(user, size, cls) {
+            cls = cls || '';
+            if (user.avatar) {
+                const initials = _onlineInitials(user.display_name);
+                const color = _onlineColor(user.email);
+                return `<div class="${cls}" style="background:#333"><img src="${user.avatar}" alt="" onerror="this.parentNode.innerHTML='${initials}'; this.parentNode.style.background='${color}';"></div>`;
+            }
+            return `<div class="${cls}" style="background:${_onlineColor(user.email)}">${_onlineInitials(user.display_name || user.email)}</div>`;
+        }
+        function _formatAgo(secs) {
+            if (secs < 60) return 'Just now';
+            if (secs < 3600) return `${Math.floor(secs/60)}m ago`;
+            return `${Math.floor(secs/3600)}h ago`;
+        }
+        function _roleDisplay(role) {
+            const map = {
+                'platform_admin':'Super Admin','platform_support':'Support',
+                'tenant_admin':'Admin','tenant_engineer':'Engineer','tenant_viewer':'Viewer','user':'User'
+            };
+            return map[role] || role || '';
+        }
+
+        let _onlineDropdownOpen = false;
+        let _onlineRefreshTimer = null;
+
+        async function refreshOnlineUsers() {
+            const widget = document.getElementById('onlineUsersWidget');
+            if (!widget || widget.style.display === 'none') return;
+            try {
+                const resp = await fetch('/api/admin/online-users', { headers: getAuthHeaders() });
+                if (!resp.ok) return;
+                const data = await resp.json();
+                const users = data.online || [];
+                const stack = document.getElementById('onlineAvatarStack');
+                const badge = document.getElementById('onlineCountBadge');
+                const list = document.getElementById('onlineDropdownList');
+                const title = document.getElementById('onlineDropdownTitle');
+
+                // Avatar stack — show up to 5 bubbles
+                const shown = users.slice(0, 5);
+                stack.innerHTML = shown.map(u => _buildAvatar(u, 26, 'oa')).join('');
+
+                // Count badge
+                badge.textContent = users.length === 1 ? '1 online' : `${users.length} online`;
+
+                // Dropdown title
+                title.textContent = `Online Now \u00b7 ${users.length}`;
+
+                // Dropdown list
+                if (users.length === 0) {
+                    list.innerHTML = '<div class="od-empty">No active users right now</div>';
+                } else {
+                    list.innerHTML = users.map(u => `
+                        <div class="od-item">
+                            ${_buildAvatar(u, 32, 'od-avatar')}
+                            <div class="od-info">
+                                <div class="od-name">${u.display_name || u.email.split('@')[0]}</div>
+                                <div class="od-meta">${_roleDisplay(u.role_label)}${u.tenant_name ? ' \u00b7 '+u.tenant_name : ''}</div>
+                            </div>
+                            <div class="od-ago">${_formatAgo(u.last_seen_ago)}</div>
+                        </div>`).join('');
+                }
+            } catch(e) { /* silent */ }
+        }
+
+        function initOnlineWidget(permissions) {
+            const widget = document.getElementById('onlineUsersWidget');
+            if (!widget) return;
+            // Only show to admins
+            if (!permissions || !permissions.adminPanel) {
+                widget.style.display = 'none';
+                return;
+            }
+            widget.style.display = 'flex';
+
+            // Toggle dropdown on click
+            widget.addEventListener('click', function(e) {
+                const dropdown = document.getElementById('onlineDropdown');
+                _onlineDropdownOpen = !_onlineDropdownOpen;
+                dropdown.classList.toggle('open', _onlineDropdownOpen);
+                e.stopPropagation();
+            });
+            document.addEventListener('click', function() {
+                if (_onlineDropdownOpen) {
+                    _onlineDropdownOpen = false;
+                    const dd = document.getElementById('onlineDropdown');
+                    if (dd) dd.classList.remove('open');
+                }
+            });
+
+            // Initial load + periodic refresh
+            refreshOnlineUsers();
+            if (_onlineRefreshTimer) clearInterval(_onlineRefreshTimer);
+            _onlineRefreshTimer = setInterval(refreshOnlineUsers, 60000);
+
+            // Heartbeat every 2 minutes to stay "online"
+            setInterval(function() {
+                fetch('/api/session/heartbeat', { method:'POST', headers: getAuthHeaders() }).catch(function(){});
+            }, 120000);
+        }
+        // ── End Who's Online ─────────────────────────────────────────────────────
+
+        function applyAdminPanelRoles(session) {
+            if (!session || typeof session !== 'object') return;
+            const permissions = session.permissions || {};
+            const platformWrapper = document.getElementById('adminPlatformTabWrapper');
+            const settingsWrapper = document.getElementById('adminSettingsTabWrapper');
+            const auditWrapper = document.getElementById('adminAuditTabWrapper');
+            const sidebarAdminBtn = document.getElementById('sidebarAdminBtn');
+
+            // Tenant Settings tab: visible to all adminPanel users (tenant_admin + platform_admin)
+            if (settingsWrapper) settingsWrapper.style.display = permissions.adminPanel ? 'inline' : 'none';
+            // Platform Management tab: platform_admin only
+            if (platformWrapper) platformWrapper.style.display = permissions.platformAdmin ? 'inline' : 'none';
+            // Audit Log tab: platform_admin only
+            if (auditWrapper) auditWrapper.style.display = permissions.platformAdmin ? 'inline' : 'none';
+
+            if (sidebarAdminBtn) {
+                sidebarAdminBtn.style.display = permissions.adminPanel ? '' : 'none';
+            }
+        }
+
+        async function loadTenantSettings() {
+            const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : '/api';
+            try {
+                const resp = await fetch(`${apiBase}/tenant-settings`, { headers: getAuthHeaders() });
+                const data = await resp.json();
+                if (!data.success) return;
+                const s = data.settings || {};
+                const fields = ['dns_primary','dns_secondary','ntp_primary','ntp_secondary',
+                                'snmp_community','snmp_contact','radius_primary','radius_secondary','radius_port','compliance_profile',
+                                'noc_monitor_ip','syslog_server','ata_provisioning_url','ssh_username',
+                                'compliance_dns_primary','compliance_dns_secondary','compliance_ntp','compliance_syslog',
+                                'compliance_snmp_community','compliance_radius_primary','compliance_radius_secondary'];
+                fields.forEach(f => {
+                    const el = document.getElementById(`ts_${f}`);
+                    if (el) el.value = s[f] !== undefined ? s[f] : '';
+                });
+            } catch(e) { console.warn('[SETTINGS] Failed to load tenant settings:', e); }
+        }
+
+        async function saveTenantSettings() {
+            const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : '/api';
+            const fields = ['dns_primary','dns_secondary','ntp_primary','ntp_secondary',
+                            'snmp_community','snmp_contact','radius_primary','radius_secondary','radius_port','compliance_profile',
+                            'noc_monitor_ip','syslog_server','ata_provisioning_url','ssh_username',
+                            'compliance_dns_primary','compliance_dns_secondary','compliance_ntp','compliance_syslog',
+                            'compliance_snmp_community','compliance_radius_primary','compliance_radius_secondary'];
+            const payload = {};
+            fields.forEach(f => {
+                const el = document.getElementById(`ts_${f}`);
+                if (el) payload[f] = el.value;
+            });
+            try {
+                const resp = await fetch(`${apiBase}/tenant-settings`, {
+                    method: 'PUT',
+                    headers: getAuthHeaders('application/json'),
+                    body: JSON.stringify(payload)
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    if (typeof nocToast === 'function') nocToast('Tenant settings saved.', 'success', 3000);
+                    else alert('Tenant settings saved.');
+                } else {
+                    alert(data.error || 'Failed to save settings');
+                }
+            } catch(e) { alert(`Error: ${e.message}`); }
+        }
+
+        async function loadAuditLog() {
+            const container = document.getElementById('adminAuditList');
+            if (!container) return;
+            container.innerHTML = '<span style="color:var(--text-color-secondary)">Loading...</span>';
+            const eventType = document.getElementById('auditEventTypeFilter')?.value || '';
+            const actor = document.getElementById('auditActorFilter')?.value || '';
+            const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : '/api';
+            const params = new URLSearchParams({ limit: 200 });
+            if (eventType) params.set('event_type', eventType);
+            if (actor) params.set('actor', actor);
+            try {
+                const resp = await fetch(`${apiBase}/admin/audit-log?${params}`, { headers: getAuthHeaders() });
+                const data = await resp.json();
+                if (!data.success) { container.innerHTML = `<span style="color:var(--danger-color)">${data.error}</span>`; return; }
+                const events = data.events || [];
+                if (!events.length) { container.innerHTML = '<span style="color:var(--text-color-secondary)">No audit events found.</span>'; return; }
+                const eventColors = {
+                    login: 'var(--primary-color)',
+                    tenant_switch: '#f59e0b',
+                    tenant_create: '#10b981',
+                    tenant_status_change: '#ef4444',
+                    membership_change: '#8b5cf6',
+                    password_reset: '#f97316',
+                };
+                const rows = events.map(e => {
+                    const ts = e.timestamp_unix ? new Date(e.timestamp_unix * 1000).toLocaleString() : e.timestamp || '';
+                    const color = eventColors[e.event_type] || 'var(--text-color)';
+                    const detail = (() => { try { return JSON.stringify(JSON.parse(e.detail_json || '{}'), null, 0); } catch { return e.detail_json || ''; } })();
+                    return `<tr>
+                        <td style="padding:5px 10px; font-size:11px; color:var(--text-color-secondary);">${ts}</td>
+                        <td style="padding:5px 10px;"><span style="color:${color}; font-size:11px; font-weight:600;">${e.event_type}</span></td>
+                        <td style="padding:5px 10px; font-size:11px;">${e.actor_email || '-'}</td>
+                        <td style="padding:5px 10px; font-size:11px; color:var(--text-color-secondary);">${e.tenant_slug || '-'}</td>
+                        <td style="padding:5px 10px; font-size:11px; color:var(--text-color-secondary); max-width:280px; overflow:hidden; text-overflow:ellipsis;" title="${detail}">${detail}</td>
+                    </tr>`;
+                }).join('');
+                container.innerHTML = `<table style="width:100%; border-collapse:collapse; background:var(--card-bg); border-radius:8px; overflow:hidden;">
+                    <thead><tr style="background:var(--table-header-bg, var(--container-bg)); font-size:10px; text-transform:uppercase; color:var(--text-color-secondary);">
+                        <th style="padding:8px 10px; text-align:left;">Time</th>
+                        <th style="padding:8px 10px; text-align:left;">Event</th>
+                        <th style="padding:8px 10px; text-align:left;">Actor</th>
+                        <th style="padding:8px 10px; text-align:left;">Tenant</th>
+                        <th style="padding:8px 10px; text-align:left;">Detail</th>
+                    </tr></thead><tbody>${rows}</tbody></table>`;
+            } catch(e) {
+                container.innerHTML = `<span style="color:var(--danger-color)">Error: ${e.message}</span>`;
+            }
+        }
+
+        async function loadAdminTenants() {
+            const container = document.getElementById('adminTenantList');
+            if (!container) return;
+            container.innerHTML = '<span style="color:var(--text-color-secondary)">Loading...</span>';
+            const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : '/api';
+            try {
+                const resp = await fetch(`${apiBase}/admin/tenants`, { headers: getAuthHeaders() });
+                const data = await resp.json();
+                if (!data.success) { container.innerHTML = `<span style="color:var(--danger-color)">${data.error || 'Failed to load tenants'}</span>`; return; }
+                const tenants = data.tenants || [];
+                if (!tenants.length) { container.innerHTML = '<span style="color:var(--text-color-secondary)">No tenants found.</span>'; return; }
+                const rows = tenants.map(t => `
+                    <tr>
+                        <td style="padding:6px 10px;">${t.slug}</td>
+                        <td style="padding:6px 10px;">${t.name}</td>
+                        <td style="padding:6px 10px;">${t.status}</td>
+                        <td style="padding:6px 10px;">${t.auth_mode}</td>
+                        <td style="padding:6px 10px; text-align:center;">${t.member_count || 0}</td>
+                        <td style="padding:6px 10px;">
+                            ${t.status === 'active' ? `<button onclick="deactivateTenant(${t.id})" style="font-size:11px; padding:3px 8px; background:transparent; border:1px solid var(--danger-color); color:var(--danger-color); border-radius:4px; cursor:pointer;">Deactivate</button>` : `<button onclick="activateTenant(${t.id})" style="font-size:11px; padding:3px 8px; background:transparent; border:1px solid var(--primary-color); color:var(--primary-color); border-radius:4px; cursor:pointer;">Activate</button>`}
+                        </td>
+                    </tr>`).join('');
+                container.innerHTML = `<table style="width:100%; border-collapse:collapse; background:var(--card-bg); border-radius:8px; overflow:hidden;">
+                    <thead><tr style="background:var(--table-header-bg, var(--container-bg)); font-size:11px; text-transform:uppercase; color:var(--text-color-secondary);">
+                        <th style="padding:8px 10px; text-align:left;">Slug</th>
+                        <th style="padding:8px 10px; text-align:left;">Name</th>
+                        <th style="padding:8px 10px; text-align:left;">Status</th>
+                        <th style="padding:8px 10px; text-align:left;">Auth</th>
+                        <th style="padding:8px 10px; text-align:center;">Members</th>
+                        <th style="padding:8px 10px; text-align:left;">Actions</th>
+                    </tr></thead><tbody>${rows}</tbody></table>`;
+                const filterSel = document.getElementById('adminUserTenantFilter');
+                if (filterSel) {
+                    const current = filterSel.value;
+                    filterSel.innerHTML = '<option value="">All tenants</option>' + tenants.map(t => `<option value="${t.id}" ${String(current) === String(t.id) ? 'selected' : ''}>${t.name}</option>`).join('');
+                }
+            } catch (e) {
+                container.innerHTML = `<span style="color:var(--danger-color)">Error loading tenants: ${e.message}</span>`;
+            }
+        }
+
+        async function loadAdminUsers() {
+            const container = document.getElementById('adminUserList');
+            if (!container) return;
+            container.innerHTML = '<span style="color:var(--text-color-secondary)">Loading...</span>';
+            const filterSel = document.getElementById('adminUserTenantFilter');
+            const tenantId = filterSel ? filterSel.value : '';
+            const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : '/api';
+            const url = tenantId ? `${apiBase}/admin/users?tenant_id=${tenantId}` : `${apiBase}/admin/users`;
+            try {
+                const resp = await fetch(url, { headers: getAuthHeaders() });
+                const data = await resp.json();
+                if (!data.success) { container.innerHTML = `<span style="color:var(--danger-color)">${data.error || 'Failed to load users'}</span>`; return; }
+                const users = data.users || [];
+                if (!users.length) { container.innerHTML = '<span style="color:var(--text-color-secondary)">No users found.</span>'; return; }
+                const rows = users.map(u => {
+                    const memberships = (u.memberships || []).map(m => `<span style="display:inline-block; margin:2px; padding:2px 6px; border-radius:4px; background:var(--container-bg); font-size:10px;">${m.name || m.slug} / ${m.role}</span>`).join('');
+                    return `<tr>
+                        <td style="padding:6px 10px;">${u.email}</td>
+                        <td style="padding:6px 10px; text-transform:capitalize;">${u.platform_role || 'user'}</td>
+                        <td style="padding:6px 10px;">${memberships || '<span style="color:var(--text-color-secondary)">none</span>'}</td>
+                    </tr>`;
+                }).join('');
+                container.innerHTML = `<table style="width:100%; border-collapse:collapse; background:var(--card-bg); border-radius:8px; overflow:hidden;">
+                    <thead><tr style="background:var(--table-header-bg, var(--container-bg)); font-size:11px; text-transform:uppercase; color:var(--text-color-secondary);">
+                        <th style="padding:8px 10px; text-align:left;">Email</th>
+                        <th style="padding:8px 10px; text-align:left;">Platform Role</th>
+                        <th style="padding:8px 10px; text-align:left;">Tenant Memberships</th>
+                    </tr></thead><tbody>${rows}</tbody></table>`;
+            } catch (e) {
+                container.innerHTML = `<span style="color:var(--danger-color)">Error loading users: ${e.message}</span>`;
+            }
+        }
+
+        async function createTenantAdmin() {
+            const slug = (document.getElementById('newTenantSlug')?.value || '').trim();
+            const name = (document.getElementById('newTenantName')?.value || '').trim();
+            const authMode = document.getElementById('newTenantAuthMode')?.value || 'password';
+            const azureId = (document.getElementById('newTenantAzureId')?.value || '').trim() || null;
+            if (!slug || !name) { alert('Slug and Name are required.'); return; }
+            const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : '/api';
+            try {
+                const resp = await fetch(`${apiBase}/admin/tenants`, {
+                    method: 'POST',
+                    headers: getAuthHeaders('application/json'),
+                    body: JSON.stringify({ slug, name, auth_mode: authMode, azure_tenant_id: azureId })
+                });
+                const data = await resp.json();
+                if (!resp.ok || !data.success) { alert(data.error || 'Failed to create tenant'); return; }
+                document.getElementById('newTenantSlug').value = '';
+                document.getElementById('newTenantName').value = '';
+                document.getElementById('newTenantAzureId').value = '';
+                loadAdminTenants();
+            } catch (e) {
+                alert(`Error: ${e.message}`);
+            }
+        }
+
+        async function deactivateTenant(tenantId) {
+            if (!confirm('Deactivate this tenant? Users will lose access.')) return;
+            const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : '/api';
+            try {
+                const resp = await fetch(`${apiBase}/admin/tenants/${tenantId}/status`, {
+                    method: 'PATCH',
+                    headers: getAuthHeaders('application/json'),
+                    body: JSON.stringify({ status: 'inactive' })
+                });
+                const data = await resp.json();
+                if (!resp.ok || !data.success) { alert(data.error || 'Failed to deactivate tenant'); return; }
+                loadAdminTenants();
+            } catch (e) {
+                alert(`Error: ${e.message}`);
+            }
+        }
+
+        async function activateTenant(tenantId) {
+            const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : '/api';
+            try {
+                const resp = await fetch(`${apiBase}/admin/tenants/${tenantId}/status`, {
+                    method: 'PATCH',
+                    headers: getAuthHeaders('application/json'),
+                    body: JSON.stringify({ status: 'active' })
+                });
+                const data = await resp.json();
+                if (!resp.ok || !data.success) { alert(data.error || 'Failed to activate tenant'); return; }
+                loadAdminTenants();
+            } catch (e) {
+                alert(`Error: ${e.message}`);
             }
         }
 
         function updateUserDisplay() {
             const userInfoStr = localStorage.getItem('user_info');
             const userEmailDisplay = document.getElementById('userEmailDisplay');
+            const sessionBootstrapStr = localStorage.getItem('session_bootstrap');
 
             if (userInfoStr && userEmailDisplay) {
                 try {
@@ -24256,7 +25059,32 @@ Ready for translation!`);
                     console.error('[AUTH] Failed to parse user info:', e);
                 }
             }
+
+            if (sessionBootstrapStr) {
+                try {
+                    const sessionBootstrap = JSON.parse(sessionBootstrapStr);
+                    window.sessionBootstrap = sessionBootstrap;
+                    window.currentTenant = sessionBootstrap.activeTenant || null;
+                } catch (e) {
+                    console.warn('[AUTH] Failed to parse stored session bootstrap:', e);
+                }
+            }
+
+            renderTenantContext();
+            const cachedBootstrap = window.sessionBootstrap || null;
+            if (cachedBootstrap && typeof applyAdminPanelRoles === 'function') {
+                applyAdminPanelRoles(cachedBootstrap);
+            }
         }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const tenantSwitcher = document.getElementById('tenantSwitcher');
+            if (tenantSwitcher) {
+                tenantSwitcher.addEventListener('change', function () {
+                    switchActiveTenant(this.value);
+                });
+            }
+        });
 
         // Load log history
         // Admin Panel Functions
@@ -24742,7 +25570,7 @@ Ready for translation!`);
                 console.log('[LOG HISTORY] Fetching activity logs from backend...');
                 // Use AI_API_BASE if defined, otherwise construct it
                 const apiBase = resolveApiBase();
-                const response = await fetch(`${apiBase}/get-activity?limit=1000&all=true`);
+                const response = await fetch(`${apiBase}/get-activity?limit=1000&all=true`, { headers: getAuthHeaders() });
 
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -24835,7 +25663,7 @@ Ready for translation!`);
         window.exportLogHistory = async function () {
             try {
                 const apiBase = resolveApiBase();
-                const response = await fetch(`${apiBase}/get-activity?limit=10000&all=true`);
+                const response = await fetch(`${apiBase}/get-activity?limit=10000&all=true`, { headers: getAuthHeaders() });
                 const data = await response.json();
 
                 if (data.success && data.activities) {
@@ -27087,7 +27915,7 @@ Ready for translation!`);
 
                     const response = await fetch(`${AI_API_BASE}/fetch-config-ssh`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: getAuthHeaders('application/json'),
                         body: JSON.stringify({
                             host: deviceIP,
                             ros_version: rosVersion,
@@ -28268,7 +29096,7 @@ Ready for translation!`);
                 const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : (window.AI_API_BASE || '/api');
                 const response = await fetch(`${apiBase.replace(/\/+$/, '')}/generate-ftth-fiber-customer`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getAuthHeaders('application/json'),
                     body: JSON.stringify({
                         routerboard,
                         routeros,
@@ -28521,7 +29349,7 @@ Ready for translation!`);
                 const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : (window.AI_API_BASE || '/api');
                 const resp = await fetch(`${apiBase.replace(/\/+$/, '')}/generate-ftth-fiber-site`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getAuthHeaders('application/json'),
                     body: JSON.stringify(payload)
                 });
                 const body = await resp.json().catch(() => ({}));
@@ -28614,7 +29442,7 @@ Ready for translation!`);
                 const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : (window.AI_API_BASE || '/api');
                 const resp = await fetch(`${apiBase.replace(/\/+$/, '')}/generate-ftth-isd-fiber`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getAuthHeaders('application/json'),
                     body: JSON.stringify(payload)
                 });
                 const body = await resp.json().catch(() => ({}));
@@ -30987,7 +31815,7 @@ Ready for translation!`);
         async function diffLoadSavedList(side) {
             try {
                 const apiBase = (typeof resolveApiBase === 'function') ? resolveApiBase() : '/api';
-                const resp = await fetch(`${apiBase}/get-completed-configs`);
+                const resp = await fetch(`${apiBase}/get-completed-configs`, { headers: getAuthHeaders() });
                 const data = await resp.json();
                 const select = document.getElementById('diffSaved' + side);
                 select.innerHTML = '<option value="">-- Select a saved config --</option>';
@@ -31107,7 +31935,7 @@ Ready for translation!`);
                 if (!id) { nocToast('Select a saved config first', 'warning'); return ''; }
                 try {
                     const apiBase = (typeof resolveApiBase === 'function') ? resolveApiBase() : '/api';
-                    const resp = await fetch(`${apiBase}/get-completed-config/${id}`);
+                    const resp = await fetch(`${apiBase}/get-completed-config/${id}`, { headers: getAuthHeaders() });
                     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                     const data = await resp.json();
                     const config = data.config_content || data.config || data.commands || '';
