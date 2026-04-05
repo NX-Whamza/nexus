@@ -25336,39 +25336,37 @@ Ready for translation!`);
                 return false;
             }
 
-            // Show the button for authenticated users; the admin panel will display an access message if unauthorized.
             adminBtn.style.display = 'inline-block';
+
+            // Fast path: trust the already-loaded bootstrap permissions.
+            // The bootstrap is the authoritative source of truth and is already
+            // verified by the backend — no extra round-trip needed.
+            const bootstrap = window.sessionBootstrap;
+            if (bootstrap && bootstrap.permissions) {
+                const allowed = !!(bootstrap.permissions.adminPanel);
+                adminBtn.style.opacity = allowed ? '1' : '0.7';
+                adminBtn.title = allowed ? '' : 'Admin access required';
+                return allowed;
+            }
+
+            // Bootstrap not yet loaded — fall back to API probe.
             adminBtn.style.opacity = '0.7';
             adminBtn.title = 'Admin access required';
-
             try {
                 const apiBase = (typeof AI_API_BASE !== 'undefined' ? AI_API_BASE : window.AI_API_BASE) || '/api';
                 const response = await fetch(`${apiBase}/admin/feedback?limit=1`, {
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
+                    headers: { 'Authorization': `Bearer ${token}` }
                 });
-
                 if (response.ok) {
-                    adminBtn.style.display = 'inline-block';
                     adminBtn.style.opacity = '1';
                     adminBtn.title = '';
                     return true;
                 }
-
-                // Keep visible, but mark as restricted.
-                if (response.status === 403) {
-                    adminBtn.style.opacity = '0.7';
-                    adminBtn.title = 'Admin access required';
-                    return false;
-                }
-
                 adminBtn.style.opacity = '0.7';
+                adminBtn.title = 'Admin access required';
                 return false;
             } catch (e) {
                 console.warn('[ADMIN] Admin check failed:', e);
-                // Keep visible if logged in; backend may be temporarily unavailable.
-                adminBtn.style.display = 'inline-block';
                 adminBtn.style.opacity = '0.7';
                 adminBtn.title = 'Admin check unavailable';
                 return false;
