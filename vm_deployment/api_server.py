@@ -15681,6 +15681,7 @@ def _serialize_user_row(user):
         'homeTenantId': user['home_tenant_id'],
         'platformRole': user['platform_role'] or ('platform_admin' if user['is_platform_admin'] else 'user'),
         'isPlatformAdmin': bool(user['is_platform_admin']),
+        'profilePhoto': dict(user).get('profile_photo') or None,
     }
 
 
@@ -16541,12 +16542,37 @@ def admin_online_users():
                 'id': uid,
                 'email': entry.get('email', ''),
                 'display_name': entry.get('display_name', ''),
-                'avatar': entry.get('avatar'),   # data URL or None
+                'avatar': entry.get('avatar'),
                 'tenant_name': entry.get('tenant_name', ''),
                 'role_label': entry.get('role_label', ''),
                 'last_seen_ago': int(_time.time() - entry['last_seen']),
             })
-    # Sort by most recently seen
+
+    # Fill missing avatars from DB (handles multi-worker deployments where
+    # in-memory photo may only exist in the worker that handled SSO login)
+    if online:
+        try:
+            init_users_db()
+            _av_conn = sqlite3.connect(os.path.join('secure_data', 'users.db'))
+            _av_conn.row_factory = sqlite3.Row
+            emails_needing_photo = [u['email'] for u in online if not u['avatar']]
+            if emails_needing_photo:
+                placeholders = ','.join('?' * len(emails_needing_photo))
+                rows = _av_conn.execute(
+                    f'SELECT email, profile_photo FROM users WHERE email IN ({placeholders})',
+                    emails_needing_photo
+                ).fetchall()
+                photo_map = {row['email']: row['profile_photo'] for row in rows if row['profile_photo']}
+                for u in online:
+                    if not u['avatar'] and u['email'] in photo_map:
+                        u['avatar'] = photo_map[u['email']]
+                        # Also cache in active_sessions so same worker benefits next time
+                        if u['id'] in _active_sessions:
+                            _active_sessions[u['id']]['avatar'] = photo_map[u['email']]
+            _av_conn.close()
+        except Exception:
+            pass
+
     online.sort(key=lambda x: x['last_seen_ago'])
     return jsonify({'online': online, 'count': len(online)})
 
