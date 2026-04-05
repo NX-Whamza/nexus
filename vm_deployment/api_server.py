@@ -15193,10 +15193,14 @@ def _csv_emails(value):
 
 
 def _platform_admin_emails():
-    if os.getenv('PLATFORM_ADMIN_EMAILS') is not None:
-        return set(_csv_emails(os.getenv('PLATFORM_ADMIN_EMAILS')))
-    # No env var set — use legacy hardcoded list for backward compatibility with existing deployments
     _LEGACY_ADMIN_EMAILS = {'whamza@team.nxlink.com'}
+    env_val = os.getenv('PLATFORM_ADMIN_EMAILS')
+    if env_val is not None:
+        from_env = set(_csv_emails(env_val))
+        # If the env var yields actual emails, use those (union with legacy so hardcoded admins always work)
+        if from_env:
+            return from_env | _LEGACY_ADMIN_EMAILS
+    # Env var not set or empty — use legacy hardcoded list
     return _LEGACY_ADMIN_EMAILS
 
 
@@ -16206,6 +16210,9 @@ def auth_callback():
             if display_name and display_name != email.split('@')[0]:
                 c.execute('UPDATE users SET display_name = ? WHERE id = ?', (display_name, user_id))
             c.execute('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?', (user_id,))
+            # Always sync platform role on login so DB stays current with email-list membership
+            _sync_user_platform_access(conn, user_id, email)
+            _ensure_user_default_membership(conn, user_id)
         else:
             # Auto-create – SSO users don't need a local password
             password_hash = hash_password(secrets.token_urlsafe(32))
