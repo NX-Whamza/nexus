@@ -25,6 +25,3 @@ COPY . .
 EXPOSE 5000
 
 CMD ["uvicorn", "--app-dir", "vm_deployment", "fastapi_server:app", "--host", "0.0.0.0", "--port", "5000", "--workers", "8"]
-=======
-CMD ["uvicorn", "--app-dir", "vm_deployment", "fastapi_server:app", "--host", "0.0.0.0", "--port", "5000", "--workers", "8"]
->>>>>>> e48d426 (Fix prod Dockerfile and API fallback)
