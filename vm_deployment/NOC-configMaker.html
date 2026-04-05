@@ -2975,6 +2975,30 @@
         #onlineDropdown .od-ago { font-size: 9px; color: var(--text-muted); flex-shrink: 0; }
         #onlineDropdown .od-empty { padding: 20px 14px; text-align: center; font-size: 11px; color: var(--text-muted); }
 
+        /* ── Profile Avatar (top bar) ── */
+        #profileAvatarBtn { display: none; position: relative; cursor: pointer; flex-shrink: 0; }
+        #profileAvatarCircle { width: 30px; height: 30px; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; border: 2px solid var(--border-color); transition: border-color 0.2s, transform 0.15s; background: #4f46e5; }
+        #profileAvatarCircle:hover { border-color: var(--accent-color, #6366f1); transform: scale(1.08); }
+        #profileAvatarCircle img { width: 100%; height: 100%; object-fit: cover; }
+        #profileDropdown { display: none; position: absolute; top: calc(100% + 8px); right: 0; min-width: 220px; background: var(--container-bg); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.3); z-index: 9999; overflow: hidden; }
+        #profileDropdown.open { display: block; }
+        #profileDropdown .pd-header { padding: 16px 16px 12px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border-color); }
+        #profileDropdown .pd-avatar { width: 42px; height: 42px; border-radius: 50%; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; color: #fff; }
+        #profileDropdown .pd-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        #profileDropdown .pd-info { flex: 1; min-width: 0; }
+        #profileDropdown .pd-name { font-size: 13px; font-weight: 600; color: var(--text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #profileDropdown .pd-role { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+        #profileDropdown .pd-tenant { font-size: 10px; color: var(--text-muted); }
+        #profileDropdown .pd-actions { padding: 6px; }
+        #profileDropdown .pd-action { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 8px; font-size: 12px; color: var(--text-color); cursor: pointer; transition: background 0.1s; border: none; background: none; width: 100%; text-align: left; }
+        #profileDropdown .pd-action:hover { background: var(--hover-bg, rgba(255,255,255,0.06)); }
+        #profileDropdown .pd-action.danger { color: #ef4444; }
+        #profileDropdown .pd-action .pd-icon { font-size: 14px; width: 20px; text-align: center; flex-shrink: 0; }
+        #profileDropdown .pd-divider { height: 1px; background: var(--border-color); margin: 4px 0; }
+        #profileDropdown .pd-tenant-switch { padding: 8px 10px; }
+        #profileDropdown .pd-tenant-switch label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); display: block; margin-bottom: 4px; }
+        #profileDropdown .pd-tenant-switch select { width: 100%; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 8px; font-size: 11px; }
+
         .monthly-tracker {
             display: flex;
             flex-direction: column;
@@ -3914,7 +3938,7 @@
                     title="Search everything (Ctrl+K)"
                     style="font-size: 9px; padding: 4px 8px;"> SEARCH</button>
                 <span id="userEmailDisplay"
-                    style="color: var(--text-muted); font-size: 9px; text-transform: uppercase;"></span>
+                    style="display:none; color: var(--text-muted); font-size: 9px; text-transform: uppercase;"></span>
                 <span id="roleBadge"
                     style="display:none; color: var(--text-color); font-size: 9px; text-transform: uppercase; padding: 4px 8px; border-radius: 999px; border: 1px solid var(--border-color); background: var(--container-bg);"></span>
                 <span id="tenantBadge"
@@ -3938,10 +3962,37 @@
                 </div>
                 <button class="toggle-dark" id="settingsBtn"
                     onclick="window.openSettingsModal && window.openSettingsModal()"
-                    style="font-size: 9px; padding: 4px 8px;"> SETTINGS</button>
+                    style="display:none; font-size: 9px; padding: 4px 8px;"> SETTINGS</button>
                 <button class="toggle-dark" id="darkToggle" style="font-size: 9px; padding: 4px 8px;"> Dark</button>
                 <button class="toggle-dark" onclick="handleLogout()"
-                    style="font-size: 9px; padding: 4px 8px;">LOG OUT</button>
+                    style="display:none; font-size: 9px; padding: 4px 8px;">LOG OUT</button>
+                <!-- Profile avatar (replaces email/role/settings/logout in top bar) -->
+                <div id="profileAvatarBtn" title="Your profile">
+                    <div id="profileAvatarCircle">WH</div>
+                    <div id="profileDropdown">
+                        <div class="pd-header">
+                            <div class="pd-avatar" id="pdAvatar" style="background:#4f46e5">WH</div>
+                            <div class="pd-info">
+                                <div class="pd-name" id="pdName">Loading...</div>
+                                <div class="pd-role" id="pdRole"></div>
+                                <div class="pd-tenant" id="pdTenant"></div>
+                            </div>
+                        </div>
+                        <div id="pdTenantSwitchSection" class="pd-tenant-switch" style="display:none">
+                            <label>Switch Tenant</label>
+                            <select id="pdTenantSwitcher" onchange="switchActiveTenant(this.value)"></select>
+                        </div>
+                        <div class="pd-actions">
+                            <button class="pd-action" onclick="document.getElementById('profileDropdown').classList.remove('open'); window._profileDropdownOpen=false; window.openSettingsModal && window.openSettingsModal()">
+                                <span class="pd-icon">&#9881;</span> Settings
+                            </button>
+                            <div class="pd-divider"></div>
+                            <button class="pd-action danger" onclick="handleLogout()">
+                                <span class="pd-icon">&#8594;</span> Sign Out
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
 
         <!-- OLD Header (hidden, kept for JS compatibility) -->
@@ -24658,6 +24709,7 @@ Ready for translation!`);
                 console.warn('[AUTH] Failed to persist session bootstrap:', e);
             }
             initOnlineWidget(session.permissions);
+            initProfileAvatar(session);
         }
 
         function getCurrentRoleLabel() {
@@ -24790,6 +24842,80 @@ Ready for translation!`);
                 loadAdminUsers();
             }
         }
+
+        // ── Profile Avatar (top bar) ────────────────────────────────────────────
+        window._profileDropdownOpen = false;
+
+        function initProfileAvatar(session) {
+            const btn = document.getElementById('profileAvatarBtn');
+            if (!btn) return;
+
+            const user = session.user || {};
+            const name = user.displayName || user.email || '';
+            const email = user.email || '';
+            const photo = user.profilePhoto || null;
+            const roleLbl = typeof getCurrentRoleLabel === 'function' ? getCurrentRoleLabel(session) : '';
+            const tenantName = (session.activeTenant || {}).name || '';
+            const color = typeof _onlineColor === 'function' ? _onlineColor(email) : '#4f46e5';
+            const initials = typeof _onlineInitials === 'function' ? _onlineInitials(name || email) : (name||email).slice(0,2).toUpperCase();
+
+            // Top bar circle
+            const circle = document.getElementById('profileAvatarCircle');
+            if (circle) {
+                circle.style.background = photo ? '#333' : color;
+                circle.innerHTML = photo
+                    ? `<img src="${photo}" alt="" onerror="this.outerHTML='${initials}'; this.parentNode.style.background='${color}'">`
+                    : initials;
+            }
+
+            // Dropdown header
+            const pdAvatar = document.getElementById('pdAvatar');
+            if (pdAvatar) {
+                pdAvatar.style.background = photo ? '#333' : color;
+                pdAvatar.innerHTML = photo
+                    ? `<img src="${photo}" alt="" onerror="this.outerHTML='${initials}'; this.parentNode.style.background='${color}'">`
+                    : initials;
+            }
+            const pdName = document.getElementById('pdName');
+            if (pdName) pdName.textContent = name.split('@')[0] || name;
+            const pdRole = document.getElementById('pdRole');
+            if (pdRole) pdRole.textContent = roleLbl;
+            const pdTenant = document.getElementById('pdTenant');
+            if (pdTenant) pdTenant.textContent = tenantName ? `Tenant: ${tenantName}` : '';
+
+            // Tenant switcher in dropdown
+            const switchSection = document.getElementById('pdTenantSwitchSection');
+            const pdSwitcher = document.getElementById('pdTenantSwitcher');
+            const activeMemberships = (session.memberships || []).filter(m => m.status === 'active');
+            if (switchSection && pdSwitcher && activeMemberships.length > 1) {
+                switchSection.style.display = 'block';
+                pdSwitcher.innerHTML = activeMemberships.map(m =>
+                    `<option value="${m.tenantId}" ${(session.activeTenant||{}).id == m.tenantId ? 'selected' : ''}>${m.name}</option>`
+                ).join('');
+            } else if (switchSection) {
+                switchSection.style.display = 'none';
+            }
+
+            // Show the button
+            btn.style.display = 'block';
+
+            // Toggle dropdown (attach only once)
+            if (!btn._profileListenerAttached) {
+                btn._profileListenerAttached = true;
+                btn.addEventListener('click', function(e) {
+                    window._profileDropdownOpen = !window._profileDropdownOpen;
+                    document.getElementById('profileDropdown')?.classList.toggle('open', window._profileDropdownOpen);
+                    e.stopPropagation();
+                });
+                document.addEventListener('click', function() {
+                    if (window._profileDropdownOpen) {
+                        window._profileDropdownOpen = false;
+                        document.getElementById('profileDropdown')?.classList.remove('open');
+                    }
+                });
+            }
+        }
+        // ── End Profile Avatar ───────────────────────────────────────────────────
 
         // ── Who's Online ────────────────────────────────────────────────────────
         const _ONLINE_COLORS = ['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6'];
