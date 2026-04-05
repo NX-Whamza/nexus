@@ -53,10 +53,18 @@ chat_history.db
 completed_configs.db
 secure_data/
 secure_data_dev/
+secure_data_activity_check/
+aviat_shared_queue.json
 *.log
 temp/
 cache/
 AviatSubnetChecker/
+
+# Pytest temp directories
+pytest-tmp-*/
+.pytest-tmp-*/
+pytest-cache-files-*/
+*.db
 
 # Secrets
 .env

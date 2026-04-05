@@ -1,6 +1,10 @@
 """
-Nextlink Configuration Standards
-Based on Nextscape Navigator knowledge base
+Nextlink-specific network standards and reference data.
+
+NOTE: These constants are Nextlink-internal reference values. In a multi-tenant
+deployment, per-tenant equivalents should be configured via the tenant_settings
+table. These values serve as documentation and fallback defaults for the Nextlink
+tenant only.
 """
 
 # IP Addressing Schemes

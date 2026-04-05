@@ -38,6 +38,8 @@ def test_frontend_endpoint_wiring_has_backend_routes():
     routes = {_normalize_route(route) for route in _backend_routes()}
     frontend_endpoints = {
         '/api/auth/verify',
+        '/api/session/bootstrap',
+        '/api/session/switch-tenant',
         '/api/health',
         '/api/version',
         '/api/app-config',
@@ -83,6 +85,8 @@ def test_frontend_endpoint_wiring_has_backend_routes():
         '/api/bulk-migration-execute',
         '/api/bulk-compliance-scan',
         '/api/ssh-push-config',
+        '/api/admin/tenants',
+        '/api/admin/users',
         '/api/maintenance/windows',
         '/api/maintenance/windows/X',
         '/api/command-vault/catalog',

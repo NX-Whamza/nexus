@@ -22,11 +22,14 @@ client = app.test_client()
 
 
 def _admin_auth_header() -> dict[str, str]:
+    # Use platform admin email; fall back to env var for flexibility
+    admin_email = os.getenv("PLATFORM_ADMIN_EMAILS", "whamza@team.nxlink.com").split(",")[0].strip()
     login = client.post(
         "/api/auth/login",
         json={
-            "email": "netops@team.nxlink.com",
-            "password": os.getenv("DEFAULT_PASSWORD", "NOCConfig2025!"),
+            "email": admin_email,
+            # Reuse the single source of truth from api_server — no duplicate secrets in tests
+            "password": api_server.DEFAULT_PASSWORD,
         },
     )
     assert login.status_code == 200, login.get_data(as_text=True)
@@ -86,8 +89,11 @@ def test_completed_configs_tab_actions_round_trip():
 
 
 def test_log_history_tab_actions_record_and_read_activity():
+    headers = _admin_auth_header()
+
     write_live = client.post(
         "/api/activity",
+        headers=headers,
         json={
             "timestamp": "2026-03-17T00:00:00Z",
             "username": "netops@team.nxlink.com",
@@ -97,12 +103,15 @@ def test_log_history_tab_actions_record_and_read_activity():
     )
     assert write_live.status_code == 200
 
-    read_live = client.get("/api/activity")
+    read_live = client.get("/api/activity", headers=headers)
     assert read_live.status_code == 200
-    assert isinstance(read_live.get_json(), list)
+    payload = read_live.get_json()
+    # Endpoint returns either a plain list (legacy) or {activities: [...]} (multi-tenant)
+    assert isinstance(payload, list) or isinstance((payload or {}).get("activities"), list)
 
     write_db = client.post(
         "/api/log-activity",
+        headers=headers,
         json={
             "username": "netops@team.nxlink.com",
             "type": "tower-config",
@@ -165,7 +174,7 @@ def test_feedback_and_admin_tab_actions_work():
         headers=headers,
         json={
             "email": "new.user@team.nxlink.com",
-            "newPassword": "ResetPass123!",
+            "newPassword": api_server.DEFAULT_PASSWORD,
             "requirePasswordChange": False,
         },
     )
@@ -186,5 +195,5 @@ def test_compliance_scanner_tab_actions_report_status():
     engineering_payload = engineering.get_json() or {}
     assert "compliance" in engineering_payload
 
-    reload_resp = client.post("/api/reload-compliance")
+    reload_resp = client.post("/api/reload-compliance", headers=_admin_auth_header())
     assert reload_resp.status_code in {200, 503}
