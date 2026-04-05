@@ -14328,23 +14328,31 @@ def get_feedback():
         # Check if user is admin
         if not is_admin_user():
             return jsonify({'error': 'Admin access required'}), 403
-        tenant_context = _get_request_tenant_context()
-        tenant = tenant_context['tenant']
-        
+        try:
+            tenant_context = _get_request_tenant_context()
+            tenant = tenant_context['tenant']
+        except Exception:
+            tenant = _get_default_tenant_context()
+
         feedback_db = init_feedback_db()
         conn = sqlite3.connect(str(feedback_db))
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        
+
         # Get filter parameters
         status_filter = request.args.get('status', 'all')
         type_filter = request.args.get('type', 'all')
         limit = int(request.args.get('limit', 100))
         offset = int(request.args.get('offset', 0))
-        
-        query = 'SELECT * FROM feedback WHERE tenant_id = ?'
-        params = [tenant.get('id')]
-        
+
+        tenant_id_val = tenant.get('id')
+        if tenant_id_val is not None:
+            query = 'SELECT * FROM feedback WHERE tenant_id = ?'
+            params = [tenant_id_val]
+        else:
+            query = 'SELECT * FROM feedback WHERE 1=1'
+            params = []
+
         if status_filter != 'all':
             query += ' AND status = ?'
             params.append(status_filter)
@@ -14360,8 +14368,12 @@ def get_feedback():
         feedback_list = [dict(row) for row in cursor.fetchall()]
         
         # Get total count
-        count_query = 'SELECT COUNT(*) FROM feedback WHERE tenant_id = ?'
-        count_params = [tenant.get('id')]
+        if tenant_id_val is not None:
+            count_query = 'SELECT COUNT(*) FROM feedback WHERE tenant_id = ?'
+            count_params = [tenant_id_val]
+        else:
+            count_query = 'SELECT COUNT(*) FROM feedback WHERE 1=1'
+            count_params = []
         if status_filter != 'all':
             count_query += ' AND status = ?'
             count_params.append(status_filter)
@@ -15480,6 +15492,11 @@ def _write_audit_log(event_type, detail=None, target_user_id=None, target_email=
             actor_user_id = user_info.get('user_id')
             actor_email = user_info.get('email')
             actor_platform_role = _platform_role_for_email(actor_email or '')
+        # For login events, the user hasn't authenticated yet so current_user is None.
+        # Use target_email as the actor for display purposes.
+        if actor_email is None and target_email and event_type == 'login':
+            actor_email = target_email
+            actor_platform_role = _platform_role_for_email(target_email)
         ip_address = request.remote_addr if request else None
         ts_unix = int(time.time())
         init_users_db()
@@ -16036,7 +16053,7 @@ def auth_login():
             _ensure_user_default_membership(conn, user_id)
             conn.commit()
             conn.close()
-            _write_audit_log('login', detail={'method': 'password'}, tenant_id=None)
+            _write_audit_log('login', detail={'method': 'password'}, target_email=email)
             return jsonify({
                 'success': True,
                 'token': token,
@@ -16065,7 +16082,7 @@ def auth_login():
 
             token = generate_token(user['id'], email)
             conn.close()
-            _write_audit_log('login', detail={'method': 'password'}, tenant_id=None)
+            _write_audit_log('login', detail={'method': 'password'}, target_email=email)
             return jsonify({
                 'success': True,
                 'token': token,
@@ -16280,7 +16297,7 @@ def auth_callback():
     })
 
     print(f"[AUTH] SSO login success: {email}")
-    _write_audit_log('login', detail={'method': 'sso_microsoft'}, tenant_id=None)
+    _write_audit_log('login', detail={'method': 'sso_microsoft'}, target_email=email)
     # Redirect to login.html with token in query string – the page
     # will pick these up, store them in localStorage, and redirect
     # to the main app.

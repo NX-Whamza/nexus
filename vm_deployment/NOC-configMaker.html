@@ -22583,7 +22583,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
 
                     const response = await fetch(`${AI_API_BASE}/migrate-config`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: getAuthHeaders('application/json'),
                         body: JSON.stringify({
                             config: uploadedConfigContent,
                             target_device: targetDevice,
@@ -24738,7 +24738,10 @@ Ready for translation!`);
             }
 
             if (tenantBadge) {
-                if (activeTenant && activeTenant.name) {
+                const session = window.sessionBootstrap;
+                const isPlatformStaff = session && session.permissions &&
+                    (session.permissions.platformAdmin || session.permissions.platformSupport);
+                if (isPlatformStaff && activeTenant && activeTenant.name) {
                     tenantBadge.textContent = `Tenant: ${activeTenant.name}`;
                     tenantBadge.style.display = 'inline-flex';
                 } else {
@@ -25049,6 +25052,10 @@ Ready for translation!`);
 
             if (sidebarAdminBtn) {
                 sidebarAdminBtn.style.display = permissions.adminPanel ? '' : 'none';
+            }
+            const topNavAdminBtn = document.getElementById('adminNavBtn');
+            if (topNavAdminBtn) {
+                topNavAdminBtn.style.display = permissions.adminPanel ? '' : 'none';
             }
         }
 
