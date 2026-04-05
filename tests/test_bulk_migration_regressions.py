@@ -25,9 +25,20 @@ def _load_app():
     return app.test_client(), api_server
 
 
+def _auth_headers(client, api_server_mod) -> dict:
+    admin_email = os.getenv("PLATFORM_ADMIN_EMAILS", "whamza@team.nxlink.com").split(",")[0].strip()
+    login = client.post(
+        "/api/auth/login",
+        json={"email": admin_email, "password": api_server_mod.DEFAULT_PASSWORD},
+    )
+    token = (login.get_json() or {}).get("token")
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
+
 def test_nokia7250_defaults_exposes_distinct_ospf_auth_key() -> None:
-    client, _ = _load_app()
-    response = client.get("/api/nokia7250-defaults")
+    client, api_mod = _load_app()
+    headers = _auth_headers(client, api_mod)
+    response = client.get("/api/nokia7250-defaults", headers=headers)
     assert response.status_code == 200, response.get_data(as_text=True)
     data = response.get_json() or {}
     assert data.get("bgp_auth_key") == "test-bgp"
@@ -201,7 +212,8 @@ def test_routerboard_migrations_translate_across_port_families(
     expected_any: list[str],
     unexpected_tokens: list[str],
 ) -> None:
-    client, _ = _load_app()
+    client, api_mod = _load_app()
+    headers = _auth_headers(client, api_mod)
     response = client.post(
         "/api/migrate-config",
         data=json.dumps(
@@ -213,6 +225,7 @@ def test_routerboard_migrations_translate_across_port_families(
             }
         ),
         content_type="application/json",
+        headers=headers,
     )
     assert response.status_code == 200, response.get_data(as_text=True)
     data = response.get_json() or {}
@@ -227,7 +240,8 @@ def test_routerboard_migrations_translate_across_port_families(
 
 
 def test_migrate_config_returns_analysis_and_validation() -> None:
-    client, _ = _load_app()
+    client, api_mod = _load_app()
+    headers = _auth_headers(client, api_mod)
     export = (
         "# 2025-12-22 12:34:47 by RouterOS 6.49.10\n"
         "# model = CCR1072-12G-4S+\n"
@@ -249,6 +263,7 @@ def test_migrate_config_returns_analysis_and_validation() -> None:
             }
         ),
         content_type="application/json",
+        headers=headers,
     )
     assert response.status_code == 200, response.get_data(as_text=True)
     data = response.get_json() or {}
@@ -261,7 +276,8 @@ def test_migrate_config_returns_analysis_and_validation() -> None:
 
 
 def test_nextlink_policy_detects_roles_and_keeps_target_ether1_management_only() -> None:
-    client, _ = _load_app()
+    client, api_mod = _load_app()
+    headers = _auth_headers(client, api_mod)
     export = (
         "# 2025-12-22 12:34:47 by RouterOS 6.49.10\n"
         "# model = CCR1072-12G-4S+\n"
@@ -286,6 +302,7 @@ def test_nextlink_policy_detects_roles_and_keeps_target_ether1_management_only()
             }
         ),
         content_type="application/json",
+        headers=headers,
     )
     assert response.status_code == 200, response.get_data(as_text=True)
     data = response.get_json() or {}
@@ -302,7 +319,8 @@ def test_nextlink_policy_detects_roles_and_keeps_target_ether1_management_only()
 
 
 def test_logical_vlan_and_routing_signals_flow_back_to_physical_port() -> None:
-    client, _ = _load_app()
+    client, api_mod = _load_app()
+    headers = _auth_headers(client, api_mod)
     export = (
         "# 2025-12-22 12:34:47 by RouterOS 7.19.4\n"
         "# model = CCR2004-1G-12S+2XS\n"
@@ -330,6 +348,7 @@ def test_logical_vlan_and_routing_signals_flow_back_to_physical_port() -> None:
             }
         ),
         content_type="application/json",
+        headers=headers,
     )
     assert response.status_code == 200, response.get_data(as_text=True)
     data = response.get_json() or {}
@@ -344,7 +363,8 @@ def test_logical_vlan_and_routing_signals_flow_back_to_physical_port() -> None:
 
 
 def test_legacy_lte_and_6ghz_patterns_are_detected_from_full_config() -> None:
-    client, _ = _load_app()
+    client, api_mod = _load_app()
+    headers = _auth_headers(client, api_mod)
     export = (
         "# 2026-03-22 09:15:00 by RouterOS 7.19.4\n"
         "# model = CCR2004-1G-12S+2XS\n"
@@ -370,6 +390,7 @@ def test_legacy_lte_and_6ghz_patterns_are_detected_from_full_config() -> None:
             }
         ),
         content_type="application/json",
+        headers=headers,
     )
     assert response.status_code == 200, response.get_data(as_text=True)
     ports = {
@@ -394,7 +415,8 @@ def test_toolbox_inventory_endpoint_exposes_porting_reference() -> None:
 
 
 def test_migrate_config_normalizes_existing_target_family_ports_and_identity() -> None:
-    client, _ = _load_app()
+    client, api_mod = _load_app()
+    headers = _auth_headers(client, api_mod)
     export = (
         "# 2026-04-01 22:00:27 by RouterOS 7.16.2\n"
         "# model=CCR2004-1G-12S+2XS\n"
@@ -420,6 +442,7 @@ def test_migrate_config_normalizes_existing_target_family_ports_and_identity() -
             }
         ),
         content_type="application/json",
+        headers=headers,
     )
     assert response.status_code == 200, response.get_data(as_text=True)
     data = response.get_json() or {}
@@ -445,7 +468,8 @@ def test_migrate_config_normalizes_existing_target_family_ports_and_identity() -
 
 
 def test_generic_logical_labels_do_not_override_physical_port_mapping() -> None:
-    client, _ = _load_app()
+    client, api_mod = _load_app()
+    headers = _auth_headers(client, api_mod)
     export = (
         "# 2026-04-01 22:00:27 by RouterOS 7.19.4\n"
         "# model=CCR2004-1G-12S+2XS\n"
@@ -474,6 +498,7 @@ def test_generic_logical_labels_do_not_override_physical_port_mapping() -> None:
             }
         ),
         content_type="application/json",
+        headers=headers,
     )
     assert response.status_code == 200, response.get_data(as_text=True)
     data = response.get_json() or {}
