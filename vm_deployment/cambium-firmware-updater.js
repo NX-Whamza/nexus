@@ -1,7 +1,5 @@
 (function () {
     'use strict';
-
-    const CAMBIUM_STORAGE_KEY = 'cambiumRadios';
     const cambiumState = {
         radios: [],
         providers: [],
@@ -136,24 +134,14 @@
             verifyStatus: normalizeStatus(radio.verifyStatus || radio.verify_status, radio.verify_ok),
             status: normalizeStatus(radio.status, radio.success),
             detail: radio.detail || radio.message || '',
-            username: radio.username || ''
+            username: radio.username || '',
+            backupPath: radio.backupPath || radio.backup_path || ''
         };
     }
 
-    function persistRadios() {
+    function clearPersistedRadios() {
         try {
-            localStorage.setItem(CAMBIUM_STORAGE_KEY, JSON.stringify(cambiumState.radios));
-        } catch (e) {
-            // ignore storage errors
-        }
-    }
-
-    function restoreRadios() {
-        try {
-            const raw = localStorage.getItem(CAMBIUM_STORAGE_KEY);
-            if (!raw) return;
-            const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed)) cambiumState.radios = parsed.map(normalizeRadio);
+            localStorage.removeItem('cambiumRadios');
         } catch (e) {
             // ignore storage errors
         }
@@ -164,9 +152,15 @@
         if (meta) meta.textContent = message;
     }
 
+    const _recentLogKeys = new Set();
     function addLog(message, type = 'info', meta = {}) {
         const logBox = document.getElementById('cambiumLogBox');
         if (!logBox) return;
+        // Deduplicate messages arriving from both global + task SSE streams within 500ms
+        const dedupeKey = `${type}:${message}`;
+        if (_recentLogKeys.has(dedupeKey)) return;
+        _recentLogKeys.add(dedupeKey);
+        setTimeout(() => _recentLogKeys.delete(dedupeKey), 500);
         const date = meta && meta.ts ? new Date(meta.ts) : new Date();
         const time = Number.isNaN(date.getTime()) ? '--:--:--' : date.toLocaleTimeString();
         const entry = document.createElement('div');
@@ -182,15 +176,47 @@
         logBox.innerHTML = '<div class="aviat-log-entry"><span class="aviat-log-time">[--:--:--]</span> Log cleared.</div>';
     }
 
+    function syncInteractiveState() {
+        const disabled = cambiumState.isProcessing;
+        [
+            'cambiumAddBtn',
+            'cambiumReplaceBtn',
+            'cambiumClearDoneBtn',
+            'cambiumClearAllBtn',
+            'cambiumRefreshBtn',
+            'cambiumCheckStatusBtn',
+            'cambiumLogRefreshBtn',
+            'cambiumLogStatusBtn',
+            'cambiumReloadProvidersBtn',
+            'cambiumReloadCatalogBtn',
+            'cambiumReloadUiBtn',
+            'cambiumQueueInput',
+            'cambiumProvider',
+            'cambiumFamily',
+            'cambiumFirmwareSource',
+            'cambiumCatalogVersion',
+            'cambiumActivationMode',
+            'cambiumActivationTime',
+            'cambiumDevicePassword'
+        ].forEach(id => {
+            const element = document.getElementById(id);
+            if (element) element.disabled = disabled;
+        });
+    }
+
     function setRunState(isProcessing) {
         cambiumState.isProcessing = !!isProcessing;
         const runBtn = document.getElementById('cambiumRunBtn');
         const abortBtn = document.getElementById('cambiumAbortBtn');
         if (runBtn) runBtn.disabled = cambiumState.isProcessing;
         if (abortBtn) {
-            abortBtn.disabled = true;
-            abortBtn.title = 'Abort is not available in the current backend contract.';
+            abortBtn.disabled = !cambiumState.isProcessing;
+            abortBtn.title = cambiumState.isProcessing
+                ? 'Request abort for the current Cambium task.'
+                : 'No Cambium task is currently running.';
         }
+        syncInteractiveState();
+        updateUI();
     }
 
     function upsertRadio(rawRadio) {
@@ -245,8 +271,12 @@
             const firmwareStatus = normalizeStatus(radio.firmwareStatus);
             const backupStatus = normalizeStatus(radio.backupStatus);
             const verifyStatus = normalizeStatus(radio.verifyStatus);
+            const backupAvailable = backupStatus === 'success' || !!radio.backupPath;
             const ipValue = cambiumEscapeHtml(radio.ip);
             const detail = radio.detail ? `<div style="margin-top: 6px; color: var(--text-color-secondary); font-size: 12px;">${cambiumEscapeHtml(radio.detail)}</div>` : '';
+            const backupMeta = radio.backupPath
+                ? `<div style="margin-top: 6px; color: var(--text-color-secondary); font-size: 12px;">Backup ready: ${cambiumEscapeHtml(radio.backupPath)}</div>`
+                : '';
             const currentPill = radio.currentVersion ? `<span class="aviat-pill">Current ${cambiumEscapeHtml(radio.currentVersion)}</span>` : '';
             const targetPill = radio.targetVersion ? `<span class="aviat-pill">Target ${cambiumEscapeHtml(radio.targetVersion)}</span>` : '';
             return `
@@ -263,17 +293,34 @@
                             ${targetPill}
                         </div>
                         ${detail}
+                        ${backupMeta}
                     </div>
                     <div style="display: flex; gap: 6px; align-items: center;">
                         <button class="aviat-btn secondary" onclick="cambiumRunSingle('${ipValue}')" ${cambiumState.isProcessing ? 'disabled' : ''}>Run</button>
                         <button class="aviat-btn secondary" onclick="cambiumInspectSingle('${ipValue}')" ${cambiumState.isProcessing ? 'disabled' : ''}>Inspect</button>
+                        <button class="aviat-btn secondary" onclick="cambiumDownloadBackup('${ipValue}')" ${(cambiumState.isProcessing || !backupAvailable) ? 'disabled' : ''}>Backup</button>
                         <button class="aviat-btn danger" onclick="cambiumRemoveRadio('${ipValue}')" ${cambiumState.isProcessing ? 'disabled' : ''}>Remove</button>
                     </div>
                 </div>
             `;
         }).join('');
 
-        persistRadios();
+    }
+
+    async function loadQueueState(options = {}) {
+        try {
+            const response = await cambiumFetch('/queue');
+            const data = await parseJson(response);
+            if (!response.ok) throw new Error(data.error || `Queue load failed (${response.status})`);
+            const radios = Array.isArray(data.radios) ? data.radios.map(normalizeRadio) : [];
+            const active = radios.filter(radio => !['success', 'error', 'aborted'].includes(normalizeStatus(radio.status)));
+            cambiumState.radios = active;
+            clearPersistedRadios();
+            updateUI();
+            if (!options.quiet && active.length) addLog(`Loaded ${active.length} Cambium queued radio(s)`, 'info');
+        } catch (err) {
+            if (!options.quiet) addLog(`Queue load failed: ${err.message}`, 'warning');
+        }
     }
 
     function normalizeProviders(payload) {
@@ -364,6 +411,10 @@
         versionSelect.innerHTML = ['<option value="">Select from catalog</option>']
             .concat(versions.map(entry => `<option value="${cambiumEscapeHtml(entry.version)}">${cambiumEscapeHtml(entry.label)}</option>`))
             .join('');
+        // Auto-select first real version so field is never blank after catalog loads
+        if (versions.length && !versionSelect.value) {
+            versionSelect.value = versions[0].version;
+        }
         setCatalogMeta(cambiumState.catalog.length ? `${cambiumState.catalog.length} catalog entries loaded` : 'Catalog not loaded');
     }
 
@@ -423,9 +474,10 @@
             device_type: deviceType,
             family: deviceType,
             firmware_source: document.getElementById('cambiumFirmwareSource')?.value || 'stable',
-            target_version: (document.getElementById('cambiumTargetVersion')?.value || '').trim(),
+            target_version: (document.getElementById('cambiumCatalogVersion')?.value || '').trim(),
             activation_mode: document.getElementById('cambiumActivationMode')?.value || 'immediate',
             activation_time: document.getElementById('cambiumActivationTime')?.value || '',
+            password: (document.getElementById('cambiumDevicePassword')?.value || '').trim(),
             tasks: selectedTasks()
         };
     }
@@ -443,7 +495,7 @@
                 action: mode,
                 radios,
                 devices: radios,
-                username: cambiumGetUsername()
+                requested_by: cambiumGetUsername()
             })
         });
         const data = await parseJson(response);
@@ -457,6 +509,7 @@
     }
 
     async function fetchDeviceInfoForIps(ips, options = {}) {
+        if (cambiumState.isProcessing) return [];
         const results = [];
         for (const ip of ips) {
             try {
@@ -465,7 +518,12 @@
                 const response = await cambiumFetch('/device-info', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ip, device_type: deviceType, username: cambiumGetUsername() })
+                    body: JSON.stringify({
+                        ip,
+                        device_type: deviceType,
+                        requested_by: cambiumGetUsername(),
+                        password: selectedProfile().password || ''
+                    })
                 });
                 const data = await parseJson(response);
                 if (!response.ok) throw new Error(data.error || `Device info failed (${response.status})`);
@@ -481,6 +539,7 @@
     }
 
     async function addRadios() {
+        if (cambiumState.isProcessing) return;
         const input = document.getElementById('cambiumQueueInput');
         if (!input) return;
         const profile = selectedProfile();
@@ -496,7 +555,7 @@
             firmwareStatus: 'pending',
             backupStatus: 'pending',
             verifyStatus: 'pending',
-            username: cambiumGetUsername()
+            requested_by: cambiumGetUsername()
         }));
         cambiumState.radios = cambiumState.radios.concat(radios.map(normalizeRadio));
         updateUI();
@@ -511,6 +570,7 @@
     }
 
     async function replaceRadios() {
+        if (cambiumState.isProcessing) return;
         const input = document.getElementById('cambiumQueueInput');
         if (!input) return;
         const profile = selectedProfile();
@@ -525,7 +585,7 @@
             firmwareStatus: 'pending',
             backupStatus: 'pending',
             verifyStatus: 'pending',
-            username: cambiumGetUsername()
+            requested_by: cambiumGetUsername()
         }));
         cambiumState.radios = radios.map(normalizeRadio);
         updateUI();
@@ -540,6 +600,7 @@
     }
 
     window.cambiumRemoveRadio = async function (ip) {
+        if (cambiumState.isProcessing) return;
         cambiumState.radios = cambiumState.radios.filter(r => r.ip !== ip);
         updateUI();
         try {
@@ -551,6 +612,7 @@
     };
 
     async function clearAll() {
+        if (cambiumState.isProcessing) return;
         cambiumState.radios = [];
         updateUI();
         try {
@@ -562,6 +624,7 @@
     }
 
     async function clearCompleted() {
+        if (cambiumState.isProcessing) return;
         const remaining = cambiumState.radios.filter(r => normalizeStatus(r.status) !== 'success');
         cambiumState.radios = remaining;
         updateUI();
@@ -682,9 +745,29 @@
     function monitorTask(taskId) {
         stopTaskWatchers();
         startTaskStream(taskId);
+        setRunState(true);
         cambiumState.taskPollInterval = setInterval(() => {
             pollTaskStatus(taskId);
         }, 2500);
+    }
+
+    async function abortCurrentTask() {
+        if (!cambiumState.taskId) {
+            addLog('Cambium abort is not ready yet. Retry in a moment.', 'warning');
+            return;
+        }
+        try {
+            const response = await cambiumFetch(`/abort/${encodeURIComponent(cambiumState.taskId)}`, {
+                method: 'POST'
+            });
+            const data = await parseJson(response);
+            if (!response.ok) throw new Error(data.error || `Abort failed (${response.status})`);
+            addLog('Cambium abort requested', 'warning');
+            const abortBtn = document.getElementById('cambiumAbortBtn');
+            if (abortBtn) abortBtn.disabled = true;
+        } catch (err) {
+            addLog(`Cambium abort failed: ${err.message}`, 'error');
+        }
     }
 
     async function submitRun(ips) {
@@ -731,7 +814,8 @@
                     tasks: profile.tasks,
                     ips,
                     devices: ips,
-                    username: cambiumGetUsername()
+                    requested_by: cambiumGetUsername(),
+                    password: profile.password || ''
                 })
             });
             const data = await parseJson(response);
@@ -759,11 +843,27 @@
     }
 
     window.cambiumRunSingle = async function (ip) {
+        if (cambiumState.isProcessing) return;
         await submitRun([ip]);
     };
 
     window.cambiumInspectSingle = async function (ip) {
+        if (cambiumState.isProcessing) return;
         await fetchDeviceInfoForIps([ip]);
+    };
+
+    window.cambiumDownloadBackup = async function (ip) {
+        const radio = cambiumState.radios.find(item => item.ip === ip);
+        if (!radio || (normalizeStatus(radio.backupStatus) !== 'success' && !radio.backupPath)) {
+            addLog(`No backup is available for ${ip}`, 'warning');
+            return;
+        }
+        const query = radio.backupPath
+            ? `ip=${encodeURIComponent(ip)}&path=${encodeURIComponent(radio.backupPath)}`
+            : `ip=${encodeURIComponent(ip)}`;
+        const url = `${getCambiumApiBase()}/backup?${query}`;
+        window.open(url, '_blank', 'noopener,noreferrer');
+        addLog(`Requested backup download for ${ip}`, 'info');
     };
 
     async function runAll() {
@@ -786,9 +886,7 @@
     }
 
     function handleCatalogVersionChange() {
-        const versionSelect = document.getElementById('cambiumCatalogVersion');
-        const targetInput = document.getElementById('cambiumTargetVersion');
-        if (versionSelect && targetInput && versionSelect.value) targetInput.value = versionSelect.value;
+        // catalog version drives the run payload directly — no extra sync needed
     }
 
     function handleCatalogFilterChange() {
@@ -824,6 +922,7 @@
                 renderProviders();
                 renderCatalog();
                 updateUI();
+                await loadQueueState({ quiet: true });
                 await loadProviders({ quiet: true });
                 await loadCatalog({ quiet: true });
                 addLog('Cambium UI reloaded.', 'info');
@@ -838,13 +937,16 @@
         });
 
         const activationMode = document.getElementById('cambiumActivationMode');
-        const activationTime = document.getElementById('cambiumActivationTime');
-        if (activationMode && activationTime) {
-            activationMode.addEventListener('change', () => {
-                activationTime.disabled = activationMode.value !== 'scheduled';
-            });
-            activationTime.disabled = activationMode.value !== 'scheduled';
+        const activationTimeRow = document.getElementById('cambiumActivationTimeRow');
+        function syncActivationTimeVisibility() {
+            if (activationTimeRow) {
+                activationTimeRow.style.display = (activationMode && activationMode.value === 'scheduled') ? '' : 'none';
+            }
         }
+        if (activationMode) {
+            activationMode.addEventListener('change', syncActivationTimeVisibility);
+        }
+        syncActivationTimeVisibility();
 
         const catalogVersion = document.getElementById('cambiumCatalogVersion');
         if (catalogVersion) catalogVersion.addEventListener('change', handleCatalogVersionChange);
@@ -857,15 +959,15 @@
 
         const abortBtn = document.getElementById('cambiumAbortBtn');
         if (abortBtn) {
-            abortBtn.disabled = true;
-            abortBtn.title = 'Abort is not available in the current backend contract.';
+            abortBtn.addEventListener('click', abortCurrentTask);
         }
+        setRunState(cambiumState.isProcessing);
     }
 
     async function initCambiumUpdater() {
         if (cambiumState.initComplete) return;
         cambiumState.initComplete = true;
-        restoreRadios();
+        clearPersistedRadios();
         syncEndpointHint();
         renderProviders();
         renderCatalog();
@@ -873,6 +975,7 @@
         setRunState(false);
         bindControls();
         startGlobalStream();
+        await loadQueueState({ quiet: true });
         await loadProviders({ quiet: true });
         await loadCatalog({ quiet: true });
         addLog('Cambium firmware updater ready.', 'info');

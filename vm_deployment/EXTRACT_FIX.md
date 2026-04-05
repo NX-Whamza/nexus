@@ -50,11 +50,12 @@ tar -xzf noc-configmaker-vm-20251208-210556.tar.gz
 # 4. Verify extraction
 ls -la
 
-# 5. Make scripts executable
-chmod +x setup_vm.sh configure_nginx_domain.sh
+# 5. Start the Docker stack
+cd ~/noc-configmaker
+docker compose up -d --build
 
 # 6. Run domain setup
-bash configure_nginx_domain.sh
+bash vm_deployment/configure_nginx_domain.sh
 ```
 
 ## If you still get errors:

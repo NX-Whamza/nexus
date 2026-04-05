@@ -607,33 +607,26 @@ EOF
 
 **5. Start Service**
 ```bash
-# Option A: Run directly
+# Recommended production path
+docker compose up -d --build
+
+# Verify
+docker compose ps
+curl -fsS http://127.0.0.1:8000/api/health
+
+# Optional direct backend run for local development
 uvicorn --app-dir vm_deployment fastapi_server:app --host 0.0.0.0 --port 5000
-
-# Option B: As systemd service (Linux)
-sudo systemctl start noc-configmaker
-sudo systemctl enable noc-configmaker
-
-# Option C: As Windows service
-nssm install NOCConfigMaker "C:\NOC\NOC-ConfigMaker.exe"
-nssm start NOCConfigMaker
 ```
 
 **6. Configure Reverse Proxy**
 
-**Nginx Example:**
-```nginx
-server {
-    listen 80;
-    server_name config.nxlink.com;
+Use the host-nginx helper for production:
 
-    location / {
-        proxy_pass http://localhost:5000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
+```bash
+bash vm_deployment/configure_nginx_domain.sh
 ```
+
+That script configures nginx to proxy public traffic to the Docker frontend on `127.0.0.1:8000`.
 
 **IIS Example:**
 ```xml

@@ -50,8 +50,9 @@ def test_ftth_speed_controls_and_backend_payload_hooks_exist():
         'Missing FTTH uplink auto-negotiation payload mapping in NOC-configMaker.html'
     assert "speed: speedSelect.value" in content, 'Missing FTTH OLT speed payload mapping in NOC-configMaker.html'
     assert 'BGP Peer Configuration' in content, 'Missing FTTH BGP peer display section in NOC-configMaker.html'
-    assert '10.2.0.107/32' in content, 'Missing FTTH CR7 peer display in NOC-configMaker.html'
-    assert '10.2.0.108/32' in content, 'Missing FTTH CR8 peer display in NOC-configMaker.html'
+    assert "fetch(`${apiBase}/tenant/defaults`)" in content, 'Missing tenant-defaults bootstrap fetch in NOC-configMaker.html'
+    assert 'getTenantRouteReflectorPeers' in content, 'Missing tenant route-reflector peer helper in NOC-configMaker.html'
+    assert 'getTenantDefaultAsn' in content, 'Missing tenant ASN helper in NOC-configMaker.html'
     assert "const targetUrl = `${apiBase.replace(/\\/+$/, '')}/preview-ftth-bng`;" in content, \
         'Missing resolved API base wiring for FTTH preview in NOC-configMaker.html'
     assert "apiBase + '/save-completed-config'" in content, \
@@ -197,6 +198,27 @@ def test_sidebar_and_nokia_7250_layout_updates_exist():
     assert 'Uplink ${index + 1} IP/CIDR is invalid' in content, 'Missing Nokia 7250 uplink CIDR validation message'
 
 
+def test_command_vault_and_maintenance_tabs_use_backend_contracts():
+    content = UI_FILE.read_text(encoding='utf-8')
+    assert "fetch(`${getCommandVaultApiBase()}/command-vault/catalog`" in content, 'Command Vault should sync from the backend catalog endpoint'
+    assert 'function syncCommandVaultCatalog()' in content, 'Missing Command Vault backend sync helper in NOC-configMaker.html'
+    assert 'id="nokiaVault7750Grid"' in content, 'Missing Nokia Command Vault backend target grid in NOC-configMaker.html'
+    assert 'id="ciscoVaultGrid"' in content, 'Missing Cisco Command Vault backend target grid in NOC-configMaker.html'
+    assert 'id="mikrotikVaultGrid"' in content, 'Missing MikroTik Command Vault backend target grid in NOC-configMaker.html'
+    assert "fetch(`${apiBase}/maintenance/windows?status=all&limit=250`)" in content, 'Scheduled Maintenance should load from the backend endpoint'
+    assert "const MAINT_KEY = 'nexus_maintenance_windows_cache';" in content, 'Scheduled Maintenance should use the NEXUS cache key'
+    assert "fetch(`${apiBase}/tenant/defaults`)" in content, 'Shared tools should hydrate tenant defaults from backend discovery'
+
+
+def test_frontend_copy_is_tenant_neutral_for_shared_tools():
+    content = UI_FILE.read_text(encoding='utf-8')
+    assert 'Uses IDO proxy backends.' not in content, 'Field Config Studio copy should not expose legacy IDO wording'
+    assert 'IDO status check failed:' not in content, 'Field Config Studio status copy should use tenant-neutral wording'
+    assert 'IDO backend is not configured' not in content, 'Field Config Studio error copy should use tenant-neutral wording'
+    assert 'Unified device configurator workspace for shared device-access backends' in content, 'Field Config Studio should describe the shared device-access backend'
+    assert 'device-access backend not configured' in content, 'Field Config Studio should reference the shared device-access backend'
+
+
 def test_nokia_7250_port_setup_uses_safe_field_reader_and_clean_labels():
     content = UI_FILE.read_text(encoding='utf-8')
     assert 'function getCellFieldValue(tr, cellIndex, selector, options = {})' in content, 'Missing shared Nokia 7250 port-table field reader helper'
@@ -242,7 +264,21 @@ def test_device_firmware_updater_wraps_aviat_and_cambium():
     assert "new EventSource(`${getCambiumApiBase()}/stream/${encodeURIComponent(taskId)}`)" in cambium_js, 'Cambium updater should open per-task Cambium SSE streams'
     assert "new EventSource(`${getCambiumApiBase()}/stream/global`)" in cambium_js, 'Cambium updater should open the Cambium global SSE stream'
     assert "cambiumFetch('/check-status'" not in cambium_js, 'Cambium updater should not call the removed check-status endpoint'
-    assert "cambiumFetch('/abort/" not in cambium_js, 'Cambium updater should not call the unsupported abort endpoint'
+    assert "cambiumFetch(`/abort/${encodeURIComponent(cambiumState.taskId)}`" in cambium_js, 'Cambium updater should request abort through the Cambium backend'
+    assert "requested_by: cambiumGetUsername()" in cambium_js, 'Cambium updater should send the operator as requested_by, not as the radio login username'
+    assert "body: JSON.stringify({ ip, device_type: deviceType, username: cambiumGetUsername(), password: selectedProfile().password || '' })" not in cambium_js, 'Cambium device-info requests should not send the signed-in app user as the device username'
+    assert "function syncInteractiveState()" in cambium_js, 'Cambium updater should centralize UI lockout while a run is active'
+    assert "if (cambiumState.isProcessing) return;" in cambium_js, 'Cambium updater row actions should no-op while a run is active'
+    assert "syncInteractiveState();" in cambium_js and "updateUI();" in cambium_js, 'Cambium updater should refresh disabled button state when processing starts or ends'
+    assert "backupPath: radio.backupPath || radio.backup_path || ''" in cambium_js, 'Cambium updater should preserve backup paths from backend results'
+    assert "onclick=\"cambiumDownloadBackup(" in cambium_js, 'Cambium updater should expose a per-row backup download action'
+    assert "window.cambiumDownloadBackup = async function (ip)" in cambium_js, 'Cambium updater should define a backup download handler'
+    assert "abortBtn.disabled = !cambiumState.isProcessing;" in cambium_js, 'Cambium abort button should be clickable whenever a Cambium task is active'
+    assert "const backupAvailable = backupStatus === 'success' || !!radio.backupPath;" in cambium_js, 'Cambium backup button should enable from successful backup status even if the path is stale in UI state'
+    assert "const query = radio.backupPath" in cambium_js, 'Cambium backup download should fall back to IP-based lookup when only backup status is available'
+    assert "function clearPersistedRadios()" in cambium_js, 'Cambium updater should clear stale browser-side queue state on reload'
+    assert "await loadQueueState({ quiet: true });" in cambium_js, 'Cambium updater should reload queue state from the backend during initialization'
+    assert "localStorage.setItem(CAMBIUM_STORAGE_KEY" not in cambium_js, 'Cambium updater should not repopulate stale local queue state from browser storage'
     assert "'cambium-upgrade': TOOL_ROUTE_DEFINITIONS['device-firmware-updater:cambium']" in content, 'Missing activity-route mapping for Cambium upgrades'
 
 

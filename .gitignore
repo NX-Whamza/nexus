@@ -27,6 +27,14 @@ env/
 ENV/
 env.bak/
 venv.bak/
+.venv/
+.venv313/
+
+# Local caches / test artifacts
+.pytest_cache/
+pytest-cache-files-*/
+__pycache__/
+memory/
 
 # IDE
 .vscode/
@@ -34,6 +42,7 @@ venv.bak/
 *.swp
 *.swo
 *~
+.claude/settings.local.json
 
 # OS
 .DS_Store
@@ -71,3 +80,6 @@ api_keys.txt
 *.zip
 *.tar.gz
 *.rar
+*.img
+*.bin
+*.swpack

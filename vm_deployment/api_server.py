@@ -20,7 +20,7 @@ if sys.platform == 'win32':
         # If wrapping fails (e.g., in PyInstaller), just continue
         pass
 
-from flask import Flask, request, jsonify, send_file, send_from_directory
+from flask import Flask, request, jsonify, send_file, send_from_directory, stream_with_context
 from flask import make_response, abort, Response
 from flask_cors import CORS
 import os
@@ -63,6 +63,10 @@ try:
 except Exception:
     from vm_deployment.routes.ftth import create_ftth_blueprint
     from vm_deployment.routes.runtime import create_runtime_blueprint
+try:
+    from tenant_defaults import load_infrastructure_defaults, load_nokia_defaults
+except Exception:
+    from vm_deployment.tenant_defaults import load_infrastructure_defaults, load_nokia_defaults
 
 # Ensure local module imports work regardless of process working directory.
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -242,6 +246,29 @@ def _health_check_ido_backend():
         result['ok'] = False
         result['detail'] = f'IDO backend health check failed: {exc}'
     return result
+
+
+_HEALTH_CHECKS_CACHE: dict[str, object] = {
+    'timestamp': 0.0,
+    'checks': None,
+}
+_HEALTH_CHECKS_TTL_SECONDS = 30.0
+
+
+def _collect_health_checks(force: bool = False):
+    now = time.time()
+    cached_checks = _HEALTH_CHECKS_CACHE.get('checks')
+    cached_at = float(_HEALTH_CHECKS_CACHE.get('timestamp') or 0.0)
+    if not force and cached_checks is not None and (now - cached_at) < _HEALTH_CHECKS_TTL_SECONDS:
+        return cached_checks
+
+    checks = [
+        _health_check_secure_data(),
+        _health_check_ido_backend(),
+    ]
+    _HEALTH_CHECKS_CACHE['checks'] = checks
+    _HEALTH_CHECKS_CACHE['timestamp'] = now
+    return checks
 
 
 APP_VERSION_CONFIG_PATH = Path(__file__).parent / 'assets' / 'app-version.json'
@@ -454,6 +481,17 @@ try:
 except Exception:
     HAS_AVIAT = False
 
+try:
+    from cambium_firmware import (
+        list_firmware_catalog as cambium_list_firmware_catalog,
+        get_device_info as cambium_get_device_info,
+        update_device as cambium_update_device,
+        resolve_device_type as cambium_resolve_device_type,
+    )
+    HAS_CAMBIUM = True
+except Exception:
+    HAS_CAMBIUM = False
+
 # Safe print function for PyInstaller compatibility (defined early for use throughout)
 def safe_print(*args, **kwargs):
     """Print with error handling for PyInstaller compatibility"""
@@ -507,6 +545,42 @@ AVIAT_LOADING_MAX_WAIT = int(os.getenv("AVIAT_LOADING_MAX_WAIT", "5400"))
 AVIAT_LOADING_UNKNOWN_MAX_CHECKS = int(os.getenv("AVIAT_LOADING_UNKNOWN_MAX_CHECKS", "6"))
 _aviat_background_threads_started = False
 _aviat_background_threads_lock = threading.Lock()
+
+# ========================================
+# CAMBIUM FIRMWARE UPDATER STATE
+# ========================================
+cambium_tasks = {}
+cambium_log_queues = {}
+cambium_global_log_queues = set()
+cambium_global_log_history = []
+cambium_shared_queue = []
+CAMBIUM_SHARED_QUEUE_STORE = Path(__file__).resolve().parent / "cambium_shared_queue.json"
+CAMBIUM_GLOBAL_LOG_LIMIT = 2000
+CAMBIUM_MAX_WORKERS = int(os.getenv("CAMBIUM_MAX_WORKERS", "4"))
+
+
+def _cambium_load_shared_queue():
+    if not CAMBIUM_SHARED_QUEUE_STORE.exists():
+        return
+    try:
+        with CAMBIUM_SHARED_QUEUE_STORE.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        if isinstance(data, list):
+            cambium_shared_queue.clear()
+            cambium_shared_queue.extend([entry for entry in data if isinstance(entry, dict) and entry.get("ip")])
+    except Exception:
+        pass
+
+
+def _cambium_save_shared_queue():
+    try:
+        with CAMBIUM_SHARED_QUEUE_STORE.open("w", encoding="utf-8") as handle:
+            json.dump(cambium_shared_queue, handle)
+    except Exception:
+        pass
+
+
+_cambium_load_shared_queue()
 
 
 def _aviat_dedupe_queue(entries):
@@ -1721,8 +1795,35 @@ def _collect_role_matches(text_value):
     return matches
 
 
+GENERIC_LOGICAL_LABEL_PATTERNS = [
+    r'^lan-bridge$',
+    r'^nat-public-bridge$',
+    r'^bridge\d*$',
+    r'^loop0$',
+    r'^vlan\d+$',
+    r'^cpe(?:/tower gear)?$',
+    r'^tower gear$',
+    r'^unauth$',
+    r'^cgnat(?: public| private)?$',
+    r'^customer(?:s)?$',
+    r'^cust$',
+    r'^public$',
+    r'^private$',
+    r'^lan$',
+]
+
+
+def _is_generic_logical_label(text_value):
+    normalized = re.sub(r'\s+', ' ', (text_value or '').strip().strip('"').lower())
+    if not normalized:
+        return True
+    return any(re.fullmatch(pattern, normalized) for pattern in GENERIC_LOGICAL_LABEL_PATTERNS)
+
+
 def _add_role_matches_from_text(port_name, text_value, evidence_prefix, role_signals, source_ports):
     if port_name not in source_ports:
+        return
+    if evidence_prefix != 'comment' and _is_generic_logical_label(text_value):
         return
     for role_name, hits in _collect_role_matches(text_value).items():
         weight = 5 if evidence_prefix == 'comment' else 4
@@ -1764,6 +1865,122 @@ def _all_device_ports(device_key):
     for group_ports in device.get('ports', {}).values():
         ports.extend(group_ports)
     return ports
+
+
+def _extract_physical_interface_tokens(config_text):
+    pattern = r'\b(ether\d+|sfp\d+(?:-\d+)?|sfp-sfpplus\d+|sfp28-\d+|qsfpplus\d+-\d+|qsfp28-\d+-\d+|qsfp\d+(?:-\d+)?|combo\d+)\b'
+    seen = set()
+    physical = []
+    for match in re.finditer(pattern, config_text or ''):
+        port = match.group(1)
+        if port not in seen:
+            seen.add(port)
+            physical.append(port)
+    return physical
+
+
+def _infer_routerboard_model_from_port_usage(config_text):
+    physical_ports = _extract_physical_interface_tokens(config_text)
+    if not physical_ports:
+        return None, {}
+
+    scores = {}
+    for model_key in ROUTERBOARD_INTERFACES:
+        known_ports = set(_all_device_ports(model_key))
+        overlap = [port for port in physical_ports if port in known_ports]
+        if overlap:
+            scores[model_key] = {
+                'matched_ports': overlap,
+                'score': len(overlap),
+            }
+
+    if not scores:
+        return None, {}
+
+    best_model, meta = max(
+        scores.items(),
+        key=lambda item: (
+            item[1]['score'],
+            ROUTERBOARD_INTERFACES[item[0]].get('total_ports', 0),
+            item[0],
+        ),
+    )
+    return best_model, scores
+
+
+def _rewrite_migration_identity_for_target(identity_name: str, source_model: str, target_model: str) -> str:
+    name = (identity_name or '').strip()
+    if not name:
+        target_digits = re.search(r'(\d{3,4})', target_model or '')
+        return f"RTR-MT{target_digits.group(1)}-UNKNOWN" if target_digits else "RTR-UNKNOWN"
+
+    src_digits = re.search(r'(\d{3,4})', source_model or '')
+    tgt_digits = re.search(r'(\d{3,4})', target_model or '')
+
+    if src_digits and tgt_digits:
+        name = re.sub(rf'(?i)\bMT{re.escape(src_digits.group(1))}\b', f"MT{tgt_digits.group(1)}", name)
+        name = re.sub(rf'(?i)\b{re.escape(src_digits.group(1))}\b', tgt_digits.group(1), name)
+    elif tgt_digits and re.fullmatch(r'\d{3,4}', name):
+        name = tgt_digits.group(1)
+
+    old_model_short = (source_model.split('-')[0] if source_model else '').strip()
+    new_model_short = (target_model.split('-')[0] if target_model else '').strip()
+    if old_model_short and new_model_short and old_model_short.lower() != 'unknown' and new_model_short.lower() != 'unknown':
+        name = re.sub(rf'(?i)\b{re.escape(old_model_short)}\b', new_model_short, name)
+
+    return name
+
+
+def _rewrite_migration_metadata(config_text: str, source_model: str, target_model: str, target_version: str) -> str:
+    text = config_text or ''
+
+    if target_version:
+        text = re.sub(r'(?m)^(#.*by RouterOS )\d+(?:\.\d+)+', rf'\g<1>{target_version}', text)
+        text = re.sub(r'(?m)^(#.*RouterOS )\d+(?:\.\d+)+', rf'\g<1>{target_version}', text)
+
+    if target_model:
+        if re.search(r'(?m)^#\s*model\s*=.*$', text):
+            text = re.sub(r'(?m)^#\s*model\s*=.*$', f"# model ={target_model}", text)
+        else:
+            header_match = re.search(r'(?m)^(#.*RouterOS .*)$', text)
+            if header_match:
+                insert_at = header_match.end()
+                text = text[:insert_at] + f"\n# model ={target_model}" + text[insert_at:]
+
+    def _format_identity_for_set(name: str) -> str:
+        s = (name or '').strip()
+        if re.search(r'[^A-Za-z0-9._-]', s):
+            s = s.replace('"', "'")
+            return f'"{s}"'
+        return s
+
+    block_pattern = r'(?ms)^/system identity\s*\n\s*set\s+name=([^\n]+)\s*$'
+    inline_pattern = r'(?m)^\s*/system identity\s+set\s+name=([^\n]+)\s*$'
+    current_identity = None
+    match = re.search(block_pattern, text)
+    if match:
+        current_identity = match.group(1).strip().strip('"').strip("'")
+        updated_identity = _rewrite_migration_identity_for_target(current_identity, source_model, target_model)
+        text = re.sub(
+            block_pattern,
+            f"/system identity\nset name={_format_identity_for_set(updated_identity)}",
+            text,
+        )
+    else:
+        match = re.search(inline_pattern, text)
+        if match:
+            current_identity = match.group(1).strip().strip('"').strip("'")
+            updated_identity = _rewrite_migration_identity_for_target(current_identity, source_model, target_model)
+            text = re.sub(
+                inline_pattern,
+                f"/system identity\nset name={_format_identity_for_set(updated_identity)}",
+                text,
+            )
+        else:
+            updated_identity = _rewrite_migration_identity_for_target('', source_model, target_model)
+            text = text.rstrip() + f"\n\n/system identity\nset name={_format_identity_for_set(updated_identity)}\n"
+
+    return text
 
 
 def resolve_routerboard_model_key(device_name):
@@ -2022,14 +2239,28 @@ def analyze_nextlink_port_mapping(config_text, source_device, target_device):
     for port, comment in comment_map.items():
         upper = comment.upper()
         _add_role_matches_from_text(port, comment, 'comment', role_signals, source_ports)
-        if any(token in upper for token in ['BACKHAUL', ' BH', 'BH ', 'FIBER', 'UPLINK', 'TRANSPORT']) or re.search(r'\b(TX|KS|IL|NE|IA|MO|OK)-', upper):
+        explicit_access_role = bool(role_signals.get(port, {}).get('switch') or role_signals.get(port, {}).get('olt'))
+        if (
+            not explicit_access_role and
+            (
+                any(token in upper for token in ['BACKHAUL', ' BH', 'BH ', 'FIBER', 'UPLINK', 'TRANSPORT']) or
+                re.search(r'\b(TX|KS|IL|NE|IA|MO|OK)-', upper)
+            )
+        ):
             add_signal(port, 'backhaul', f'comment:{comment}', 5)
 
     for logical_iface, logical_comment in logical_comments.items():
         for port in resolve_physical_ports(logical_iface):
             _add_role_matches_from_text(port, logical_comment, f'logical_comment:{logical_iface}', role_signals, source_ports)
             upper = logical_comment.upper()
-            if any(token in upper for token in ['BACKHAUL', 'FIBER', 'UPLINK', 'TRANSPORT']) or re.search(r'\b(TX|KS|IL|NE|IA|MO|OK)-', upper):
+            explicit_access_role = bool(role_signals.get(port, {}).get('switch') or role_signals.get(port, {}).get('olt'))
+            if (
+                not explicit_access_role and
+                (
+                    any(token in upper for token in ['BACKHAUL', 'FIBER', 'UPLINK', 'TRANSPORT']) or
+                    re.search(r'\b(TX|KS|IL|NE|IA|MO|OK)-', upper)
+                )
+            ):
                 add_signal(port, 'backhaul', f'logical_comment:{logical_iface}:{logical_comment}', 4)
 
     for logical_iface, comments in address_comments.items():
@@ -2038,10 +2269,14 @@ def analyze_nextlink_port_mapping(config_text, source_device, target_device):
                 _add_role_matches_from_text(port, address_comment, f'address_comment:{logical_iface}', role_signals, source_ports)
 
     for logical_iface in set(vlan_parent) | set(bond_members) | set(bridge_members) | set(bridge_interfaces):
+        if _is_generic_logical_label(logical_iface):
+            continue
         for port in resolve_physical_ports(logical_iface):
             _add_role_matches_from_text(port, logical_iface, 'logical_interface', role_signals, source_ports)
 
     for bridge_name, members in bridge_members.items():
+        if _is_generic_logical_label(bridge_name):
+            continue
         for member in members:
             for port in resolve_physical_ports(member):
                 _add_role_matches_from_text(port, bridge_name, 'bridge_name', role_signals, source_ports)
@@ -2053,6 +2288,8 @@ def analyze_nextlink_port_mapping(config_text, source_device, target_device):
 
     for logical_iface, prefixes in list(prefix_map.items()):
         if logical_iface in source_ports:
+            continue
+        if _is_generic_logical_label(logical_iface):
             continue
         for port in resolve_physical_ports(logical_iface):
             for prefix in prefixes:
@@ -2078,6 +2315,8 @@ def analyze_nextlink_port_mapping(config_text, source_device, target_device):
             add_signal(port, 'backhaul', f'mpls_ldp:{iface_name}', 2)
 
     for logical_iface, ips in logical_ip_map.items():
+        if logical_iface not in source_ports and _is_generic_logical_label(logical_iface):
+            continue
         for ip_addr in ips:
             if re.search(rf'(?m)^/routing bgp connection\s+add[^\n]*\b(local\.address|update-source)={re.escape(ip_addr)}\b', config_text):
                 for port in resolve_physical_ports(logical_iface):
@@ -2398,16 +2637,18 @@ def migrate_interface_config(config_text, interface_map):
     if re.search(r'\bcombo\d+\b', migrated_config):
         migrated_config = re.sub(r'\bcombo1\b', 'sfp-sfpplus1', migrated_config)
     
-    # Sort by length (longest first) to avoid partial replacements
-    # e.g., replace "ether10" before "ether1"
+    # Use placeholders to avoid chained remaps, e.g. A->B and B->C should not turn A into C.
     sorted_interfaces = sorted(interface_map.items(), key=lambda x: len(x[0]), reverse=True)
-    
-    for old_interface, new_interface in sorted_interfaces:
-        # Use word boundaries to avoid partial matches
-        # Pattern matches interface name with word boundaries
-        # This ensures we don't replace "ether1" in "ether10"
+    placeholders = {}
+
+    for index, (old_interface, _new_interface) in enumerate(sorted_interfaces):
+        placeholder = f"__IFACE_REMAP_{index}__"
+        placeholders[placeholder] = interface_map[old_interface]
         pattern = r'\b' + re.escape(old_interface) + r'\b'
-        migrated_config = re.sub(pattern, new_interface, migrated_config)
+        migrated_config = re.sub(pattern, placeholder, migrated_config)
+
+    for placeholder, new_interface in placeholders.items():
+        migrated_config = migrated_config.replace(placeholder, new_interface)
     
     return migrated_config
 
@@ -10926,13 +11167,7 @@ def nokia_configurator_defaults():
 
 
 def _get_nokia_configurator_creds():
-    return {
-        'snmp_community': os.getenv('NOKIA7250_SNMP_COMMUNITY', '').strip(),
-        'nlroot_pw': os.getenv('NOKIA7250_NLROOT_PW', '').strip(),
-        'admin_pw': os.getenv('NOKIA7250_ADMIN_PW', '').strip(),
-        'bgp_auth_key': os.getenv('NOKIA7250_BGP_AUTH_KEY', '').strip(),
-        'ospf_auth_key': os.getenv('NOKIA7250_OSPF_AUTH_KEY', '').strip() or os.getenv('NOKIA7250_BGP_AUTH_KEY', '').strip(),
-    }
+    return load_nokia_defaults()
 
 
 def _nokia_config_header(title: str):
@@ -13359,10 +13594,7 @@ def health():
     Backend is considered 'online' if this endpoint responds.
     The backend will handle AI provider availability and fallbacks internally.
     """
-    checks = [
-        _health_check_secure_data(),
-        _health_check_ido_backend(),
-    ]
+    checks = _collect_health_checks(force=request.args.get('refresh') == '1')
     degraded = any(not check.get('ok') for check in checks)
     return jsonify({
         'status': 'online',
@@ -14029,7 +14261,6 @@ def infrastructure_config():
         radius_dhcp_servers = ['142.147.112.17', '142.147.112.18']
         radius_login_servers = ['142.147.112.17', '142.147.112.18']
 
-    # Batch 10: new infrastructure fields from tenant_settings with env var fallbacks
     ata_url = (tenant_settings.get('ata_provisioning_url') or '').strip() or \
               os.getenv('ATA_PROVISIONING_URL', 'http://ndp1-dal.nxlink.com/cfg/$MA.cfg')
     noc_monitor_ip = (tenant_settings.get('noc_monitor_ip') or '').strip() or \
@@ -14059,7 +14290,6 @@ def infrastructure_config():
             'dhcp_servers': radius_dhcp_servers,
             'login_servers': radius_login_servers,
         },
-        # Batch 10 new fields
         'ataProvisioningUrl': ata_url,
         'nocMonitorIp': noc_monitor_ip,
         'syslogServer': syslog_server,
@@ -14753,39 +14983,62 @@ def migrate_config():
                 'available_devices': list(ROUTERBOARD_INTERFACES.keys())
             }), 400
         
+        inferred_source_device, inferred_scores = _infer_routerboard_model_from_port_usage(config)
+        effective_source_device = source_device
+        source_match_warning = None
+        if inferred_source_device and inferred_source_device in ROUTERBOARD_INTERFACES:
+            declared_score = inferred_scores.get(source_device, {}).get('score', 0)
+            inferred_score = inferred_scores.get(inferred_source_device, {}).get('score', 0)
+            if inferred_source_device != source_device and inferred_score > declared_score:
+                effective_source_device = inferred_source_device
+                source_match_warning = (
+                    f'Source model metadata says {source_device}, but interfaces match '
+                    f'{inferred_source_device}; using actual port layout for migration policy.'
+                )
+
         # Determine what migrations are needed
         needs_syntax_migration = (source_version == 6 and target_version == '7')
         needs_device_migration = (source_device != target_device)
-        
+
         migrated_config = config
-        mapping_analysis = analyze_nextlink_port_mapping(config, source_device, target_device)
+        mapping_analysis = analyze_nextlink_port_mapping(config, effective_source_device, target_device)
         interface_map = mapping_analysis.get('interface_map') or {}
         port_analysis = mapping_analysis.get('port_analysis') or []
         policy_summary = mapping_analysis.get('policy_summary') or {}
         manual_review_required = bool(mapping_analysis.get('manual_review_required'))
         migration_warnings = list(mapping_analysis.get('warnings') or [])
-        
-        # Step 1: Device migration (interface renaming)
-        if needs_device_migration:
-            safe_print(f"[MIGRATION] Device: {source_device} → {target_device}")
-            
-            # Build deterministic Nextlink policy mapping
-            if not interface_map:
+        if source_match_warning:
+            migration_warnings.insert(0, source_match_warning)
+            manual_review_required = True
+        needs_interface_normalization = any(src != dst for src, dst in interface_map.items())
+
+        # Step 1: Device migration / target-policy normalization (interface renaming)
+        if needs_device_migration or needs_interface_normalization:
+            safe_print(f"[MIGRATION] Device: {effective_source_device} → {target_device}")
+
+            if not interface_map and needs_device_migration:
                 return jsonify({
-                    'error': f'No migration path available from {source_device} to {target_device}'
+                    'error': f'No migration path available from {effective_source_device} to {target_device}'
                 }), 400
-            
-            # Apply interface migration
-            migrated_config = migrate_interface_config(migrated_config, interface_map)
-            
+
+            if interface_map:
+                migrated_config = migrate_interface_config(migrated_config, interface_map)
+
             safe_print(f"[MIGRATION] Mapped {len(interface_map)} interfaces")
-            for old, new in list(interface_map.items())[:5]:  # Show first 5
+            for old, new in list(interface_map.items())[:5]:
                 safe_print(f"[MIGRATION]   {old} → {new}")
-        
+
         # Step 2: Syntax migration (ROS6 → ROS7)
         if needs_syntax_migration:
             safe_print(f"[MIGRATION] Syntax: ROS{source_version} → ROS{target_version}")
             migrated_config = apply_ros6_to_ros7_syntax(migrated_config)
+
+        migrated_config = _rewrite_migration_metadata(
+            migrated_config,
+            source_device,
+            target_device,
+            target_version,
+        )
         
         if apply_compliance and HAS_ENGINEERING_COMPLIANCE:
             loopback_ip = extract_loopback_ip(migrated_config)
@@ -14797,10 +15050,11 @@ def migrate_config():
                 item for item in (
                     'v6→v7' if needs_syntax_migration else '',
                     f'{source_device}→{target_device}' if needs_device_migration else '',
+                    f'policy-normalize:{target_device}' if (not needs_device_migration and needs_interface_normalization) else '',
                 ) if item
             ]) or 'config-audit',
             'needs_version_migration': needs_syntax_migration,
-            'needs_device_migration': needs_device_migration,
+            'needs_device_migration': needs_device_migration or needs_interface_normalization,
             'interface_map': interface_map or {},
             'port_analysis': port_analysis,
             'policy_summary': policy_summary,
@@ -14817,14 +15071,14 @@ def migrate_config():
                 'mpls': '/mpls' in config or '/interface vpls' in config,
             }
         }
-        if needs_device_migration and interface_map:
-            source_ports = ROUTERBOARD_INTERFACES[source_device]['total_ports']
+        if (needs_device_migration or needs_interface_normalization) and interface_map:
+            source_ports = ROUTERBOARD_INTERFACES[effective_source_device]['total_ports']
             target_ports = ROUTERBOARD_INTERFACES[target_device]['total_ports']
             if source_ports > target_ports:
                 migration_analysis['warnings'].append(
                     f'Port count mismatch: source has {source_ports} ports, target has {target_ports}. Some ports may need reassignment.'
                 )
-        elif not needs_device_migration:
+        elif not needs_device_migration and not needs_interface_normalization:
             migration_analysis['warnings'].append('Source and target are the same model - version upgrade only')
 
         # Prepare response
@@ -14837,16 +15091,17 @@ def migrate_config():
             'source_version': source_version,
             'target_version': target_version,
             'detected_source_device': source_device if not data.get('source_device') else None,
+            'effective_source_device': effective_source_device,
             'detected_source_version': detected_version,
             'syntax_migrated': needs_syntax_migration,
-            'device_migrated': needs_device_migration,
-            'interfaces_mapped': len(interface_map) if (needs_device_migration and interface_map) else 0,
+            'device_migrated': needs_device_migration or needs_interface_normalization,
+            'interfaces_mapped': len(interface_map) if interface_map else 0,
             'compliance_applied': bool(apply_compliance and HAS_ENGINEERING_COMPLIANCE),
             'validation': validation,
             'migration_analysis': migration_analysis,
             'source_info': {
-                'model': source_device,
-                'type': ROUTERBOARD_INTERFACES[source_device]['series'].lower(),
+                'model': effective_source_device,
+                'type': ROUTERBOARD_INTERFACES[effective_source_device]['series'].lower(),
             },
             'target_info': {
                 'model': target_device,
@@ -14855,8 +15110,8 @@ def migrate_config():
             },
             'migration_summary': {
                 'ether1_preserved': 'ether1' in interface_map and interface_map['ether1'] == 'ether1' if interface_map else False,
-                'total_interfaces': len(interface_map) if (needs_device_migration and interface_map) else 0,
-                'source_ports': ROUTERBOARD_INTERFACES[source_device]['total_ports'],
+                'total_interfaces': len(interface_map) if interface_map else 0,
+                'source_ports': ROUTERBOARD_INTERFACES[effective_source_device]['total_ports'],
                 'target_ports': ROUTERBOARD_INTERFACES[target_device]['total_ports']
             }
         }
@@ -17136,6 +17391,7 @@ def _build_activity_message(display_user, activity_type, site_name, device=''):
         'enterprise-feeding-config':        'generated Enterprise Feeding config for',
         'enterprise-feeding-outstate-config': 'generated Enterprise Feeding Out-of-State config for',
         'aviat-upgrade':                    'performed Aviat backhaul upgrade on',
+        'cambium-upgrade':                  'performed Cambium radio upgrade on',
         'ftth-bng':                         'generated FTTH BNG config for',
         'maintenance-scheduled':            'scheduled maintenance:',
         'maintenance-started':              'started maintenance:',
@@ -18264,6 +18520,715 @@ def aviat_get_status(task_id):
     if task_id not in aviat_tasks:
         return jsonify({'error': 'Task not found'}), 404
     return jsonify(aviat_tasks[task_id])
+
+
+# ========================================
+# CAMBIUM RADIO FIRMWARE UPDATER API
+# ========================================
+
+def _cambium_queue_find(ip):
+    for entry in cambium_shared_queue:
+        if entry.get("ip") == ip:
+            return entry
+    return None
+
+
+def _cambium_queue_upsert(ip, updates=None):
+    entry = _cambium_queue_find(ip)
+    if entry is None:
+        entry = {"ip": ip}
+        cambium_shared_queue.append(entry)
+    if isinstance(updates, dict):
+        entry.update(updates)
+    entry["updated_at"] = get_utc_timestamp()
+    return entry
+
+
+def _cambium_queue_remove(ip):
+    cambium_shared_queue[:] = [entry for entry in cambium_shared_queue if entry.get("ip") != ip]
+
+
+def _cambium_extract_firmware(info):
+    if not isinstance(info, dict):
+        return None
+    for item in info.get("test_results") or []:
+        if str(item.get("name", "")).strip().lower() == "firmware version":
+            actual = item.get("actual")
+            return str(actual).strip() if actual else None
+    return None
+
+
+def _cambium_versions_match(expected, actual):
+    expected_text = str(expected or "").strip()
+    actual_text = str(actual or "").strip()
+    if not expected_text or not actual_text:
+        return False
+    if expected_text == actual_text:
+        return True
+
+    def _base(value):
+        match = re.search(r"\d+(?:\.\d+)+", value)
+        return match.group(0) if match else value
+
+    expected_base = _base(expected_text)
+    actual_base = _base(actual_text)
+    return bool(expected_base and actual_base and expected_base == actual_base)
+
+
+def _cambium_broadcast_log(message, level="info", task_id=None, ip=None):
+    entry = {
+        "timestamp": get_utc_timestamp(),
+        "message": str(message),
+        "level": level,
+        "task_id": task_id,
+        "ip": ip,
+    }
+    cambium_global_log_history.append(entry)
+    del cambium_global_log_history[:-CAMBIUM_GLOBAL_LOG_LIMIT]
+    for q in list(cambium_global_log_queues):
+        try:
+            q.put(entry)
+        except Exception:
+            pass
+    if task_id in cambium_log_queues:
+        try:
+            cambium_log_queues[task_id].put(entry)
+        except Exception:
+            pass
+
+
+def _log_cambium_activity(result):
+    conn = None
+    try:
+        if not isinstance(result, dict) or result.get("status") not in {"success", "error"}:
+            return
+        init_activity_db()
+        secure_dir = 'secure_data'
+        db_path = os.path.join(secure_dir, 'activity_log.db')
+        conn = sqlite3.connect(db_path)
+        c = conn.cursor()
+        ts_unix = get_unix_timestamp()
+        ts_iso = get_utc_timestamp()
+        username = _short_username(result.get('username') or 'cambium-tool')
+        c.execute('''INSERT INTO activities
+                     (username, activity_type, device, site_name, routeros_version, success, timestamp, timestamp_unix)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                  (
+                      username,
+                      'cambium-upgrade',
+                      'Cambium Radio',
+                      result.get('ip') or 'Unknown',
+                      result.get('firmware_version_after') or result.get('target_version') or '',
+                      1 if result.get('status') == 'success' else 0,
+                      ts_iso,
+                      ts_unix,
+                  ))
+        conn.commit()
+    except Exception as e:
+        safe_print(f"[CAMBIUM] Failed to log activity: {e}")
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def _cambium_update_queue_from_result(result, username=None):
+    if not isinstance(result, dict):
+        return
+    status = result.get("status") or ("success" if result.get("success") else "error")
+    _cambium_queue_upsert(
+        result.get("ip"),
+        {
+            "status": status,
+            "firmwareStatus": status,
+            "deviceType": result.get("device_type"),
+            "targetVersion": result.get("target_version"),
+            "firmwareVersion": result.get("firmware_version_after") or result.get("firmware_version_before"),
+            "selectedImage": result.get("selected_image"),
+            "lastError": result.get("error"),
+            "backupStatus": result.get("backup_status"),
+            "verifyStatus": result.get("verify_status"),
+            "backupPath": result.get("backup_path"),
+            "username": result.get("username") or username or "cambium-tool",
+        },
+    )
+
+
+def _cambium_expand_tasks(task_values):
+    tasks = []
+    for task in task_values or []:
+        value = str(task or "").strip().lower()
+        if value and value not in tasks:
+            tasks.append(value)
+    return tasks or ["firmware"]
+
+
+def _cambium_expand_radios(data):
+    radios = data.get("radios")
+    if isinstance(radios, list) and radios:
+        expanded = []
+        for item in radios:
+            if not isinstance(item, dict):
+                continue
+            ip = str(item.get("ip") or item.get("ip_address") or "").strip()
+            if not ip:
+                continue
+            expanded.append(
+                {
+                    "ip": ip,
+                    "device_type": item.get("device_type") or item.get("deviceType") or data.get("device_type"),
+                    "update_version": item.get("update_version") or item.get("target_version") or data.get("update_version"),
+                    "username": (
+                        item.get("device_username")
+                        or item.get("username")
+                        or data.get("device_username")
+                        or data.get("username")
+                    ),
+                    "password": item.get("password") or data.get("password"),
+                    "tasks": _cambium_expand_tasks(item.get("tasks") or data.get("tasks")),
+                }
+            )
+        return expanded
+
+    ips = data.get("ips") or []
+    if not isinstance(ips, list):
+        return []
+    return [
+        {
+            "ip": str(ip).strip(),
+            "device_type": data.get("device_type"),
+            "update_version": data.get("update_version"),
+            "username": data.get("device_username") or data.get("username"),
+            "password": data.get("password"),
+            "tasks": _cambium_expand_tasks(data.get("tasks")),
+        }
+        for ip in ips if str(ip).strip()
+    ]
+
+
+def _cambium_check_single(ip, device_type, password=None, run_tests=True):
+    info = cambium_get_device_info(ip, device_type, password=password, run_tests=run_tests)
+    return {
+        "ip": ip,
+        "device_type": cambium_resolve_device_type(device_type),
+        "reachable": bool(info.get("success")),
+        "firmware_version": _cambium_extract_firmware(info),
+        "info": info,
+        "error": str(info.get("message")) if not info.get("success") and info.get("message") else None,
+    }
+
+
+def _cambium_write_backup(ip, running_config):
+    backup_dir = Path(__file__).resolve().parent / "secure_data" / "cambium_backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    backup_path = backup_dir / f"{str(ip).replace('.', '_')}_{timestamp}.json"
+    text = running_config if isinstance(running_config, str) else json.dumps(running_config, indent=2, sort_keys=True)
+    backup_path.write_text(text, encoding="utf-8")
+    return str(backup_path)
+
+
+def _cambium_run_single(radio, username, should_abort=None):
+    ip = radio["ip"]
+    canonical = cambium_resolve_device_type(radio.get("device_type"))
+    password = radio.get("password")
+    device_username = radio.get("username")
+    update_version = radio.get("update_version")
+    tasks = _cambium_expand_tasks(radio.get("tasks"))
+
+    before_info = None
+    after_info = None
+    before_fw = None
+    after_fw = None
+    backup_status = None
+    verify_status = None
+    backup_path = None
+
+    def log_cb(message):
+        _cambium_broadcast_log(message, "info", ip=ip)
+
+    try:
+        if callable(should_abort) and should_abort():
+            return {
+                "ip": ip,
+                "success": False,
+                "status": "aborted",
+                "device_type": canonical,
+                "target_version": update_version,
+                "selected_image": None,
+                "firmware_version_before": None,
+                "firmware_version_after": None,
+                "before_info": None,
+                "after_info": None,
+                "backup_status": None,
+                "verify_status": None,
+                "backup_path": None,
+                "error": "Aborted",
+                "username": username or "cambium-tool",
+            }
+        _cambium_queue_upsert(ip, {
+            "status": "processing",
+            "firmwareStatus": "processing" if "firmware" in tasks else "pending",
+            "backupStatus": "processing" if "backup" in tasks else "pending",
+            "verifyStatus": "processing" if "verify" in tasks else "pending",
+            "deviceType": canonical,
+            "targetVersion": update_version,
+            "username": username or "cambium-tool",
+        })
+        try:
+            before_info = cambium_get_device_info(ip, canonical, password=password, run_tests=True)
+            before_fw = _cambium_extract_firmware(before_info)
+            if before_fw:
+                log_cb(f"[{ip}] Current firmware: {before_fw}")
+        except Exception as exc:
+            _cambium_broadcast_log(f"[{ip}] Precheck info unavailable: {exc}", "warning", ip=ip)
+
+        if "backup" in tasks:
+            running_config = (before_info or {}).get("running_config")
+            if not running_config:
+                raise RuntimeError("Backup failed: running config was not returned by the device")
+            backup_path = _cambium_write_backup(ip, running_config)
+            backup_status = "success"
+            log_cb(f"[{ip}] Backup saved to {backup_path}")
+        else:
+            backup_status = "pending"
+
+        if callable(should_abort) and should_abort():
+            return {
+                "ip": ip,
+                "success": False,
+                "status": "aborted",
+                "device_type": canonical,
+                "target_version": update_version,
+                "selected_image": None,
+                "firmware_version_before": before_fw,
+                "firmware_version_after": None,
+                "before_info": before_info,
+                "after_info": None,
+                "backup_status": backup_status,
+                "verify_status": verify_status,
+                "backup_path": backup_path,
+                "error": "Aborted",
+                "username": username or "cambium-tool",
+            }
+
+        update_result = {"target_version": update_version, "selected_image": None}
+        if "firmware" in tasks:
+            update_result = cambium_update_device(
+                ip,
+                canonical,
+                username=device_username,
+                password=password,
+                update_version=update_version,
+                callback=log_cb,
+            )
+
+        if "verify" in tasks or "firmware" in tasks:
+            try:
+                after_info = cambium_get_device_info(ip, canonical, password=password, run_tests=True)
+                after_fw = _cambium_extract_firmware(after_info)
+            except Exception as exc:
+                _cambium_broadcast_log(f"[{ip}] Post-upgrade verification unavailable: {exc}", "warning", ip=ip)
+                if "verify" in tasks:
+                    raise RuntimeError(f"Verification failed: {exc}") from exc
+
+        if "verify" in tasks:
+            actual_fw = after_fw or before_fw
+            verify_status = "success" if actual_fw and (
+                not update_version or _cambium_versions_match(update_version, actual_fw)
+            ) else "error"
+            if verify_status != "success":
+                raise RuntimeError(
+                    f"Verification failed: expected {update_version or 'selected target'}, found {actual_fw or 'unknown'}"
+                )
+        else:
+            verify_status = "pending"
+
+        return {
+            "ip": ip,
+            "success": True,
+            "status": "success",
+            "device_type": canonical,
+            "target_version": update_result.get("target_version") or update_version,
+            "selected_image": update_result.get("selected_image"),
+            "firmware_version_before": before_fw,
+            "firmware_version_after": after_fw,
+            "before_info": before_info,
+            "after_info": after_info,
+            "backup_status": backup_status,
+            "verify_status": verify_status,
+            "backup_path": backup_path,
+            "error": None,
+            "username": username or "cambium-tool",
+        }
+    except Exception as exc:
+        return {
+            "ip": ip,
+            "success": False,
+            "status": "error",
+            "device_type": canonical,
+            "target_version": update_version,
+            "selected_image": None,
+            "firmware_version_before": before_fw,
+            "firmware_version_after": after_fw,
+            "before_info": before_info,
+            "after_info": after_info,
+            "backup_status": backup_status,
+            "verify_status": verify_status,
+            "backup_path": backup_path,
+            "error": str(exc),
+            "username": username or "cambium-tool",
+        }
+
+
+def _cambium_background_task(task_id, radios, username):
+    results = []
+    cambium_tasks[task_id]["status"] = "running"
+    def should_abort():
+        return cambium_tasks.get(task_id, {}).get("abort") is True
+    max_workers = max(1, min(CAMBIUM_MAX_WORKERS, len(radios)))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_cambium_run_single, radio, username, should_abort): radio for radio in radios}
+        for future in as_completed(futures):
+            result = future.result()
+            results.append(result)
+            _cambium_update_queue_from_result(result, username=username)
+            _log_cambium_activity(result)
+            if result.get("success"):
+                _cambium_broadcast_log(
+                    f"[{result['ip']}] Cambium tasks completed successfully.",
+                    "success",
+                    task_id=task_id,
+                    ip=result["ip"],
+                )
+            elif result.get("status") == "aborted":
+                _cambium_broadcast_log(
+                    f"[{result['ip']}] Cambium task aborted.",
+                    "warning",
+                    task_id=task_id,
+                    ip=result["ip"],
+                )
+            else:
+                _cambium_broadcast_log(
+                    f"[{result['ip']}] Cambium task failed: {result.get('error')}",
+                    "error",
+                    task_id=task_id,
+                    ip=result["ip"],
+                )
+            _cambium_save_shared_queue()
+
+    cambium_tasks[task_id]["status"] = "aborted" if should_abort() else "completed"
+    cambium_tasks[task_id]["results"] = results
+    cambium_tasks[task_id]["completed_at"] = get_utc_timestamp()
+    if task_id in cambium_log_queues:
+        cambium_log_queues[task_id].put(None)
+
+
+@app.route('/api/firmware-updater/providers', methods=['GET'])
+def firmware_updater_providers():
+    cambium_catalog = None
+    if HAS_CAMBIUM:
+        try:
+            cambium_catalog = cambium_list_firmware_catalog()
+        except Exception as exc:
+            cambium_catalog = {"error": str(exc)}
+    return jsonify({
+        "success": True,
+        "providers": {
+            "aviat": {
+                "available": HAS_AVIAT,
+                "label": "Aviat Backhaul Firmware Updater",
+            },
+            "cambium": {
+                "available": HAS_CAMBIUM,
+                "label": "Cambium Radio Firmware Updater",
+                "catalog": cambium_catalog,
+            },
+        },
+    })
+
+
+@app.route('/api/cambium/catalog', methods=['GET'])
+def cambium_catalog():
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    return jsonify({"success": True, **cambium_list_firmware_catalog()})
+
+
+@app.route('/api/cambium/device-info', methods=['POST'])
+def cambium_device_info():
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    data = request.get_json(force=True) or {}
+    ip = str(data.get("ip") or data.get("ip_address") or "").strip()
+    device_type = data.get("device_type")
+    password = data.get("password")
+    run_tests = str(data.get("run_tests", "true")).lower() != "false"
+    if not ip or not device_type:
+        return jsonify({'error': 'ip and device_type are required'}), 400
+    try:
+        info = _cambium_check_single(ip, device_type, password=password, run_tests=run_tests)
+        _cambium_queue_upsert(ip, {
+            "status": "pending" if info["reachable"] else "error",
+            "firmwareStatus": "pending" if info["reachable"] else "error",
+            "deviceType": info["device_type"],
+            "firmwareVersion": info["firmware_version"],
+            "lastError": info["error"],
+        })
+        _cambium_save_shared_queue()
+        return jsonify({"success": True, **info})
+    except Exception as exc:
+        return jsonify({'error': str(exc)}), 400
+
+
+@app.route('/api/cambium/check-status', methods=['POST'])
+def cambium_check_status():
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    data = request.get_json(force=True) or {}
+    radios = _cambium_expand_radios(data)
+    if not radios:
+        return jsonify({'error': 'No radios provided'}), 400
+
+    results = []
+    with ThreadPoolExecutor(max_workers=max(1, min(CAMBIUM_MAX_WORKERS, len(radios)))) as executor:
+        futures = {
+            executor.submit(
+                _cambium_check_single,
+                radio["ip"],
+                radio.get("device_type"),
+                password=radio.get("password"),
+                run_tests=True,
+            ): radio for radio in radios
+        }
+        for future in as_completed(futures):
+            result = future.result()
+            results.append(result)
+            _cambium_queue_upsert(result["ip"], {
+                "status": "pending" if result["reachable"] else "error",
+                "firmwareStatus": "pending" if result["reachable"] else "error",
+                "deviceType": result["device_type"],
+                "firmwareVersion": result["firmware_version"],
+                "lastError": result["error"],
+            })
+    _cambium_save_shared_queue()
+    return jsonify({"success": True, "results": results})
+
+
+@app.route('/api/cambium/queue', methods=['GET', 'POST'])
+def cambium_queue_state():
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    if request.method == 'GET':
+        return jsonify({"radios": cambium_shared_queue})
+
+    data = request.get_json(force=True) or {}
+    mode = str(data.get("mode") or "replace").strip().lower()
+    actor_username = (
+        data.get("requested_by")
+        or data.get("actor_username")
+        or data.get("submitted_by")
+        or "cambium-tool"
+    )
+    radios = _cambium_expand_radios(data)
+
+    if mode == "replace":
+        cambium_shared_queue.clear()
+        for radio in radios:
+            canonical = cambium_resolve_device_type(radio.get("device_type"))
+            _cambium_queue_upsert(radio["ip"], {
+                "status": "pending",
+                "firmwareStatus": "pending",
+                "deviceType": canonical,
+                "targetVersion": radio.get("update_version"),
+                "username": actor_username,
+            })
+    elif mode == "add":
+        for radio in radios:
+            canonical = cambium_resolve_device_type(radio.get("device_type"))
+            _cambium_queue_upsert(radio["ip"], {
+                "status": "pending",
+                "firmwareStatus": "pending",
+                "deviceType": canonical,
+                "targetVersion": radio.get("update_version"),
+                "username": actor_username,
+            })
+    elif mode == "remove":
+        for radio in radios:
+            _cambium_queue_remove(radio["ip"])
+    else:
+        return jsonify({'error': f'Unsupported mode: {mode}'}), 400
+
+    _cambium_save_shared_queue()
+    return jsonify({"radios": cambium_shared_queue})
+
+
+@app.route('/api/cambium/run', methods=['POST'])
+def cambium_run_tasks():
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    data = request.get_json(force=True) or {}
+    radios = _cambium_expand_radios(data)
+    actor_username = (
+        data.get("requested_by")
+        or data.get("actor_username")
+        or data.get("submitted_by")
+        or "cambium-tool"
+    )
+    if not radios:
+        return jsonify({'error': 'No radios provided'}), 400
+
+    normalized = []
+    for radio in radios:
+        if not radio.get("device_type"):
+            return jsonify({'error': f"device_type is required for {radio['ip']}"}), 400
+        canonical = cambium_resolve_device_type(radio.get("device_type"))
+        normalized.append(
+            {
+                "ip": radio["ip"],
+                "device_type": canonical,
+                "update_version": radio.get("update_version"),
+                "username": radio.get("username"),
+                "password": radio.get("password"),
+                "tasks": _cambium_expand_tasks(radio.get("tasks")),
+            }
+        )
+        selected_tasks = _cambium_expand_tasks(radio.get("tasks"))
+        _cambium_queue_upsert(radio["ip"], {
+            "status": "processing",
+            "firmwareStatus": "processing" if "firmware" in selected_tasks else "pending",
+            "backupStatus": "processing" if "backup" in selected_tasks else "pending",
+            "verifyStatus": "processing" if "verify" in selected_tasks else "pending",
+            "deviceType": canonical,
+            "targetVersion": radio.get("update_version"),
+            "username": actor_username,
+        })
+    _cambium_save_shared_queue()
+
+    task_id = str(uuid.uuid4())
+    cambium_tasks[task_id] = {
+        "status": "queued",
+        "abort": False,
+        "task_id": task_id,
+        "username": actor_username,
+        "radios": normalized,
+        "tasks": _cambium_expand_tasks(data.get("tasks")),
+        "started_at": get_utc_timestamp(),
+        "results": [],
+    }
+    cambium_log_queues[task_id] = queue.Queue()
+    threading.Thread(
+        target=_cambium_background_task,
+        args=(task_id, normalized, actor_username),
+        daemon=True,
+    ).start()
+    return jsonify({"success": True, "task_id": task_id, "count": len(normalized)})
+
+
+@app.route('/api/cambium/stream/<task_id>')
+def cambium_stream_logs(task_id):
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    if task_id not in cambium_log_queues:
+        return jsonify({'error': 'Task not found'}), 404
+
+    @stream_with_context
+    def generate():
+        q = cambium_log_queues[task_id]
+        while True:
+            item = q.get()
+            if item is None:
+                break
+            yield f"data: {json.dumps(item)}\n\n"
+
+    response = Response(generate(), mimetype='text/event-stream')
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['X-Accel-Buffering'] = 'no'
+    return response
+
+
+@app.route('/api/cambium/stream/global')
+def cambium_stream_global():
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    q = queue.Queue()
+    cambium_global_log_queues.add(q)
+
+    @stream_with_context
+    def generate():
+        for entry in cambium_global_log_history[-200:]:
+            yield f"data: {json.dumps(entry)}\n\n"
+        try:
+            while True:
+                try:
+                    item = q.get(timeout=15)
+                except queue.Empty:
+                    # Keep the stream active and give disconnected clients a chance
+                    # to unwind so stale tabs do not pin a worker forever.
+                    yield ": keep-alive\n\n"
+                    continue
+                yield f"data: {json.dumps(item)}\n\n"
+        finally:
+            cambium_global_log_queues.discard(q)
+
+    response = Response(generate(), mimetype='text/event-stream')
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['X-Accel-Buffering'] = 'no'
+    return response
+
+
+@app.route('/api/cambium/status/<task_id>')
+def cambium_get_status(task_id):
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    if task_id not in cambium_tasks:
+        return jsonify({'error': 'Task not found'}), 404
+    return jsonify(cambium_tasks[task_id])
+
+
+@app.route('/api/cambium/abort/<task_id>', methods=['POST'])
+def cambium_abort_task(task_id):
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    if task_id not in cambium_tasks:
+        return jsonify({'error': 'Task not found'}), 404
+    cambium_tasks[task_id]['abort'] = True
+    cambium_tasks[task_id]['status'] = 'aborting'
+    return jsonify({'status': 'aborting'})
+
+
+@app.route('/api/cambium/backup', methods=['GET'])
+def cambium_download_backup():
+    if not HAS_CAMBIUM:
+        return jsonify({'error': 'Cambium backend not available'}), 503
+    ip = str(request.args.get("ip") or "").strip()
+    requested_path = str(request.args.get("path") or "").strip()
+    if not ip and not requested_path:
+        return jsonify({'error': 'ip or path is required'}), 400
+
+    backup_root = (Path(__file__).resolve().parent / "secure_data" / "cambium_backups").resolve()
+    backup_root.mkdir(parents=True, exist_ok=True)
+
+    target = None
+    if requested_path:
+        candidate = Path(requested_path).resolve()
+        try:
+            candidate.relative_to(backup_root)
+        except ValueError:
+            return jsonify({'error': 'Backup path is outside Cambium backup storage'}), 400
+        if not candidate.is_file():
+            return jsonify({'error': 'Backup file not found'}), 404
+        target = candidate
+    else:
+        prefix = f"{ip.replace('.', '_')}_"
+        matches = sorted(backup_root.glob(f"{prefix}*.json"), key=lambda path: path.stat().st_mtime, reverse=True)
+        if not matches:
+            return jsonify({'error': f'No backup found for {ip}'}), 404
+        target = matches[0]
+
+    return send_file(str(target), as_attachment=True, download_name=target.name, mimetype='application/json')
 
 
 FTTH_FIBER_DEVICE_PROFILES = {

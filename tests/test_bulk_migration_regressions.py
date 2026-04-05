@@ -102,6 +102,27 @@ def test_build_interface_migration_map_no_local_re_shadow() -> None:
 
 
 @pytest.mark.parametrize(
+    ("source_model", "target_model"),
+    [
+        ("CCR1036-12G-4S", "CCR2004-1G-12S+2XS"),
+        ("CCR1036-12G-4S", "CCR2216-1G-12XS-2XQ"),
+        ("CCR1072-12G-4S+", "CCR2216-1G-12XS-2XQ"),
+        ("CCR2004-1G-12S+2XS", "CCR2216-1G-12XS-2XQ"),
+        ("CCR2004-1G-12S+2XS", "CCR2116-12G-4S+"),
+        ("CCR2116-12G-4S+", "CCR2004-1G-12S+2XS"),
+        ("CCR2216-1G-12XS-2XQ", "CCR2004-1G-12S+2XS"),
+        ("RB5009UG+S+", "CCR2004-1G-12S+2XS"),
+    ],
+)
+def test_build_interface_migration_map_only_uses_target_ports(source_model: str, target_model: str) -> None:
+    _, api_server = _load_app()
+    result = api_server.build_interface_migration_map(source_model, target_model)
+    target_ports = set(api_server._all_device_ports(target_model))
+    assert result, f"Expected a migration map for {source_model} -> {target_model}"
+    assert set(result.values()).issubset(target_ports)
+
+
+@pytest.mark.parametrize(
     ("alias", "full_model"),
     [
         ("ccr1036", "CCR1036-12G-4S"),
@@ -370,6 +391,101 @@ def test_toolbox_inventory_endpoint_exposes_porting_reference() -> None:
     assert "mikrotik" in data.get("inventory", {})
     assert "nokia" in data.get("inventory", {})
     assert "switch" in data.get("role_patterns", {})
+
+
+def test_migrate_config_normalizes_existing_target_family_ports_and_identity() -> None:
+    client, _ = _load_app()
+    export = (
+        "# 2026-04-01 22:00:27 by RouterOS 7.16.2\n"
+        "# model=CCR2004-1G-12S+2XS\n"
+        "/interface ethernet\n"
+        "set [ find default-name=sfp28-4 ] auto-negotiation=no comment=\"Netonix Uplink #1\" speed=1G-baseX\n"
+        "set [ find default-name=sfp28-5 ] comment=\"Netonix Uplink #2\" disabled=yes\n"
+        "set [ find default-name=sfp28-6 ] auto-negotiation=no comment=TX-OTTO-SE-1 speed=10G-baseSR-LR\n"
+        "set [ find default-name=qsfp28-1-1 ] auto-negotiation=no comment=TX-KOSSE-EA-1 speed=10G-baseSR-LR\n"
+        "/ip address\n"
+        "add address=10.43.129.196/29 comment=TX-OTTO-SE-1 interface=sfp28-6 network=10.43.129.192\n"
+        "add address=10.43.129.201/29 comment=TX-KOSSE-EA-1 interface=qsfp28-1-1 network=10.43.129.200\n"
+        "/system identity\n"
+        "set name=RTR-MT2004-AR1.TX-STRANGER-NE-1\n"
+    )
+    response = client.post(
+        "/api/migrate-config",
+        data=json.dumps(
+            {
+                "config": export,
+                "target_device": "CCR2216-1G-12XS-2XQ",
+                "target_version": "7",
+                "apply_compliance": False,
+            }
+        ),
+        content_type="application/json",
+    )
+    assert response.status_code == 200, response.get_data(as_text=True)
+    data = response.get_json() or {}
+    assert data.get("success") is True
+    assert data.get("effective_source_device") == "CCR2216-1G-12XS-2XQ"
+    translated = data.get("translated_config") or ""
+    analysis = data.get("migration_analysis") or {}
+    ports = {row["source_port"]: row for row in analysis.get("port_analysis", [])}
+
+    assert ports["sfp28-4"]["detected_role"] == "switch"
+    assert ports["sfp28-4"]["target_port"] == "sfp28-1"
+    assert ports["sfp28-5"]["detected_role"] == "switch"
+    assert ports["sfp28-5"]["target_port"] == "sfp28-2"
+    assert ports["sfp28-6"]["detected_role"] == "backhaul"
+    assert ports["sfp28-6"]["target_port"] == "sfp28-4"
+    assert ports["qsfp28-1-1"]["target_port"] in {"sfp28-5", "sfp28-6"}
+    assert "set name=RTR-MT2216-AR1.TX-STRANGER-NE-1" in translated
+    assert "# model =CCR2216-1G-12XS-2XQ" in translated
+    assert "default-name=sfp28-1" in translated
+    assert "default-name=sfp28-2" in translated
+    assert "default-name=sfp28-5 ] auto-negotiation=no comment=TX-KOSSE-EA-1" in translated
+    assert "default-name=qsfp28-1-1 ] auto-negotiation=no comment=TX-KOSSE-EA-1" not in translated
+
+
+def test_generic_logical_labels_do_not_override_physical_port_mapping() -> None:
+    client, _ = _load_app()
+    export = (
+        "# 2026-04-01 22:00:27 by RouterOS 7.19.4\n"
+        "# model=CCR2004-1G-12S+2XS\n"
+        "/interface bridge\n"
+        "add name=lan-bridge\n"
+        "/interface ethernet\n"
+        "set [ find default-name=sfp-sfpplus1 ] comment=\"Netonix Uplink #1\"\n"
+        "set [ find default-name=sfp-sfpplus7 ] comment=TX-BACKHAUL-1\n"
+        "/interface bridge port\n"
+        "add bridge=lan-bridge interface=sfp-sfpplus1\n"
+        "add bridge=lan-bridge interface=sfp-sfpplus7\n"
+        "/ip address\n"
+        "add address=10.22.176.1/22 comment=\"CPE/Tower Gear\" interface=lan-bridge network=10.22.176.0\n"
+        "add address=10.43.129.193/29 comment=TX-BACKHAUL-1 interface=sfp-sfpplus7 network=10.43.129.192\n"
+        "/system identity\n"
+        "set name=RTR-MT2004-AR1.TEST\n"
+    )
+    response = client.post(
+        "/api/migrate-config",
+        data=json.dumps(
+            {
+                "config": export,
+                "target_device": "CCR2216-1G-12XS-2XQ",
+                "target_version": "7",
+                "apply_compliance": False,
+            }
+        ),
+        content_type="application/json",
+    )
+    assert response.status_code == 200, response.get_data(as_text=True)
+    data = response.get_json() or {}
+    ports = {row["source_port"]: row for row in data.get("migration_analysis", {}).get("port_analysis", [])}
+
+    assert ports["sfp-sfpplus1"]["detected_role"] == "switch"
+    assert ports["sfp-sfpplus1"]["target_port"] in {"sfp28-1", "sfp28-2"}
+    assert ports["sfp-sfpplus7"]["detected_role"] == "backhaul"
+    assert ports["sfp-sfpplus7"]["target_port"] in {"sfp28-4", "sfp28-5", "sfp28-6"}
+    joined = " | ".join(ports["sfp-sfpplus1"]["role_evidence"])
+    assert "address_comment:lan-bridge:CPE/Tower Gear" not in joined
+    assert "logical_interface:lan-bridge" not in joined
 
 
 def test_enterprise_generator_uses_device_profile_defaults_for_ccr2216() -> None:
