@@ -14247,7 +14247,7 @@ def infrastructure_config():
 
     shared_key = os.getenv('NEXTLINK_SHARED_KEY', '').strip()
 
-    radius_secret = _ts_radius_secret if _ts_radius_secret else (os.getenv('NEXTLINK_RADIUS_SECRET', 'Nl22021234').strip() or 'Nl22021234')
+    radius_secret = _ts_radius_secret if _ts_radius_secret else os.getenv('NEXTLINK_RADIUS_SECRET', '').strip()
     radius_dhcp_servers = _csv(os.getenv('NEXTLINK_RADIUS_DHCP_SERVERS', ''))
     radius_login_servers = _csv(os.getenv('NEXTLINK_RADIUS_LOGIN_SERVERS', ''))
 
