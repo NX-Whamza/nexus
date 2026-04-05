@@ -15701,7 +15701,13 @@ def _load_session_bootstrap_for_user(user_id):
     _ensure_user_default_membership(conn, user_id)
     conn.commit()
 
-    platform_role = user['platform_role'] or ('platform_admin' if user['is_platform_admin'] else 'user')
+    # Derive role from stored DB value AND live email check — whichever is higher wins.
+    # This ensures admins always get correct access even if the DB migration hasn't set
+    # platform_role yet (e.g. first boot after schema change on an existing DB).
+    _db_role = user['platform_role'] or ('platform_admin' if user['is_platform_admin'] else 'user')
+    _live_role = _platform_role_for_email(user['email'] or '')
+    _ROLE_RANK = {'platform_admin': 3, 'platform_support': 2, 'tenant_admin': 1, 'user': 0}
+    platform_role = _db_role if _ROLE_RANK.get(_db_role, 0) >= _ROLE_RANK.get(_live_role, 0) else _live_role
 
     c.execute(
         '''
@@ -15812,7 +15818,10 @@ def _switch_user_active_tenant(user_id, tenant_id):
     user = c.fetchone()
     platform_role = None
     if user:
-        platform_role = user['platform_role'] or ('platform_admin' if user['is_platform_admin'] else 'user')
+        _db_role2 = user['platform_role'] or ('platform_admin' if user['is_platform_admin'] else 'user')
+        _live_role2 = _platform_role_for_email(user['email'] or '')
+        _ROLE_RANK2 = {'platform_admin': 3, 'platform_support': 2, 'tenant_admin': 1, 'user': 0}
+        platform_role = _db_role2 if _ROLE_RANK2.get(_db_role2, 0) >= _ROLE_RANK2.get(_live_role2, 0) else _live_role2
 
     c.execute(
         '''
