@@ -16006,6 +16006,7 @@ def init_users_db():
     conn.commit()
     conn.close()
     print(f"[AUTH] Users database initialized at {db_path}")
+    return db_path
 
 def hash_password(password):
     """Hash password using SHA-256 with salt"""
