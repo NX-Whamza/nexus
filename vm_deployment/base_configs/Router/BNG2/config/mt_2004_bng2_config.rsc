@@ -40,10 +40,25 @@ add cisco-static-id={{ vpls2000 }} comment=VPLS2000-BNG-{{ state }} name=vpls200
 add cisco-static-id={{ vpls3000 }} comment=VPLS3000-BNG-{{ state }} name=vpls3000-bng1 peer={{ bng1_ip }} pw-l2mtu={{ vpls_l2mtu }} pw-type=raw-ethernet
 add cisco-static-id={{ vpls4000 }} comment=VPLS4000-BNG-{{ state }} name=vpls4000-bng1 peer={{ bng1_ip }} pw-l2mtu={{ vpls_l2mtu }} pw-type=raw-ethernet
 
-/interface bridge port
+{% if switches %}
+/interface vlan
 {% for sw in switches %}
-add bridge=vpls-bridge ingress-filtering=no interface={{ sw.port }} internal-path-cost=10 path-cost=10
+add interface={{ sw.port }} name=vlan1000-{{ sw.port }} vlan-id=1000
+add interface={{ sw.port }} name=vlan2000-{{ sw.port }} vlan-id=2000
+add interface={{ sw.port }} name=vlan3000-{{ sw.port }} vlan-id=3000
+add interface={{ sw.port }} name=vlan4000-{{ sw.port }} vlan-id=4000
 {% endfor %}
+
+{% endif %}
+/interface bridge port
+{% if switches %}
+{% for sw in switches %}
+add bridge=bridge1000 ingress-filtering=no interface=vlan1000-{{ sw.port }} internal-path-cost=10 path-cost=10
+add bridge=bridge2000 ingress-filtering=no interface=vlan2000-{{ sw.port }} internal-path-cost=10 path-cost=10
+add bridge=bridge3000 ingress-filtering=no interface=vlan3000-{{ sw.port }} internal-path-cost=10 path-cost=10
+add bridge=bridge4000 ingress-filtering=no interface=vlan4000-{{ sw.port }} internal-path-cost=10 path-cost=10
+{% endfor %}
+{% endif %}
 add bridge=vpls-bridge edge=yes horizon=1 ingress-filtering=no interface=vpls-bng1 internal-path-cost=10 path-cost=10
 add bridge=vpls-bridge edge=yes horizon=1 ingress-filtering=no interface=vpls-bng2 internal-path-cost=10 path-cost=10
 add bridge=bridge600 edge=yes horizon=1 ingress-filtering=no interface=vpls600-bng-{{ state_lc }}-net internal-path-cost=10 path-cost=10
@@ -101,6 +116,10 @@ add cisco-vpls-nlri-len-fmt=auto-bits connect=yes listen=yes local.address={{ lo
 add interface=all mpls-mtu={{ mpls_mtu }}
 /mpls ldp
 add disabled=no lsr-id={{ loopip }} transport-addresses={{ loopip }}
+/mpls ldp interface
+{% for bh in backhauls %}
+add interface={{ bh.port }} disabled=no
+{% endfor %}
 
 {% if is_lte %}
 /ip address

@@ -258,3 +258,39 @@ add address=10.246.2.25/29 comment="UNICORN MGMT" interface=bridge3000 network=1
     corrected = body.get("config", "")
     assert 'interface=bridge3000 network=10.246.2.24' in corrected
     assert 'network=10.246.2.24/29' in corrected
+
+
+def test_bng2_switch_uplink_generates_vlan_interfaces_on_correct_bridges():
+    """Switch uplinks must get VLAN 1000/2000/3000/4000 tagged interfaces mapped to their bridges."""
+    payload = _bng2_payload()
+    payload["switches"] = [{"name": "Switch-1", "port": "sfp-sfpplus1", "comment": "SW-UPLINK"}]
+    r = client.post("/api/mt/bng2/config", json=payload)
+    assert r.status_code == 200
+    text = r.json()
+    # VLAN interfaces must exist on the switch port
+    assert "vlan1000-sfp-sfpplus1" in text
+    assert "vlan2000-sfp-sfpplus1" in text
+    assert "vlan3000-sfp-sfpplus1" in text
+    assert "vlan4000-sfp-sfpplus1" in text
+    # Each VLAN interface must be added to its respective bridge
+    assert "bridge=bridge1000" in text and "interface=vlan1000-sfp-sfpplus1" in text
+    assert "bridge=bridge2000" in text and "interface=vlan2000-sfp-sfpplus1" in text
+    assert "bridge=bridge3000" in text and "interface=vlan3000-sfp-sfpplus1" in text
+    assert "bridge=bridge4000" in text and "interface=vlan4000-sfp-sfpplus1" in text
+    # Switch port must NOT be added raw to vpls-bridge
+    assert "bridge=vpls-bridge ingress-filtering=no interface=sfp-sfpplus1" not in text
+
+
+def test_bng2_ldp_interface_entries_generated_for_each_backhaul():
+    """Each backhaul port must have an explicit /mpls ldp interface entry."""
+    payload = _bng2_payload()
+    payload["backhauls"] = [
+        {"name": "KS-GLADE-NO-1", "subnet": "10.248.90.248/29", "master": True, "port": "sfp-sfpplus4"},
+        {"name": "KS-GLADE-NO-2", "subnet": "10.248.90.240/29", "master": False, "port": "sfp-sfpplus5"},
+    ]
+    r = client.post("/api/mt/bng2/config", json=payload)
+    assert r.status_code == 200
+    text = r.json()
+    assert "/mpls ldp interface" in text
+    assert "interface=sfp-sfpplus4" in text
+    assert "interface=sfp-sfpplus5" in text
