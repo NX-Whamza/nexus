@@ -4599,6 +4599,7 @@
                                 <label for="mtLongitude">Longitude</label>
                                 <input type="text" id="mtLongitude" placeholder="-96.72243">
                             </div>
+                            <div id="mtBgpPeerFields">
                             <div>
                                 <label for="mtAsn">ASN</label>
                                 <input type="text" id="mtAsn" placeholder="Tenant ASN">
@@ -4618,6 +4619,7 @@
                             <div>
                                 <label for="mtBgpPeer2Address">BGP Peer 2 Address</label>
                                 <input type="text" id="mtBgpPeer2Address" placeholder="10.10.10.11/32">
+                            </div>
                             </div>
                             <div>
                                 <label for="mtLoopbackSubnet">Loopback Subnet</label>
@@ -16658,6 +16660,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 const v = String(value || '').trim().toLowerCase();
                 if (v.includes('7535')) return '7535';
                 if (v.includes('7316')) return '7316';
+                // CCR2216 uses the same MT2004 MikroTik template
                 return 'MT2004';
             }
 
@@ -16941,11 +16944,13 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 if (cgnPublicRow) cgnPublicRow.style.display = showTowerLegacySubnets ? 'block' : 'none';
                 if (!routerModel) return;
 
+                const bgpPeerFields = document.getElementById('mtBgpPeerFields');
+                if (bgpPeerFields) bgpPeerFields.style.display = type === 'bng2' ? 'none' : '';
+
                 if (type === 'bng2') {
                     routerModel.innerHTML = `
                         <option value="mt2004" selected>MT2004</option>
-                        <option value="7535">Nokia 7535</option>
-                        <option value="7316">Nokia 7316</option>
+                        <option value="ccr2216">CCR2216</option>
                     `;
                 } else {
                     routerModel.innerHTML = `
