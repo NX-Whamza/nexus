@@ -16,9 +16,17 @@ sys.path.insert(0, str(repo_root / "vm_deployment"))
 os.environ.setdefault("NOC_CONFIGMAKER_TESTS", "1")
 
 from fastapi_server import app  # noqa: E402
+import api_server  # noqa: E402
 
 
 client = TestClient(app)
+
+
+def _auth_headers():
+    admin_email = os.getenv("PLATFORM_ADMIN_EMAILS", "whamza@team.nxlink.com").split(",")[0].strip()
+    r = client.post("/api/auth/login", json={"email": admin_email, "password": api_server.DEFAULT_PASSWORD})
+    token = (r.json() or {}).get("token", "")
+    return {"Authorization": f"Bearer {token}"}
 
 
 def _ui_payload(deployment_type: str) -> dict:
@@ -61,7 +69,7 @@ def _ui_payload(deployment_type: str) -> dict:
 
 
 def test_ftth_ui_contract_outstate_renders_nebraska_style_blocks():
-    response = client.post("/api/generate-ftth-bng", json=_ui_payload("outstate"))
+    response = client.post("/api/generate-ftth-bng", json=_ui_payload("outstate"), headers=_auth_headers())
     assert response.status_code == 200
     payload = response.json()
     assert payload.get("success") is True
@@ -89,7 +97,7 @@ def test_ftth_ui_contract_outstate_renders_nebraska_style_blocks():
 
 
 def test_ftth_ui_contract_instate_keeps_standard_bridge_layout():
-    response = client.post("/api/generate-ftth-bng", json=_ui_payload("instate"))
+    response = client.post("/api/generate-ftth-bng", json=_ui_payload("instate"), headers=_auth_headers())
     assert response.status_code == 200
     payload = response.json()
     assert payload.get("success") is True
@@ -121,7 +129,7 @@ def test_ftth_outstate_allows_missing_ftth_pool_fields():
     payload["cgnat_public"] = ""
     payload["unauth_network"] = ""
 
-    response = client.post("/api/generate-ftth-bng", json=payload)
+    response = client.post("/api/generate-ftth-bng", json=payload, headers=_auth_headers())
     assert response.status_code == 200
     data = response.json()
     assert data.get("success") is True
@@ -136,7 +144,7 @@ def test_ftth_outstate_state_profile_ia_maps_ospf_and_vpls_ids():
     payload["ospf_area_id"] = "0.0.0.42"
     payload["vpls_state_id"] = "245"
 
-    response = client.post("/api/generate-ftth-bng", json=payload)
+    response = client.post("/api/generate-ftth-bng", json=payload, headers=_auth_headers())
     assert response.status_code == 200
     data = response.json()
     assert data.get("success") is True
@@ -154,7 +162,7 @@ def test_ftth_auto_speed_renders_auto_negotiation_yes_without_speed():
     payload["olt_ports"][0]["speed"] = "auto"
     payload["olt_ports"][1]["speed"] = "25G-baseSR-LR"
 
-    response = client.post("/api/generate-ftth-bng", json=payload)
+    response = client.post("/api/generate-ftth-bng", json=payload, headers=_auth_headers())
     assert response.status_code == 200
     data = response.json()
     assert data.get("success") is True
@@ -172,7 +180,7 @@ def test_ftth_forced_speed_keeps_auto_negotiation_no_with_speed():
     payload["uplinks"][0]["speed"] = "25G-baseSR-LR"
     payload["olt_ports"][0]["speed"] = "25G-baseSR-LR"
 
-    response = client.post("/api/generate-ftth-bng", json=payload)
+    response = client.post("/api/generate-ftth-bng", json=payload, headers=_auth_headers())
     assert response.status_code == 200
     data = response.json()
     assert data.get("success") is True
@@ -190,7 +198,7 @@ def test_ftth_bgp_connections_use_dynamic_peer_inputs_and_loopback_router_id():
     payload["peer_2_name"] = "CR8"
     payload["peer_2_address"] = "10.2.0.108/32"
 
-    response = client.post("/api/generate-ftth-bng", json=payload)
+    response = client.post("/api/generate-ftth-bng", json=payload, headers=_auth_headers())
     assert response.status_code == 200
     data = response.json()
     assert data.get("success") is True

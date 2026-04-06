@@ -3626,6 +3626,14 @@ app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
 CORS(app)  # Enable CORS for local HTML file access
 
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+limiter = Limiter(get_remote_address, app=app, default_limits=[], storage_uri="memory://")
+
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    return jsonify({'error': 'Too many requests. Please wait before trying again.'}), 429
+
 # Trust X-Forwarded-* headers from the reverse proxy so request.host_url
 # returns the real public URL (e.g. https://noc-configmaker.nxlink.com/)
 # instead of http://127.0.0.1:5000/.  Required for OAuth redirect_uri.
@@ -9307,10 +9315,58 @@ Output (copy every line, update device model to {target_device.upper()}, preserv
         return jsonify({'error': str(e)}), 500
 
 # ========================================
+# AUTH DECORATOR (used by endpoints below and above)
+# ========================================
+
+def require_auth(f):
+    """Decorator to require authentication"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        token = request.headers.get('Authorization')
+        if not token:
+            token = request.json.get('token') if request.json else None
+
+        if token:
+            # Remove 'Bearer ' prefix if present
+            if token.startswith('Bearer '):
+                token = token[7:]
+
+        if not token:
+            return jsonify({'error': 'Authentication required'}), 401
+
+        user_info = verify_token(token)
+        if not user_info:
+            return jsonify({'error': 'Invalid or expired token'}), 401
+
+        # Add user info to request context
+        request.current_user = user_info
+
+        # Update online presence tracker
+        try:
+            uid = user_info.get('id') or user_info.get('user_id')
+            if uid:
+                existing = _active_sessions.get(uid, {})
+                _active_sessions[uid] = {
+                    'email': user_info.get('email', ''),
+                    'display_name': user_info.get('displayName') or user_info.get('email', '').split('@')[0],
+                    'avatar': existing.get('avatar'),   # preserved from login
+                    'tenant_name': existing.get('tenant_name', ''),
+                    'role_label': existing.get('role_label', ''),
+                    'last_seen': _time.time(),
+                }
+        except Exception:
+            pass
+
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+# ========================================
 # ENDPOINT 4: Apply Compliance to Config
 # ========================================
 
 @app.route('/api/apply-compliance', methods=['POST'])
+@require_auth
 def apply_compliance():
     """
     Apply RFC-09-10-25 compliance standards to a RouterOS configuration.
@@ -9553,7 +9609,7 @@ def _cidr_details_gen(cidr: str) -> dict:
 
 
 app.register_blueprint(create_runtime_blueprint())
-app.register_blueprint(create_ftth_blueprint(render_ftth_config, _cidr_details_gen))
+app.register_blueprint(create_ftth_blueprint(render_ftth_config, _cidr_details_gen, require_auth))
 
 
 def _ros_quote(value: str) -> str:
@@ -9562,6 +9618,7 @@ def _ros_quote(value: str) -> str:
 
 @app.route('/api/gen-enterprise-non-mpls', methods=['POST'])
 @app.route('/api/gen-enterprise-Non-MPLS', methods=['POST'])  # Legacy UI alias
+@require_auth
 def gen_enterprise_non_mpls():
     try:
         data = request.get_json(force=True)
@@ -10625,6 +10682,7 @@ def validate_tarana_config(config_text, device, routeros_version):
     return is_valid, errors, warnings
 
 @app.route('/api/gen-tarana-config', methods=['POST'])
+@require_auth
 def gen_tarana_config():
     """
     Generates and validates Tarana sector configuration with AI-powered network calculation.
@@ -11124,19 +11182,12 @@ def fetch_config_ssh():
 # ========================================
 
 @app.route('/api/nokia7250-defaults', methods=['GET'])
+@require_auth
 def nokia7250_defaults():
     """
     Return Nokia 7250 credentials/secrets, resolved per-tenant then falling back to env vars.
     Frontend fetches these at generate-time so secrets are never hardcoded in HTML.
     """
-    # Inline auth guard
-    _nok_token = request.headers.get('Authorization', '').replace('Bearer ', '').strip()
-    if not _nok_token:
-        _nok_token = request.args.get('token', '').strip()
-    if not _nok_token:
-        return jsonify({'error': 'Authentication required', 'authenticated': False}), 401
-    if not verify_token(_nok_token):
-        return jsonify({'error': 'Invalid or expired token', 'authenticated': False}), 401
     # Resolve per-tenant settings
     tenant_ctx = _get_request_tenant_context()
     tenant = tenant_ctx.get('tenant')
@@ -11301,6 +11352,7 @@ def _render_nokia_7750_backend(data: dict):
 
 
 @app.route('/api/generate-nokia-configurator', methods=['POST'])
+@require_auth
 def generate_nokia_configurator():
     try:
         data = request.get_json(force=True) or {}
@@ -11343,6 +11395,7 @@ def generate_nokia_configurator():
 
 
 @app.route('/api/generate-nokia7250', methods=['POST'])
+@require_auth
 def generate_nokia7250():
     """
     Generate Nokia 7250 configuration based on provided parameters.
@@ -13341,6 +13394,7 @@ def _build_nokia_config(parsed: dict, nokia_params: dict = None) -> str:
 
 
 @app.route('/api/parse-mikrotik-for-nokia', methods=['POST'])
+@require_auth
 def parse_mikrotik_for_nokia_endpoint():
     """
     Parse a MikroTik config and return structured extraction data
@@ -13372,6 +13426,7 @@ def parse_mikrotik_for_nokia_endpoint():
 
 
 @app.route('/api/migrate-mikrotik-to-nokia', methods=['POST'])
+@require_auth
 def migrate_mikrotik_to_nokia():
     """
     Convert MikroTik RouterOS configuration to Nokia SR OS classic CLI syntax.
@@ -14153,48 +14208,6 @@ def submit_feedback():
 # ========================================
 # ADMIN ENDPOINTS: Feedback Management
 # ========================================
-
-def require_auth(f):
-    """Decorator to require authentication"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        token = request.headers.get('Authorization')
-        if not token:
-            token = request.json.get('token') if request.json else None
-        
-        if token:
-            # Remove 'Bearer ' prefix if present
-            if token.startswith('Bearer '):
-                token = token[7:]
-        
-        if not token:
-            return jsonify({'error': 'Authentication required'}), 401
-        
-        user_info = verify_token(token)
-        if not user_info:
-            return jsonify({'error': 'Invalid or expired token'}), 401
-        
-        # Add user info to request context
-        request.current_user = user_info
-
-        # Update online presence tracker
-        try:
-            uid = user_info.get('id') or user_info.get('user_id')
-            if uid:
-                existing = _active_sessions.get(uid, {})
-                _active_sessions[uid] = {
-                    'email': user_info.get('email', ''),
-                    'display_name': user_info.get('displayName') or user_info.get('email', '').split('@')[0],
-                    'avatar': existing.get('avatar'),   # preserved from login
-                    'tenant_name': existing.get('tenant_name', ''),
-                    'role_label': existing.get('role_label', ''),
-                    'last_seen': _time.time(),
-                }
-        except Exception:
-            pass
-
-        return f(*args, **kwargs)
-    return decorated_function
 
 def is_admin_user():
     """Check if current user is admin"""
@@ -15202,7 +15215,10 @@ def toolbox_inventory():
 
 # JWT Secret Key (in production, use environment variable)
 JWT_SECRET = os.getenv('JWT_SECRET', secrets.token_urlsafe(32))
-DEFAULT_PASSWORD = os.getenv('DEFAULT_PASSWORD', 'NOCConfig2025!')  # Change this in production
+DEFAULT_PASSWORD = os.getenv('DEFAULT_PASSWORD')
+if not DEFAULT_PASSWORD:
+    safe_print('[CRITICAL] DEFAULT_PASSWORD env var is not set. New user provisioning will fail until it is set.')
+    DEFAULT_PASSWORD = 'NOCConfig2025!'  # legacy fallback only - set DEFAULT_PASSWORD env var in production
 
 # Azure AD Configuration (for Microsoft SSO)
 AZURE_CLIENT_ID = os.getenv('AZURE_CLIENT_ID', '0563f465-0f3b-466b-a193-90c9e6dd79d6')
@@ -16041,6 +16057,7 @@ def _can_manage_platform():
     return bool(_get_request_access_context()['permissions'].get('platformAdmin'))
 
 @app.route('/api/auth/login', methods=['POST'])
+@limiter.limit("10 per minute", exempt_when=lambda: bool(os.environ.get('PYTEST_CURRENT_TEST')) or app.config.get('TESTING', False))
 def auth_login():
     """Email/password login endpoint"""
     try:
@@ -17260,6 +17277,7 @@ def format_port_mapping_text(port_mapping, device_name='', customer_code=''):
     return "\n".join(lines)
 
 @app.route('/api/save-completed-config', methods=['POST'])
+@require_auth
 def save_completed_config():
     """Save a completed configuration to the database"""
     try:
@@ -17326,6 +17344,7 @@ def save_completed_config():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/get-completed-configs', methods=['GET'])
+@require_auth
 def get_completed_configs():
     """Get all completed configurations with optional filtering"""
     try:
@@ -17378,6 +17397,7 @@ def get_completed_configs():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/get-completed-config/<int:config_id>', methods=['GET'])
+@require_auth
 def get_completed_config(config_id):
     """Get a specific completed configuration by ID"""
     try:
@@ -17710,6 +17730,7 @@ def log_activity():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/get-activity', methods=['GET'])
+@require_auth
 def get_activity():
     """Get recent activities for live feed with formatted messages"""
     try:
@@ -18108,6 +18129,7 @@ def _aviat_background_task(task_id, ips, task_types, maintenance_params=None, us
 
 
 @app.route('/api/aviat/run', methods=['POST'])
+@require_auth
 def aviat_run_tasks():
     if not HAS_AVIAT:
         return jsonify({'error': 'Aviat backend not available'}), 503
@@ -19245,6 +19267,7 @@ def cambium_queue_state():
 
 
 @app.route('/api/cambium/run', methods=['POST'])
+@require_auth
 def cambium_run_tasks():
     if not HAS_CAMBIUM:
         return jsonify({'error': 'Cambium backend not available'}), 503
@@ -19551,6 +19574,7 @@ def _build_ftth_fiber_customer_base_config(data: dict):
 
 
 @app.route('/api/generate-ftth-fiber-customer', methods=['POST'])
+@require_auth
 def generate_ftth_fiber_customer():
     data = request.get_json(silent=True) or {}
     apply_compliance_flag = bool(data.get('apply_compliance', True))
@@ -20121,6 +20145,7 @@ def _build_switch_profile_config(data: dict):
 
 
 @app.route('/api/generate-mt-switch-config', methods=['POST'])
+@require_auth
 def generate_mt_switch_config():
     data = request.get_json(silent=True) or {}
     try:
@@ -20316,6 +20341,7 @@ def _build_ftth_1036_config(data: dict):
 
 
 @app.route('/api/generate-ftth-fiber-site', methods=['POST'])
+@require_auth
 def generate_ftth_fiber_site():
     data = request.get_json(silent=True) or {}
     try:
@@ -20438,6 +20464,7 @@ def _build_isd_fiber_config(data: dict, backhauls):
 
 
 @app.route('/api/generate-ftth-isd-fiber', methods=['POST'])
+@require_auth
 def generate_ftth_isd_fiber():
     data = request.get_json(silent=True) or {}
     try:
@@ -20584,6 +20611,7 @@ def _sanitize_bng2_transport_output(config_text: str) -> str:
 
 
 @app.route('/api/mt/<config_type>/config', methods=['POST'])
+@require_auth
 def mt_generate_config(config_type):
     if not HAS_MT_CONFIG_GEN:
         return jsonify({'error': f'MikroTik config generator unavailable: {MT_CONFIG_GEN_ERROR}'}), 503
@@ -20615,6 +20643,7 @@ def mt_generate_config(config_type):
 
 
 @app.route('/api/mt/<config_type>/portmap', methods=['POST'])
+@require_auth
 def mt_generate_portmap(config_type):
     if not HAS_MT_CONFIG_GEN:
         return jsonify({'error': f'MikroTik config generator unavailable: {MT_CONFIG_GEN_ERROR}'}), 503
@@ -20740,6 +20769,7 @@ def serve_ui_catchall(path: str):
 # ========================================
 
 @app.route('/api/bulk-ssh-fetch', methods=['POST'])
+@require_auth
 def bulk_ssh_fetch():
     """
     Bulk SSH fetch: connect to multiple MikroTik devices concurrently and
@@ -20866,6 +20896,7 @@ def bulk_ssh_fetch():
 
 
 @app.route('/api/bulk-generate', methods=['POST'])
+@require_auth
 def bulk_generate():
     """
     Bulk config generation for multiple sites.
@@ -20990,6 +21021,7 @@ def bulk_generate():
 
 
 @app.route('/api/bulk-migration-analyze', methods=['POST'])
+@require_auth
 def bulk_migration_analyze():
     """
     Bulk migration analysis: SSH-fetch configs from multiple devices,
@@ -21206,6 +21238,7 @@ def bulk_migration_analyze():
 
 
 @app.route('/api/bulk-compliance-scan', methods=['POST'])
+@require_auth
 def bulk_compliance_scan():
     """
     Bulk compliance scanner: validate multiple configs against RFC-09-10-25.
@@ -21489,6 +21522,7 @@ def bulk_compliance_scan():
 
 
 @app.route('/api/bulk-migration-execute', methods=['POST'])
+@require_auth
 def bulk_migration_execute():
     """
     Execute migration transformation on previously-analyzed device configs.

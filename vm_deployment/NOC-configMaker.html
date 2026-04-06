@@ -20706,7 +20706,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
 
             fetch(`${AI_API_BASE}/apply-compliance`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: getAuthHeaders('application/json'),
                 body: JSON.stringify({
                     config: config,
                     loopback_ip: loopbackIPRaw

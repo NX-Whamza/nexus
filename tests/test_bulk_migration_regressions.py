@@ -46,9 +46,11 @@ def test_nokia7250_defaults_exposes_distinct_ospf_auth_key() -> None:
 
 
 def test_generate_nokia7250_uses_env_secrets_and_unique_backhaul_ports() -> None:
-    client, _ = _load_app()
+    client, api_mod = _load_app()
+    headers = _auth_headers(client, api_mod)
     response = client.post(
         "/api/generate-nokia7250",
+        headers=headers,
         json={
             "system_name": "NOKIA-7250-TEST-1",
             "system_ip": "10.42.13.4/32",
@@ -78,9 +80,11 @@ def test_generate_nokia7250_uses_env_secrets_and_unique_backhaul_ports() -> None
 
 
 def test_generate_nokia7250_rejects_reserved_or_duplicate_backhaul_ports() -> None:
-    client, _ = _load_app()
+    client, api_mod = _load_app()
+    headers = _auth_headers(client, api_mod)
     reserved = client.post(
         "/api/generate-nokia7250",
+        headers=headers,
         json={
             "system_name": "NOKIA-7250-TEST-1",
             "system_ip": "10.42.13.4/32",
@@ -92,6 +96,7 @@ def test_generate_nokia7250_rejects_reserved_or_duplicate_backhaul_ports() -> No
 
     duplicate = client.post(
         "/api/generate-nokia7250",
+        headers=headers,
         json={
             "system_name": "NOKIA-7250-TEST-1",
             "system_ip": "10.42.13.4/32",
@@ -514,7 +519,8 @@ def test_generic_logical_labels_do_not_override_physical_port_mapping() -> None:
 
 
 def test_enterprise_generator_uses_device_profile_defaults_for_ccr2216() -> None:
-    client, _ = _load_app()
+    client, api_mod = _load_app()
+    headers = _auth_headers(client, api_mod)
     response = client.post(
         "/api/gen-enterprise-non-mpls",
         data=json.dumps(
@@ -528,6 +534,7 @@ def test_enterprise_generator_uses_device_profile_defaults_for_ccr2216() -> None
             }
         ),
         content_type="application/json",
+        headers=headers,
     )
     assert response.status_code == 200, response.get_data(as_text=True)
     data = response.get_json() or {}
@@ -543,7 +550,8 @@ def test_enterprise_generator_uses_device_profile_defaults_for_ccr2216() -> None
 
 
 def test_enterprise_generator_rejects_overlapping_interface_roles() -> None:
-    client, _ = _load_app()
+    client, api_mod = _load_app()
+    headers = _auth_headers(client, api_mod)
     response = client.post(
         "/api/gen-enterprise-non-mpls",
         data=json.dumps(
@@ -559,6 +567,7 @@ def test_enterprise_generator_rejects_overlapping_interface_roles() -> None:
             }
         ),
         content_type="application/json",
+        headers=headers,
     )
     assert response.status_code == 400, response.get_data(as_text=True)
     data = response.get_json() or {}
@@ -567,7 +576,8 @@ def test_enterprise_generator_rejects_overlapping_interface_roles() -> None:
 
 
 def test_nokia_configurator_backend_generates_7210_isd() -> None:
-    client, _ = _load_app()
+    client, api_mod = _load_app()
+    headers = _auth_headers(client, api_mod)
     response = client.post(
         "/api/generate-nokia-configurator",
         data=json.dumps(
@@ -586,6 +596,7 @@ def test_nokia_configurator_backend_generates_7210_isd() -> None:
             }
         ),
         content_type="application/json",
+        headers=headers,
     )
     assert response.status_code == 200, response.get_data(as_text=True)
     data = response.get_json() or {}
@@ -598,7 +609,8 @@ def test_nokia_configurator_backend_generates_7210_isd() -> None:
 
 
 def test_nokia_configurator_backend_generates_7750_tunnel() -> None:
-    client, _ = _load_app()
+    client, api_mod = _load_app()
+    headers = _auth_headers(client, api_mod)
     response = client.post(
         "/api/generate-nokia-configurator",
         data=json.dumps(
@@ -617,6 +629,7 @@ def test_nokia_configurator_backend_generates_7750_tunnel() -> None:
             }
         ),
         content_type="application/json",
+        headers=headers,
     )
     assert response.status_code == 200, response.get_data(as_text=True)
     data = response.get_json() or {}

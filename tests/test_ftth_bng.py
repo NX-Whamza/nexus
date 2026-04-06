@@ -21,6 +21,13 @@ app.config["TESTING"] = True
 client = app.test_client()
 
 
+def _auth_headers():
+    admin_email = os.getenv("PLATFORM_ADMIN_EMAILS", "whamza@team.nxlink.com").split(",")[0].strip()
+    r = client.post("/api/auth/login", json={"email": admin_email, "password": api_server.DEFAULT_PASSWORD})
+    token = (r.get_json() or {}).get("token", "")
+    return {"Authorization": f"Bearer {token}"}
+
+
 def test_gen_ftth_bng_basic():
     payload = {
         "device": "ccr2004",
@@ -34,7 +41,7 @@ def test_gen_ftth_bng_basic():
         "identity": "RTR-FTTH-EXAMPLE"
     }
 
-    r = client.post("/api/gen-ftth-bng", data=json.dumps(payload), content_type="application/json")
+    r = client.post("/api/gen-ftth-bng", data=json.dumps(payload), content_type="application/json", headers=_auth_headers())
     assert r.status_code == 200
     data = r.get_json() or {}
     assert data.get("success") is True

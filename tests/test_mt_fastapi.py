@@ -17,9 +17,21 @@ sys.path.insert(0, str(repo_root / "vm_deployment"))
 os.environ.setdefault("NEXTLINK_RADIUS_SECRET", "TEST_RADIUS_SECRET")
 
 from fastapi_server import app  # noqa: E402
+import api_server as _api_server  # noqa: E402
 
 
 client = TestClient(app)
+
+
+def _fastapi_auth_headers() -> dict:
+    """Obtain a valid JWT via the Flask login endpoint and return auth headers."""
+    admin_email = os.getenv("PLATFORM_ADMIN_EMAILS", "whamza@team.nxlink.com").split(",")[0].strip()
+    r = client.post(
+        "/api/auth/login",
+        json={"email": admin_email, "password": _api_server.DEFAULT_PASSWORD},
+    )
+    token = (r.json() or {}).get("token")
+    return {"Authorization": f"Bearer {token}"} if token else {}
 
 
 def _gitlab_compliance_configured() -> bool:
@@ -195,7 +207,8 @@ def test_apply_compliance_endpoint_uses_available_compliance_blocks():
             "add disabled=no l2mtu=1500 mac-address=02:AA:BB:CC:DD:EE name=vpls1000-bng1 remote-peer=10.249.0.200 vpls-id=1000:1",
         ]
     )
-    r = client.post("/api/apply-compliance", json={"config": config, "loopback_ip": "10.248.86.11/32"})
+    headers = _fastapi_auth_headers()
+    r = client.post("/api/apply-compliance", json={"config": config, "loopback_ip": "10.248.86.11/32"}, headers=headers)
     assert r.status_code == 200
     body = r.json()
     assert body.get("success") is True
@@ -248,9 +261,11 @@ add bridge=bridge2000 ingress-filtering=no interface=vlan2000-sfp-sfpplus8
 add address=10.246.2.25/29 comment="UNICORN MGMT" interface=bridge3000 network=10.246.2.25
 /routing ospf interface-template add interfaces=bridge3000 cost=10 priority=1 area=backbone type=broadcast comment="UNICORN MGMT" network=10.246.2.25/29
 """
+    headers = _fastapi_auth_headers()
     r = client.post(
         "/api/gen-tarana-config",
         json={"config": config, "device": "ccr2004", "routeros_version": "7.19.4"},
+        headers=headers,
     )
     assert r.status_code == 200
     body = r.json()

@@ -18,6 +18,13 @@ app = api_server.app
 app.config["TESTING"] = True
 
 
+def _auth_headers(client):
+    admin_email = os.getenv("PLATFORM_ADMIN_EMAILS", "whamza@team.nxlink.com").split(",")[0].strip()
+    r = client.post("/api/auth/login", json={"email": admin_email, "password": api_server.DEFAULT_PASSWORD})
+    token = (r.get_json() or {}).get("token", "")
+    return {"Authorization": f"Bearer {token}"}
+
+
 def test_generate_mt_switch_config_for_2004_no_bng():
     client = app.test_client()
     payload = {
@@ -40,6 +47,7 @@ def test_generate_mt_switch_config_for_2004_no_bng():
         "/api/generate-mt-switch-config",
         data=json.dumps(payload),
         content_type="application/json",
+        headers=_auth_headers(client),
     )
     assert response.status_code == 200
     data = response.get_json() or {}
@@ -75,6 +83,7 @@ def test_generate_mt_switch_config_for_crs326_requires_bonded_uplinks():
         "/api/generate-mt-switch-config",
         data=json.dumps(payload),
         content_type="application/json",
+        headers=_auth_headers(client),
     )
     assert response.status_code == 200
     data = response.get_json() or {}

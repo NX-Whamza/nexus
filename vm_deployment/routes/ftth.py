@@ -1,5 +1,5 @@
 import traceback
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 from flask import Blueprint, jsonify, request
 
@@ -7,10 +7,15 @@ from flask import Blueprint, jsonify, request
 def create_ftth_blueprint(
     render_ftth_config: Callable[[dict], str],
     cidr_details_gen: Callable[[str], dict],
+    require_auth: Optional[Callable] = None,
 ) -> Blueprint:
     bp = Blueprint("ftth_routes", __name__)
 
+    def _auth(f):
+        return require_auth(f) if require_auth is not None else f
+
     @bp.route('/api/gen-ftth-bng', methods=['POST'])
+    @_auth
     def gen_ftth_bng():
         """Deprecated FTTH endpoint. Use /api/generate-ftth-bng with full payload."""
         try:
@@ -68,6 +73,7 @@ def create_ftth_blueprint(
             return jsonify({'success': False, 'error': str(exc)}), 500
 
     @bp.route('/api/preview-ftth-bng', methods=['POST', 'OPTIONS'])
+    @_auth
     def preview_ftth_bng():
         """Return parsed FTTH CIDR details for previewing in the UI."""
         try:
@@ -103,6 +109,7 @@ def create_ftth_blueprint(
             return jsonify({'success': False, 'error': str(exc)}), 500
 
     @bp.route('/api/generate-ftth-bng', methods=['POST'])
+    @_auth
     def generate_ftth_bng():
         """Generate complete FTTH BNG configuration from the strict template."""
         try:

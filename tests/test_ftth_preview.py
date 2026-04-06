@@ -21,6 +21,13 @@ app.config["TESTING"] = True
 client = app.test_client()
 BACKEND_MODULE = sys.modules.get("_noc_configmaker_vm_api_server", api_server)
 
+
+def _auth_headers():
+    admin_email = os.getenv("PLATFORM_ADMIN_EMAILS", "whamza@team.nxlink.com").split(",")[0].strip()
+    r = client.post("/api/auth/login", json={"email": admin_email, "password": api_server.DEFAULT_PASSWORD})
+    token = (r.get_json() or {}).get("token", "")
+    return {"Authorization": f"Bearer {token}"}
+
 MOCK_GITLAB_COMPLIANCE = (
     "/ip dns\n"
     "set allow-remote-requests=yes servers=142.147.112.3,142.147.112.19\n"
@@ -49,7 +56,7 @@ def test_preview_ftth_bng_basic():
         "olt_cidr": "198.51.100.8/29",
     }
 
-    r = client.post("/api/preview-ftth-bng", data=json.dumps(payload), content_type="application/json")
+    r = client.post("/api/preview-ftth-bng", data=json.dumps(payload), content_type="application/json", headers=_auth_headers())
     assert r.status_code == 200
     data = r.get_json() or {}
     assert data.get("success") is True
@@ -75,7 +82,7 @@ def test_generate_ftth_fiber_customer_with_compliance():
     }
 
     with _mock_gitlab_compliance(MOCK_GITLAB_COMPLIANCE):
-        r = client.post("/api/generate-ftth-fiber-customer", data=json.dumps(payload), content_type="application/json")
+        r = client.post("/api/generate-ftth-fiber-customer", data=json.dumps(payload), content_type="application/json", headers=_auth_headers())
     assert r.status_code == 200
     data = r.get_json() or {}
     assert data.get("success") is True
@@ -99,7 +106,7 @@ def test_generate_ftth_fiber_customer_requires_loopback_when_compliance_enabled(
         "apply_compliance": True,
     }
 
-    r = client.post("/api/generate-ftth-fiber-customer", data=json.dumps(payload), content_type="application/json")
+    r = client.post("/api/generate-ftth-fiber-customer", data=json.dumps(payload), content_type="application/json", headers=_auth_headers())
     assert r.status_code == 400
     data = r.get_json() or {}
     assert "loopback_ip" in (data.get("error") or "")
@@ -119,7 +126,7 @@ def test_generate_ftth_fiber_customer_requires_gitlab_compliance_when_enabled():
     }
 
     with _mock_gitlab_compliance(None):
-        r = client.post("/api/generate-ftth-fiber-customer", data=json.dumps(payload), content_type="application/json")
+        r = client.post("/api/generate-ftth-fiber-customer", data=json.dumps(payload), content_type="application/json", headers=_auth_headers())
     assert r.status_code == 503
     data = r.get_json() or {}
     assert "GitLab compliance script is required" in (data.get("error") or "")
@@ -155,7 +162,7 @@ def test_generate_ftth_fiber_site_bundle():
         ],
     }
     with _mock_gitlab_compliance(MOCK_GITLAB_COMPLIANCE):
-        r = client.post("/api/generate-ftth-fiber-site", data=json.dumps(payload), content_type="application/json")
+        r = client.post("/api/generate-ftth-fiber-site", data=json.dumps(payload), content_type="application/json", headers=_auth_headers())
     assert r.status_code == 200
     body = r.get_json() or {}
     assert body.get("success") is True
@@ -186,7 +193,7 @@ def test_generate_ftth_isd_fiber_bundle():
         ],
     }
     with _mock_gitlab_compliance(MOCK_GITLAB_COMPLIANCE):
-        r = client.post("/api/generate-ftth-isd-fiber", data=json.dumps(payload), content_type="application/json")
+        r = client.post("/api/generate-ftth-isd-fiber", data=json.dumps(payload), content_type="application/json", headers=_auth_headers())
     assert r.status_code == 200
     body = r.get_json() or {}
     assert body.get("success") is True

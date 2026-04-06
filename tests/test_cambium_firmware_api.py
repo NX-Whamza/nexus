@@ -26,6 +26,13 @@ from cambium_firmware import list_firmware_catalog, resolve_firmware_image, reso
 client = TestClient(app)
 
 
+def _auth_headers():
+    admin_email = os.getenv("PLATFORM_ADMIN_EMAILS", "whamza@team.nxlink.com").split(",")[0].strip()
+    r = client.post("/api/auth/login", json={"email": admin_email, "password": api_server.DEFAULT_PASSWORD})
+    token = (r.json() or {}).get("token", "")
+    return {"Authorization": f"Bearer {token}"}
+
+
 def test_cambium_catalog_scans_images_and_picks_latest(monkeypatch):
     artifacts_root = repo_root / "tests_artifacts"
     artifacts_root.mkdir(exist_ok=True)
@@ -127,6 +134,7 @@ def test_cambium_run_completes_and_updates_status(monkeypatch):
             "username": "tester",
             "requested_by": "frontend-user",
         },
+        headers=_auth_headers(),
     )
     assert r.status_code == 200
     task_id = r.json()["task_id"]
@@ -188,6 +196,7 @@ def test_cambium_run_requested_by_does_not_override_device_login_username(monkey
             "password": "secret",
             "requested_by": "frontend-user",
         },
+        headers=_auth_headers(),
     )
     assert r.status_code == 200
     task_id = r.json()["task_id"]
@@ -251,6 +260,7 @@ def test_cambium_run_backup_and_verify_update_statuses(monkeypatch):
             "tasks": ["backup", "verify"],
             "requested_by": "frontend-user",
         },
+        headers=_auth_headers(),
     )
     assert r.status_code == 200
     task_id = r.json()["task_id"]
@@ -335,6 +345,7 @@ def test_cambium_abort_endpoint_marks_task_aborting(monkeypatch):
             "update_version": "5.10.4",
             "requested_by": "frontend-user",
         },
+        headers=_auth_headers(),
     )
     assert r.status_code == 200
     task_id = r.json()["task_id"]
@@ -413,6 +424,7 @@ def test_cambium_verify_accepts_matching_base_version(monkeypatch):
             "tasks": ["firmware", "verify"],
             "requested_by": "frontend-user",
         },
+        headers=_auth_headers(),
     )
     assert r.status_code == 200
     task_id = r.json()["task_id"]
@@ -581,5 +593,5 @@ def test_cambium_queue_post_replace_add_remove(monkeypatch):
 
 def test_cambium_run_rejects_missing_radios(monkeypatch):
     monkeypatch.setattr(api_server, "HAS_CAMBIUM", True)
-    r = client.post("/api/cambium/run", json={"device_type": "CNEP3K"})
+    r = client.post("/api/cambium/run", json={"device_type": "CNEP3K"}, headers=_auth_headers())
     assert r.status_code == 400

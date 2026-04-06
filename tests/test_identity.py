@@ -22,6 +22,13 @@ app.config["TESTING"] = True
 client = app.test_client()
 
 
+def _auth_headers():
+    admin_email = os.getenv("PLATFORM_ADMIN_EMAILS", "whamza@team.nxlink.com").split(",")[0].strip()
+    r = client.post("/api/auth/login", json={"email": admin_email, "password": api_server.DEFAULT_PASSWORD})
+    token = (r.get_json() or {}).get("token", "")
+    return {"Authorization": f"Bearer {token}"}
+
+
 def _translate_and_get_identity(src_cfg: str, target_device: str = "ccr2216") -> str:
     r = client.post(
         "/api/translate-config",
@@ -92,6 +99,7 @@ def test_enterprise_default_identity_uses_mt_prefix():
         "/api/gen-enterprise-non-mpls",
         data=json.dumps(payload),
         content_type="application/json",
+        headers=_auth_headers(),
     )
     assert r.status_code == 200
     body = r.get_json() or {}

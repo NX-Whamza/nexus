@@ -39,6 +39,7 @@ def _admin_auth_header() -> dict[str, str]:
 
 
 def test_completed_configs_tab_actions_round_trip():
+    headers = _admin_auth_header()
     config_content = (
         '/system identity\n'
         'set name="RTR-TEST"\n'
@@ -50,6 +51,7 @@ def test_completed_configs_tab_actions_round_trip():
 
     save = client.post(
         "/api/save-completed-config",
+        headers=headers,
         json={
             "config_type": "tower",
             "device_name": "RTR-TEST",
@@ -68,12 +70,12 @@ def test_completed_configs_tab_actions_round_trip():
     config_id = save_payload.get("config_id")
     assert isinstance(config_id, int)
 
-    listing = client.get("/api/get-completed-configs?search=RTR-TEST")
+    listing = client.get("/api/get-completed-configs?search=RTR-TEST", headers=headers)
     assert listing.status_code == 200
     listing_payload = listing.get_json() or {}
     assert any(row.get("id") == config_id for row in listing_payload.get("configs", []))
 
-    one = client.get(f"/api/get-completed-config/{config_id}")
+    one = client.get(f"/api/get-completed-config/{config_id}", headers=headers)
     assert one.status_code == 200
     one_payload = one.get_json() or {}
     assert one_payload.get("id") == config_id
@@ -124,7 +126,7 @@ def test_log_history_tab_actions_record_and_read_activity():
     assert write_db.status_code == 200
     assert (write_db.get_json() or {}).get("success") is True
 
-    read_db = client.get("/api/get-activity?all=true&limit=5")
+    read_db = client.get("/api/get-activity?all=true&limit=5", headers=headers)
     assert read_db.status_code == 200
     read_db_payload = read_db.get_json() or {}
     assert isinstance(read_db_payload.get("activities"), list)
