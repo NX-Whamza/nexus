@@ -14768,8 +14768,13 @@ def submit_feedback():
         feedback_id = cursor.lastrowid
         conn.commit()
         conn.close()
-        
+
         safe_print(f"[FEEDBACK] Saved to database (ID: {feedback_id}, tenant={tenant.get('slug', DEFAULT_TENANT_SLUG)}) from {name}: {subject}")
+
+        # Notify all platform admins of the new submission
+        admin_msg = f"New {feedback_type} submitted by {name}: {subject}"
+        for admin_email in _platform_admin_emails():
+            _create_notification(feedback_id, admin_email, subject, admin_msg)
 
         return jsonify({
             'success': True,
