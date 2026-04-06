@@ -16990,6 +16990,16 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 syncMtFeatureSubnetVisibility();
                 syncBng2FeatureVisibility();
                 syncMtRouterIdentity();
+                // Sync tarana_bng2_device to match current router model when switching to BNG2
+                if (type === 'bng2') {
+                    const taranaDev = document.getElementById('tarana_bng2_device');
+                    const modelVal = (routerModel.value || '').trim().toLowerCase();
+                    if (taranaDev) {
+                        if (modelVal.includes('ccr2216')) taranaDev.value = 'ccr2216';
+                        else taranaDev.value = 'ccr2004';
+                        if (typeof handleTaranaBNG2DeviceChange === 'function') handleTaranaBNG2DeviceChange();
+                    }
+                }
             }
 
             function addModernBackhaulRow(seed = {}) {
@@ -17699,6 +17709,16 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                         refreshModernPortOptions();
                         syncMtRouterIdentity();
                         syncBng2FeatureVisibility();
+                        // Keep tarana_bng2_device in sync with router model for BNG2
+                        if (getSelectedMtConfigType() === 'bng2') {
+                            const taranaDev = document.getElementById('tarana_bng2_device');
+                            const modelVal = (modelSel.value || '').trim().toLowerCase();
+                            if (taranaDev) {
+                                if (modelVal.includes('ccr2216')) taranaDev.value = 'ccr2216';
+                                else taranaDev.value = 'ccr2004';
+                                if (typeof handleTaranaBNG2DeviceChange === 'function') handleTaranaBNG2DeviceChange();
+                            }
+                        }
                     });
                     modelSel.dataset.bound = '1';
                 }
@@ -18138,8 +18158,8 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     tarana_sector_start: 0,
                     is_326: is326,
                     '326_mgmt_subnet': is326 ? ensureCIDR((document.getElementById('mtBng2Crs326Subnet')?.value || '').trim(), 29) : undefined,
-                    crs_326_port_1: is326 ? ((document.getElementById('mtBng2Crs326Port1')?.value || 'sfp-sfpplus8').trim()) : undefined,
-                    crs_326_port_2: is326 ? ((document.getElementById('mtBng2Crs326Port2')?.value || 'sfp-sfpplus9').trim()) : undefined,
+                    crs_326_port_1: is326 ? ((document.getElementById('mtBng2Crs326Port1')?.value || (mapRouterModelForBng2(routerRaw) === 'CCR2216' ? 'sfp28-8' : 'sfp-sfpplus8')).trim()) : undefined,
+                    crs_326_port_2: is326 ? ((document.getElementById('mtBng2Crs326Port2')?.value || (mapRouterModelForBng2(routerRaw) === 'CCR2216' ? 'sfp28-9' : 'sfp-sfpplus9')).trim()) : undefined,
                     tachyon_mgmt_subnet: isTachyon ? ensureCIDR((document.getElementById('mtBng2TachyonSubnet')?.value || '').trim(), 29) : undefined,
                     is_6ghz: is6ghz,
                     enable_contractor_login: !!document.getElementById('mtFeatureContractor')?.checked,
