@@ -7,6 +7,7 @@ Secure OpenAI API integration for RouterOS config generation and validation
 
 import sys
 import io
+from collections import deque
 # Fix Windows console encoding for Unicode - but only if not already wrapped
 # In PyInstaller, stdout/stderr might already be wrapped, so check first
 if sys.platform == 'win32':
@@ -302,6 +303,7 @@ def _git_metadata():
             capture_output=True,
             text=True,
             check=True,
+            timeout=5,
         ).stdout.strip()
         if sha:
             result['sha'] = sha
@@ -314,6 +316,7 @@ def _git_metadata():
             capture_output=True,
             text=True,
             check=True,
+            timeout=5,
         ).stdout.strip()
         if count_raw:
             result['count'] = int(count_raw)
@@ -698,10 +701,10 @@ def _check_quota(tenant_id, quota_type: str):
 aviat_tasks = {}
 aviat_log_queues = {}
 aviat_global_log_queues = set()
-aviat_global_log_history = []
+AVIAT_GLOBAL_LOG_LIMIT = 2000
+aviat_global_log_history = deque(maxlen=AVIAT_GLOBAL_LOG_LIMIT)
 aviat_shared_queue = []
 AVIAT_SHARED_QUEUE_STORE = Path(__file__).resolve().parent / "aviat_shared_queue.json"
-AVIAT_GLOBAL_LOG_LIMIT = 2000
 aviat_scheduled_queue = []
 AVIAT_SCHEDULED_STORE = Path(__file__).resolve().parent / "aviat_scheduled_queue.json"
 
@@ -729,10 +732,10 @@ _aviat_background_threads_lock = threading.Lock()
 cambium_tasks = {}
 cambium_log_queues = {}
 cambium_global_log_queues = set()
-cambium_global_log_history = []
+CAMBIUM_GLOBAL_LOG_LIMIT = 2000
+cambium_global_log_history = deque(maxlen=CAMBIUM_GLOBAL_LOG_LIMIT)
 cambium_shared_queue = []
 CAMBIUM_SHARED_QUEUE_STORE = Path(__file__).resolve().parent / "cambium_shared_queue.json"
-CAMBIUM_GLOBAL_LOG_LIMIT = 2000
 CAMBIUM_MAX_WORKERS = int(os.getenv("CAMBIUM_MAX_WORKERS", "4"))
 
 # ========================================
@@ -1200,8 +1203,36 @@ def _aviat_reboot_device(ip, callback=None):
                 pass
 
 
+_TASK_TTL_SECONDS = 7200  # 2 hours — keep completed/aborted task state for status queries
+
+def _purge_stale_tasks(tasks_dict, log_queues_dict):
+    """Remove completed/aborted tasks older than _TASK_TTL_SECONDS to prevent OOM."""
+    cutoff = datetime.utcnow().isoformat() + 'Z'
+    to_delete = []
+    for tid, task in list(tasks_dict.items()):
+        status = task.get('status', '')
+        if status not in ('completed', 'aborted', 'failed'):
+            continue
+        completed_at = task.get('completed_at')
+        if not completed_at:
+            continue
+        try:
+            age = (datetime.utcnow() - datetime.fromisoformat(completed_at.rstrip('Z'))).total_seconds()
+            if age > _TASK_TTL_SECONDS:
+                to_delete.append(tid)
+        except Exception:
+            pass
+    for tid in to_delete:
+        tasks_dict.pop(tid, None)
+        log_queues_dict.pop(tid, None)
+
+
 def _aviat_loading_check_loop():
     while True:
+        try:
+            _purge_stale_tasks(aviat_tasks, aviat_log_queues)
+        except Exception:
+            pass
         if not HAS_AVIAT:
             time.sleep(AVIAT_LOADING_CHECK_INTERVAL)
             continue
@@ -1645,17 +1676,22 @@ def _aviat_software_state(client) -> str:
 
 def _aviat_auto_activate_loop():
     while True:
-        time.sleep(AVIAT_AUTO_ACTIVATE_POLL)
-        if not AVIAT_AUTO_ACTIVATE:
-            continue
-        if not HAS_AVIAT:
-            continue
-        now = datetime.now()
-        if not (2 <= now.hour < 5):
-            continue
-        if not aviat_scheduled_queue:
-            continue
-        if not aviat_activation_lock.acquire(blocking=False):
+        try:
+            time.sleep(AVIAT_AUTO_ACTIVATE_POLL)
+            if not AVIAT_AUTO_ACTIVATE:
+                continue
+            if not HAS_AVIAT:
+                continue
+            now = datetime.now()
+            if not (2 <= now.hour < 5):
+                continue
+            if not aviat_scheduled_queue:
+                continue
+            if not aviat_activation_lock.acquire(blocking=False):
+                continue
+        except Exception as _pre_exc:
+            print(f"[AVIAT] Auto-activate loop pre-check error (continuing): {_pre_exc}")
+            time.sleep(AVIAT_AUTO_ACTIVATE_POLL)
             continue
         try:
             to_activate = []
@@ -18744,8 +18780,6 @@ def _aviat_broadcast_log(message, level="info", task_id=None):
         "ts": datetime.utcnow().isoformat() + "Z",
     }
     aviat_global_log_history.append(entry)
-    if len(aviat_global_log_history) > AVIAT_GLOBAL_LOG_LIMIT:
-        del aviat_global_log_history[: len(aviat_global_log_history) - AVIAT_GLOBAL_LOG_LIMIT]
     for q in list(aviat_global_log_queues):
         try:
             q.put(entry)
@@ -18753,6 +18787,24 @@ def _aviat_broadcast_log(message, level="info", task_id=None):
             pass
 
 def _aviat_background_task(task_id, ips, task_types, maintenance_params=None, username=None):
+    try:
+      _aviat_background_task_inner(task_id, ips, task_types, maintenance_params, username)
+    except Exception as _exc:
+        try:
+            aviat_tasks[task_id]['status'] = 'failed'
+            aviat_tasks[task_id]['completed_at'] = datetime.utcnow().isoformat() + 'Z'
+            aviat_tasks[task_id].setdefault('results', [])
+            _aviat_broadcast_log(f"[task:{task_id}] Unhandled crash: {_exc}", "error", task_id=task_id)
+        except Exception:
+            pass
+        if task_id in aviat_log_queues:
+            try:
+                aviat_log_queues[task_id].put(None)
+            except Exception:
+                pass
+
+
+def _aviat_background_task_inner(task_id, ips, task_types, maintenance_params=None, username=None):
     aviat_tasks[task_id]['status'] = 'running'
     maintenance_params = maintenance_params or {}
     activation_mode = maintenance_params.get('activation_mode')
@@ -18875,8 +18927,10 @@ def _aviat_background_task(task_id, ips, task_types, maintenance_params=None, us
                 'error': 'Aborted'
             })
         aviat_tasks[task_id]['status'] = 'aborted'
+        aviat_tasks[task_id]['completed_at'] = datetime.utcnow().isoformat() + 'Z'
     else:
         aviat_tasks[task_id]['status'] = 'completed'
+        aviat_tasks[task_id]['completed_at'] = datetime.utcnow().isoformat() + 'Z'
 
     # Ensure reboot-required devices are captured even outside scheduled mode.
     for res in results:
@@ -19476,7 +19530,7 @@ def aviat_stream_global():
 
     def generate():
         # Send backlog first
-        for entry in aviat_global_log_history[-200:]:
+        for entry in list(aviat_global_log_history)[-200:]:
             yield f"data: {json.dumps(entry)}\n\n"
         while True:
             try:
@@ -19570,7 +19624,6 @@ def _cambium_broadcast_log(message, level="info", task_id=None, ip=None):
         "ip": ip,
     }
     cambium_global_log_history.append(entry)
-    del cambium_global_log_history[:-CAMBIUM_GLOBAL_LOG_LIMIT]
     for q in list(cambium_global_log_queues):
         try:
             q.put(entry)
@@ -19870,6 +19923,25 @@ def _cambium_run_single(radio, username, should_abort=None):
 
 
 def _cambium_background_task(task_id, radios, username):
+    _purge_stale_tasks(cambium_tasks, cambium_log_queues)
+    try:
+        _cambium_background_task_inner(task_id, radios, username)
+    except Exception as _exc:
+        try:
+            cambium_tasks[task_id]['status'] = 'failed'
+            cambium_tasks[task_id]['completed_at'] = get_utc_timestamp()
+            cambium_tasks[task_id].setdefault('results', [])
+            _cambium_broadcast_log(f"[task:{task_id}] Unhandled crash: {_exc}", "error", task_id=task_id)
+        except Exception:
+            pass
+        if task_id in cambium_log_queues:
+            try:
+                cambium_log_queues[task_id].put(None)
+            except Exception:
+                pass
+
+
+def _cambium_background_task_inner(task_id, radios, username):
     results = []
     cambium_tasks[task_id]["status"] = "running"
     def should_abort():
@@ -20150,7 +20222,7 @@ def cambium_stream_global():
 
     @stream_with_context
     def generate():
-        for entry in cambium_global_log_history[-200:]:
+        for entry in list(cambium_global_log_history)[-200:]:
             yield f"data: {json.dumps(entry)}\n\n"
         try:
             while True:
