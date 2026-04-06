@@ -3968,6 +3968,34 @@ limiter = Limiter(get_remote_address, app=app, default_limits=[], storage_uri="m
 def ratelimit_handler(e):
     return jsonify({'error': 'Too many requests. Please wait before trying again.'}), 429
 
+@app.errorhandler(400)
+def bad_request_handler(e):
+    return jsonify({'error': str(e.description) if hasattr(e, 'description') else 'Bad request'}), 400
+
+@app.errorhandler(401)
+def unauthorized_handler(e):
+    return jsonify({'error': 'Authentication required'}), 401
+
+@app.errorhandler(403)
+def forbidden_handler(e):
+    return jsonify({'error': 'Forbidden'}), 403
+
+@app.errorhandler(404)
+def not_found_handler(e):
+    return jsonify({'error': 'Not found'}), 404
+
+@app.errorhandler(405)
+def method_not_allowed_handler(e):
+    return jsonify({'error': 'Method not allowed'}), 405
+
+@app.errorhandler(415)
+def unsupported_media_handler(e):
+    return jsonify({'error': 'Unsupported media type — send Content-Type: application/json'}), 415
+
+@app.errorhandler(500)
+def internal_error_handler(e):
+    return jsonify({'error': 'Internal server error'}), 500
+
 # Trust X-Forwarded-* headers from the reverse proxy so request.host_url
 # returns the real public URL (e.g. https://noc-configmaker.nxlink.com/)
 # instead of http://127.0.0.1:5000/.  Required for OAuth redirect_uri.
@@ -9658,7 +9686,10 @@ def require_auth(f):
     def decorated_function(*args, **kwargs):
         token = request.headers.get('Authorization')
         if not token:
-            token = request.json.get('token') if request.json else None
+            try:
+                token = (request.get_json(silent=True, force=False) or {}).get('token')
+            except Exception:
+                token = None
 
         if token:
             # Remove 'Bearer ' prefix if present

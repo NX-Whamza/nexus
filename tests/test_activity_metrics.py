@@ -4,6 +4,7 @@ import importlib
 import os
 import sqlite3
 import sys
+from functools import wraps
 from pathlib import Path
 
 
@@ -16,41 +17,84 @@ def _load_api_server():
     return importlib.import_module("vm_deployment.api_server")
 
 
-def test_log_activity_can_exclude_validation_blocked_attempts(monkeypatch, tmp_path):
-    api_server = _load_api_server()
-    secure_dir = tmp_path / "secure_data"
-    secure_dir.mkdir()
-
+def _patch_dbs(monkeypatch, api_server):
+    """Redirect all SQLite opens to shared in-memory databases."""
+    db_uris = {
+        "activity_log.db": "file:act_metrics_activity?mode=memory&cache=shared",
+        "users.db":        "file:act_metrics_users?mode=memory&cache=shared",
+    }
+    # Keep anchor connections so the in-memory DBs survive for the test duration
+    anchors = {name: sqlite3.connect(uri, uri=True) for name, uri in db_uris.items()}
     original_connect = sqlite3.connect
+    original_exists = os.path.exists
 
     def connect_override(path, *args, **kwargs):
         target = str(path)
-        if target.endswith("activity_log.db"):
-            return original_connect(str(secure_dir / "activity_log.db"), *args, **kwargs)
-        if target.endswith("users.db"):
-            return original_connect(str(secure_dir / "users.db"), *args, **kwargs)
+        for suffix, uri in db_uris.items():
+            if target.endswith(suffix):
+                return original_connect(uri, uri=True, *args, **kwargs)
         return original_connect(path, *args, **kwargs)
 
-    monkeypatch.setattr(api_server.os.path, "exists", lambda p: True if str(p) == "secure_data" else os.path.exists(p))
-    monkeypatch.setattr(api_server.os, "makedirs", lambda *args, **kwargs: None)
     monkeypatch.setattr(api_server.sqlite3, "connect", connect_override)
-
-    client = api_server.app.test_client()
-    resp = client.post(
-        "/api/log-activity",
-        json={
-            "username": "tester",
-            "type": "new-config",
-            "device": "CCR2004",
-            "siteName": "Validation Blocked",
-            "routeros": "7.19.4",
-            "success": False,
-            "countsTowardMetrics": False,
-        },
+    monkeypatch.setattr(
+        api_server.os.path,
+        "exists",
+        lambda p: True if str(p) == "secure_data" else original_exists(p),
     )
-    assert resp.status_code == 200
+    monkeypatch.setattr(api_server.os, "makedirs", lambda *a, **k: None)
+    return anchors
 
-    rows = client.get("/api/get-activity?all=true&limit=10").get_json()["activities"]
-    match = next(item for item in rows if item["siteName"] == "Validation Blocked")
-    assert match["success"] is False
-    assert match["countsTowardMetrics"] is False
+
+def _patch_auth(monkeypatch, api_server):
+    """Replace log_activity and get_activity view functions with auth-bypassed versions."""
+    from flask import request as flask_request
+
+    def fake_auth_wrapper(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            flask_request.current_user = {
+                "id": 1,
+                "user_id": 1,
+                "email": "test@nxlink.com",
+                "tenant_id": 1,
+                "tenantId": 1,
+                "tenant_role": "tenant_admin",
+            }
+            return f(*args, **kwargs)
+        return wrapper
+
+    for name in ("log_activity", "get_activity"):
+        view = api_server.app.view_functions.get(name)
+        if view:
+            inner = getattr(view, "__wrapped__", view)
+            # Use monkeypatch.setitem so Flask's view_functions dict is restored after the test
+            monkeypatch.setitem(api_server.app.view_functions, name, fake_auth_wrapper(inner))
+
+
+def test_log_activity_can_exclude_validation_blocked_attempts(monkeypatch):
+    api_server = _load_api_server()
+    anchors = _patch_dbs(monkeypatch, api_server)
+    _patch_auth(monkeypatch, api_server)
+    try:
+        client = api_server.app.test_client()
+        resp = client.post(
+            "/api/log-activity",
+            json={
+                "username": "tester",
+                "type": "new-config",
+                "device": "CCR2004",
+                "siteName": "Validation Blocked",
+                "routeros": "7.19.4",
+                "success": False,
+                "countsTowardMetrics": False,
+            },
+        )
+        assert resp.status_code == 200
+
+        rows = client.get("/api/get-activity?all=true&limit=10").get_json()["activities"]
+        match = next(item for item in rows if item["siteName"] == "Validation Blocked")
+        assert match["success"] is False
+        assert match["countsTowardMetrics"] is False
+    finally:
+        for anchor in anchors.values():
+            anchor.close()

@@ -7542,13 +7542,17 @@
 
             <!-- Feature Flags Modal (platform_admin) -->
             <div id="featuresModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9999; align-items:center; justify-content:center;">
-                <div style="background:var(--card-bg); border-radius:10px; padding:24px; max-width:420px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.3);">
-                    <h3 style="margin-top:0; color:var(--text-color); font-size:15px;">Feature Flags — <span id="featuresModalTenantName"></span></h3>
+                <div style="background:var(--card-bg); border-radius:12px; padding:28px; max-width:520px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.3);">
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+                        <h3 style="margin:0; color:var(--text-color); font-size:15px; font-weight:600;">Feature Flags</h3>
+                        <button onclick="document.getElementById('featuresModal').style.display='none'" style="background:none; border:none; color:var(--text-color-secondary); font-size:18px; cursor:pointer; line-height:1; padding:2px 6px;">&times;</button>
+                    </div>
+                    <p style="margin:0 0 16px; font-size:12px; color:var(--text-color-secondary);">Tenant: <strong id="featuresModalTenantName" style="color:var(--text-color);"></strong></p>
                     <input type="hidden" id="featuresModalTenantId" />
-                    <div id="featuresModalBody" style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;"></div>
-                    <div style="display:flex; gap:8px; justify-content:flex-end;">
-                        <button onclick="saveFeatureFlags()" style="background:var(--primary-color); color:#fff; border:none; border-radius:6px; padding:6px 14px; font-size:12px; cursor:pointer;">Save</button>
-                        <button onclick="document.getElementById('featuresModal').style.display='none'" style="background:transparent; border:1px solid var(--border-color); border-radius:6px; padding:6px 14px; font-size:12px; color:var(--text-color); cursor:pointer;">Cancel</button>
+                    <div id="featuresModalBody" style="margin-bottom:20px;"></div>
+                    <div style="display:flex; gap:8px; justify-content:flex-end; border-top:1px solid var(--border-color); padding-top:16px;">
+                        <button onclick="document.getElementById('featuresModal').style.display='none'" style="background:transparent; border:1px solid var(--border-color); border-radius:6px; padding:7px 16px; font-size:12px; color:var(--text-color); cursor:pointer;">Cancel</button>
+                        <button onclick="saveFeatureFlags()" style="background:var(--primary-color); color:#fff; border:none; border-radius:6px; padding:7px 16px; font-size:12px; cursor:pointer; font-weight:500;">Save Changes</button>
                     </div>
                 </div>
             </div>
@@ -25995,32 +25999,83 @@ Ready for translation!`);
         }
 
         // ── Feature Flags Modal ────────────────────────────────────────────────────
+        const FEATURE_GROUPS = [
+            {
+                label: 'Device Types',
+                desc: 'Enable config generation for each device family',
+                features: [
+                    { key: 'mikrotik',  label: 'MikroTik',  icon: '🔧', desc: 'Tower & BNG2 router configs' },
+                    { key: 'nokia',     label: 'Nokia',     icon: '📡', desc: '7535 / 7316 PE configs' },
+                    { key: 'cambium',   label: 'Cambium',   icon: '📶', desc: 'cnMatrix switch configs' },
+                    { key: 'aviat',     label: 'Aviat',     icon: '🔗', desc: 'Microwave link provisioning' },
+                    { key: 'ftth',      label: 'FTTH / BNG',icon: '🏠', desc: 'Fiber broadband configs' },
+                ]
+            },
+            {
+                label: 'Platform Tools',
+                desc: 'Advanced features and workflow utilities',
+                features: [
+                    { key: 'bulk_ops',     label: 'Bulk Operations', icon: '⚡', desc: 'Multi-device SSH fetch & push' },
+                    { key: 'compliance',   label: 'Compliance',      icon: '✅', desc: 'RFC & Nextlink standards checks' },
+                    { key: 'ai_assistant', label: 'AI Assistant',    icon: '🤖', desc: 'AI-powered config suggestions' },
+                    { key: 'config_diff',  label: 'Config Diff',     icon: '🔍', desc: 'Visual before/after diff viewer' },
+                ]
+            }
+        ];
+
+        function _ffUpdateCard(key) {
+            const cb = document.getElementById(`ff_${key}`);
+            const card = document.getElementById(`ff_card_${key}`);
+            if (!cb || !card) return;
+            card.style.borderColor = cb.checked ? 'var(--primary-color)' : 'var(--border-color)';
+            card.style.background = cb.checked ? 'color-mix(in srgb, var(--primary-color) 8%, var(--card-bg))' : 'var(--container-bg)';
+        }
+        function _ffToggle(key) {
+            const cb = document.getElementById(`ff_${key}`);
+            if (!cb) return;
+            cb.checked = !cb.checked;
+            _ffUpdateCard(key);
+        }
+
         async function openFeaturesModal(tenantId, tenantName) {
             document.getElementById('featuresModalTenantId').value = tenantId;
             document.getElementById('featuresModalTenantName').textContent = tenantName;
             const body = document.getElementById('featuresModalBody');
-            body.innerHTML = 'Loading...';
+            body.innerHTML = '<span style="color:var(--text-color-secondary); font-size:12px;">Loading...</span>';
             document.getElementById('featuresModal').style.display = 'flex';
             const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : '/api';
             try {
                 const resp = await fetch(`${apiBase}/admin/tenants/${tenantId}/features`, { headers: getAuthHeaders() });
                 const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
                 const features = data.features || {};
-                const featureLabels = { mikrotik:'MikroTik', nokia:'Nokia', cambium:'Cambium', aviat:'Aviat', ftth:'FTTH', bulk_ops:'Bulk Ops', compliance:'Compliance', ai_assistant:'AI Assistant', config_diff:'Config Diff' };
-                body.innerHTML = Object.entries(featureLabels).map(([key, label]) => `
-                    <label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer;">
-                        <input type="checkbox" id="ff_${key}" ${features[key] !== false ? 'checked' : ''} />
-                        ${label}
-                    </label>`).join('');
-            } catch(e) { body.innerHTML = `<span style="color:var(--danger-color)">Error: ${e.message}</span>`; }
+                body.innerHTML = FEATURE_GROUPS.map(group => `
+                    <div style="margin-bottom:18px;">
+                        <div style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; color:var(--text-color-secondary); margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid var(--border-color);">${group.label} <span style="font-weight:400; text-transform:none; letter-spacing:0;">— ${group.desc}</span></div>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                        ${group.features.map(f => {
+                            const on = features[f.key] !== false;
+                            return `<div id="ff_card_${f.key}" onclick="_ffToggle('${f.key}')" style="cursor:pointer; border-radius:8px; border:1px solid ${on ? 'var(--primary-color)' : 'var(--border-color)'}; background:${on ? 'color-mix(in srgb, var(--primary-color) 8%, var(--card-bg))' : 'var(--container-bg)'}; padding:10px 12px; display:flex; align-items:flex-start; gap:10px; user-select:none; transition:border-color 0.15s, background 0.15s;">
+                                <input type="checkbox" id="ff_${f.key}" ${on ? 'checked' : ''} style="margin-top:2px; accent-color:var(--primary-color); flex-shrink:0;" onclick="event.stopPropagation(); _ffUpdateCard('${f.key}');" />
+                                <div>
+                                    <div style="font-size:12px; font-weight:500; color:var(--text-color);">${f.icon} ${f.label}</div>
+                                    <div style="font-size:11px; color:var(--text-color-secondary); margin-top:1px;">${f.desc}</div>
+                                </div>
+                            </div>`;
+                        }).join('')}
+                        </div>
+                    </div>`).join('');
+            } catch(e) { body.innerHTML = `<span style="color:var(--danger-color); font-size:12px;">Error: ${e.message}</span>`; }
         }
 
         async function saveFeatureFlags() {
             const tenantId = document.getElementById('featuresModalTenantId').value;
-            const featureKeys = ['mikrotik','nokia','cambium','aviat','ftth','bulk_ops','compliance','ai_assistant','config_diff'];
+            const allKeys = FEATURE_GROUPS.flatMap(g => g.features.map(f => f.key));
             const payload = {};
-            featureKeys.forEach(k => { payload[k] = document.getElementById(`ff_${k}`)?.checked ?? true; });
+            allKeys.forEach(k => { payload[k] = document.getElementById(`ff_${k}`)?.checked ?? true; });
             const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : '/api';
+            const btn = document.querySelector('#featuresModal button[onclick="saveFeatureFlags()"]');
+            if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
             try {
                 const resp = await fetch(`${apiBase}/admin/tenants/${tenantId}/features`, {
                     method: 'PUT',
@@ -26028,9 +26083,10 @@ Ready for translation!`);
                     body: JSON.stringify(payload)
                 });
                 const data = await resp.json();
-                if (data.success) { document.getElementById('featuresModal').style.display = 'none'; alert('Feature flags saved.'); }
+                if (data.success) { document.getElementById('featuresModal').style.display = 'none'; }
                 else alert(data.error || 'Failed to save');
             } catch(e) { alert('Error: ' + e.message); }
+            finally { if (btn) { btn.disabled = false; btn.textContent = 'Save Changes'; } }
         }
 
         // ── Branding Modal ─────────────────────────────────────────────────────────
