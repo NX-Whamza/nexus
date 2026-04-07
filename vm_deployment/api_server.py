@@ -20455,7 +20455,7 @@ def _wave_fw_scrub(msg):
 
 
 def _wave_fw_broadcast_log(message, level='info', task_id=None):
-    """Put a log entry onto the per-task queue (same shape as _aviat_broadcast_log)."""
+    """Put a log entry onto the per-task queue and persist it to disk for cross-worker reads."""
     entry = {
         'message': message,
         'level': level,
@@ -20465,6 +20465,14 @@ def _wave_fw_broadcast_log(message, level='info', task_id=None):
     if task_id and task_id in wave_fw_log_queues:
         try:
             wave_fw_log_queues[task_id].put(entry)
+        except Exception:
+            pass
+    # Always persist to disk so other workers can serve the log stream
+    if task_id:
+        try:
+            log_path = _wave_fw_task_store_dir() / f'{task_id}.log.jsonl'
+            with open(log_path, 'a') as _lf:
+                _lf.write(json.dumps(entry) + '\n')
         except Exception:
             pass
 
@@ -21331,8 +21339,37 @@ def wave_fw_stream_logs(task_id):
     if not token or not verify_token(token):
         return jsonify({'error': 'Authentication required'}), 401
 
+    # Cross-worker fallback: if this worker doesn't have the live queue, serve the persisted log file
     if task_id not in wave_fw_log_queues:
-        return jsonify({'error': 'Task not found'}), 404
+        log_path = _wave_fw_task_store_dir() / f'{task_id}.log.jsonl'
+        if not log_path.exists():
+            # Also check if the task exists at all (disk header)
+            if not (_wave_fw_task_store_dir() / f'{task_id}.json').exists():
+                return jsonify({'error': 'Task not found'}), 404
+            # Task exists but no logs yet — send empty done
+            return Response(
+                'data: {"type":"done"}\n\n',
+                mimetype='text/event-stream',
+                headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
+            )
+
+        @stream_with_context
+        def generate_from_disk():
+            try:
+                with open(log_path) as _lf:
+                    for line in _lf:
+                        line = line.strip()
+                        if line:
+                            yield f'data: {line}\n\n'
+            except Exception:
+                pass
+            yield 'data: {"type":"done"}\n\n'
+
+        return Response(
+            generate_from_disk(),
+            mimetype='text/event-stream',
+            headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
+        )
 
     q = wave_fw_log_queues[task_id]
 
