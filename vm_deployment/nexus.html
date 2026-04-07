@@ -9034,43 +9034,55 @@
                     </div>
 
                     <div class="aviat-card">
-                        <h2>Step 2 &mdash; Upload Firmware</h2>
+                        <h2>Step 2 &mdash; Firmware</h2>
                         <p style="color:var(--text-color-secondary);font-size:13px;margin-bottom:12px;">
-                            Select a <code>.bin</code> firmware file to upload to the server. The file is staged and reused across all selected devices.
+                            Firmware is auto-selected per device from the server. AP / Micro / PRO and Nano / LR / Pico each get the correct file.
                         </p>
-                        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-                            <label class="aviat-btn secondary" style="cursor:pointer;margin:0;">
-                                Choose File
-                                <input type="file" id="waveFwFileInput" accept=".bin" style="display:none;">
-                            </label>
-                            <button id="waveFwUploadBtn" class="aviat-btn secondary">Upload</button>
-                            <span id="waveFwFileBadge" class="aviat-pill" style="display:none;"></span>
+                        <div id="waveFwFirmwareList" style="display:flex;flex-direction:column;gap:8px;">
+                            <span style="color:var(--text-color-secondary);font-size:13px;">Loading available firmware...</span>
                         </div>
+                        <details style="margin-top:14px;">
+                            <summary style="font-size:13px;cursor:pointer;color:var(--text-color-secondary);">Upload custom firmware override</summary>
+                            <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                                <label class="aviat-btn secondary" style="cursor:pointer;margin:0;">
+                                    Choose File
+                                    <input type="file" id="waveFwFileInput" accept=".bin" style="display:none;">
+                                </label>
+                                <button id="waveFwUploadBtn" class="aviat-btn secondary">Upload</button>
+                                <span id="waveFwFileBadge" class="aviat-pill" style="display:none;"></span>
+                            </div>
+                        </details>
                     </div>
                 </div>
 
-                <div class="aviat-card" style="margin-top:16px;">
-                    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-                        <h2 style="margin:0;">Step 3 &mdash; Select &amp; Run</h2>
-                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                            <button id="waveFwSelectAllBtn" class="aviat-btn secondary">Select All</button>
-                            <button id="waveFwDeselectAllBtn" class="aviat-btn secondary">Deselect All</button>
-                            <button id="waveFwAbortBtn" class="aviat-btn danger" disabled>Abort</button>
-                            <button id="waveFwRunBtn" class="aviat-btn success">Run Upgrade</button>
+                <div id="waveFwDeviceListCard" style="margin-top:16px;display:none;">
+                    <div class="aviat-card">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+                            <div>
+                                <h2 style="margin:0 0 2px;">Step 3 &mdash; Select &amp; Run</h2>
+                                <span id="waveFwDeviceCount" style="font-size:13px;color:var(--text-color-secondary);"></span>
+                            </div>
+                            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                                <button id="waveFwSelectAllBtn" class="aviat-btn secondary">Select All</button>
+                                <button id="waveFwDeselectAllBtn" class="aviat-btn secondary">Deselect All</button>
+                                <button id="waveFwAbortBtn" class="aviat-btn danger" disabled>Abort</button>
+                                <button id="waveFwRunBtn" class="aviat-btn success">Run Upgrade</button>
+                            </div>
                         </div>
-                    </div>
 
-                    <div id="waveFwStatsBar" class="aviat-stat-row" style="margin-top:14px;display:none;">
-                        <div>Total: <span id="waveFwStatTotal">0</span></div>
-                        <div>Pending: <span id="waveFwStatPending">0</span></div>
-                        <div>Running: <span id="waveFwStatProcessing">0</span></div>
-                        <div>Done: <span id="waveFwStatSuccess">0</span></div>
-                        <div>Failed: <span id="waveFwStatError">0</span></div>
-                    </div>
+                        <div id="waveFwStatsBar" class="aviat-stat-row" style="margin-bottom:12px;display:none;">
+                            <div>Total: <span id="waveFwStatTotal">0</span></div>
+                            <div>Pending: <span id="waveFwStatPending">0</span></div>
+                            <div>Running: <span id="waveFwStatProcessing">0</span></div>
+                            <div>Done: <span id="waveFwStatSuccess">0</span></div>
+                            <div>Failed: <span id="waveFwStatError">0</span></div>
+                        </div>
 
-                    <div id="waveFwDeviceListCard" style="margin-top:14px;display:none;">
-                        <h2>Discovered Devices</h2>
-                        <div id="waveFwDeviceList" class="aviat-queue"></div>
+                        <input id="waveFwSearch" type="text"
+                            placeholder="Filter by name, IP, model, or firmware version..."
+                            style="width:100%;box-sizing:border-box;margin-bottom:10px;">
+
+                        <div id="waveFwDeviceList" class="aviat-queue" style="max-height:480px;overflow-y:auto;"></div>
                     </div>
                 </div>
 

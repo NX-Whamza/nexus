@@ -9,8 +9,13 @@
         isProcessing: false,
         initComplete: false,
         fileId: null,
-        fileName: null
+        fileName: null,
+        searchTerm: '',
+        showLimit: 100,
+        serverFirmware: []
     };
+
+    const PAGE_SIZE = 100;
 
     let waveApiOverride = null;
 
@@ -194,9 +199,26 @@
         if (statError) statError.textContent = error;
     }
 
+    function stripCidr(ip) {
+        return String(ip || '').split('/')[0];
+    }
+
+    function filteredDevices() {
+        const q = waveState.searchTerm.toLowerCase().trim();
+        if (!q) return waveState.devices;
+        return waveState.devices.filter(d => {
+            const ip = stripCidr(d.ip || '').toLowerCase();
+            const name = (d.name || '').toLowerCase();
+            const model = (d.model || '').toLowerCase();
+            const fw = (d.firmwareVersion || d.version || '').toLowerCase();
+            return ip.includes(q) || name.includes(q) || model.includes(q) || fw.includes(q);
+        });
+    }
+
     function updateDeviceList() {
         const listCard = document.getElementById('waveFwDeviceListCard');
         const list = document.getElementById('waveFwDeviceList');
+        const countEl = document.getElementById('waveFwDeviceCount');
         if (!listCard || !list) return;
 
         if (waveState.devices.length === 0) {
@@ -206,45 +228,97 @@
         listCard.style.display = 'block';
         updateStats();
 
-        list.innerHTML = waveState.devices.map(device => {
+        const visible = filteredDevices();
+        const capped = visible.slice(0, waveState.showLimit);
+        const hasMore = visible.length > waveState.showLimit;
+
+        if (countEl) {
+            const selCount = visible.filter(d => d.selected !== false).length;
+            countEl.textContent = waveState.searchTerm
+                ? `${visible.length} match${visible.length !== 1 ? 'es' : ''} · ${selCount} selected`
+                : `${waveState.devices.length} device${waveState.devices.length !== 1 ? 's' : ''} · ${selCount} selected`;
+        }
+
+        // Render as a proper grid table — aviat-queue-item has justify-content:space-between
+        // which breaks a single-child row, so we use plain divs with border separators.
+        const rowStyle = 'display:grid;grid-template-columns:20px 1fr;align-items:center;gap:0 10px;padding:7px 12px;border-bottom:1px solid var(--border-color,rgba(255,255,255,0.07));';
+
+        list.innerHTML = capped.map(device => {
             const status = normalizeStatus(device.status);
-            const ip = waveEscapeHtml(device.ip || '');
-            const name = waveEscapeHtml(device.name || device.hostname || device.ip || '');
+            const rawIp = device.ip || '';
+            const displayIp = waveEscapeHtml(stripCidr(rawIp));
+            const safeIp = waveEscapeHtml(rawIp);
+            const name = waveEscapeHtml(device.name || device.hostname || stripCidr(rawIp));
             const model = waveEscapeHtml(device.model || device.device_type || '');
-            const version = waveEscapeHtml(device.version || device.current_version || '');
+            const version = waveEscapeHtml(device.firmwareVersion || device.version || device.current_version || '');
             const targetVersion = waveEscapeHtml(device.target_version || '');
             const activeBank = waveEscapeHtml(device.active_bank || '');
             const backupBank = waveEscapeHtml(device.backup_bank || '');
-            const detail = device.detail ? `<div style="margin-top:6px;color:var(--text-color-secondary);font-size:12px;">${waveEscapeHtml(device.detail)}</div>` : '';
+            const fwFamily = model ? (modelFamily(device.model) === 'nano' ? 'Nano/LR/Pico' : 'AP/Micro/PRO') : '';
             const checked = device.selected !== false ? 'checked' : '';
-            return `
-                <div class="aviat-queue-item">
-                    <div style="display:flex;align-items:flex-start;gap:10px;">
-                        <input type="checkbox" class="wave-fw-device-checkbox" data-ip="${ip}"
-                            ${checked} ${waveState.isProcessing ? 'disabled' : ''}
-                            onchange="waveFwToggleDevice('${ip}', this.checked)">
-                        <div>
-                            <span class="aviat-status-badge ${status}">${statusIcon(status)}</span>
-                            <strong>${name}</strong>
-                            ${ip !== name ? `<span style="color:var(--text-color-secondary);font-size:12px;"> (${ip})</span>` : ''}
-                            <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
-                                ${model ? `<span class="aviat-pill">${model}</span>` : ''}
-                                ${version ? `<span class="aviat-pill">Current: ${version}</span>` : ''}
-                                ${targetVersion ? `<span class="aviat-pill">Target: ${targetVersion}</span>` : ''}
-                                ${activeBank ? `<span class="aviat-pill">Active: ${activeBank}</span>` : ''}
-                                ${backupBank ? `<span class="aviat-pill">Backup: ${backupBank}</span>` : ''}
-                            </div>
-                            ${detail}
-                        </div>
+
+            const statusBadge = status !== 'pending'
+                ? `<span class="aviat-status-badge ${status}" style="font-size:10px;padding:1px 4px;">${statusIcon(status)}</span> `
+                : '';
+
+            const detailHtml = device.detail
+                ? `<div style="font-size:11px;color:var(--text-color-secondary);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${waveEscapeHtml(device.detail)}</div>`
+                : '';
+
+            const bankLine = (activeBank || backupBank)
+                ? `<span style="font-size:11px;color:var(--text-color-secondary);">Active: ${activeBank || '?'} · Backup: ${backupBank || '?'}</span>`
+                : '';
+
+            return `<div style="${rowStyle}">
+                <input type="checkbox" class="wave-fw-device-checkbox" data-ip="${safeIp}"
+                    ${checked} ${waveState.isProcessing ? 'disabled' : ''}
+                    onchange="waveFwToggleDevice('${safeIp}', this.checked)">
+                <div style="min-width:0;">
+                    <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+                        ${statusBadge}<span style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;">${name}</span>
+                        <span style="font-size:12px;color:var(--text-color-secondary);white-space:nowrap;flex-shrink:0;">${displayIp}</span>
                     </div>
+                    <div style="display:flex;align-items:center;gap:5px;margin-top:2px;flex-wrap:wrap;">
+                        ${model ? `<span style="font-size:11px;color:var(--text-color-secondary);">${model}</span>` : ''}
+                        ${fwFamily ? `<span style="font-size:11px;color:var(--text-color-secondary);opacity:0.7;">· ${fwFamily}</span>` : ''}
+                        ${version ? `<span style="font-size:11px;color:var(--text-color-secondary);">· v${version}</span>` : ''}
+                        ${targetVersion ? `<span style="font-size:11px;color:var(--color-success,#22c55e);">→ v${targetVersion}</span>` : ''}
+                        ${bankLine}
+                    </div>
+                    ${detailHtml}
                 </div>
-            `;
+            </div>`;
         }).join('');
+
+        if (hasMore) {
+            list.innerHTML += `
+                <div style="padding:12px 14px;text-align:center;">
+                    <span style="color:var(--text-color-secondary);font-size:13px;">
+                        Showing ${capped.length} of ${visible.length} — use search to narrow down
+                    </span>
+                    <button class="aviat-btn secondary" style="margin-left:12px;padding:4px 12px;font-size:12px;"
+                        onclick="waveFwLoadMore()">Load ${Math.min(PAGE_SIZE, visible.length - capped.length)} more</button>
+                </div>`;
+        }
     }
 
     window.waveFwToggleDevice = function (ip, checked) {
         const device = waveState.devices.find(d => d.ip === ip);
         if (device) device.selected = checked;
+        // Update count display without re-rendering the whole list
+        const countEl = document.getElementById('waveFwDeviceCount');
+        if (countEl) {
+            const vis = filteredDevices();
+            const sel = vis.filter(d => d.selected !== false).length;
+            countEl.textContent = waveState.searchTerm
+                ? `${vis.length} match${vis.length !== 1 ? 'es' : ''} · ${sel} selected`
+                : `${waveState.devices.length} device${waveState.devices.length !== 1 ? 's' : ''} · ${sel} selected`;
+        }
+    };
+
+    window.waveFwLoadMore = function () {
+        waveState.showLimit += PAGE_SIZE;
+        updateDeviceList();
     };
 
     // ── Discover ─────────────────────────────────────────────────────────────
@@ -341,18 +415,52 @@
 
     // ── Run / Abort ───────────────────────────────────────────────────────────
 
+    async function loadServerFirmware() {
+        const listEl = document.getElementById('waveFwFirmwareList');
+        try {
+            const response = await waveFetch('/firmware-list');
+            const data = await parseJson(response);
+            if (!response.ok || !data.success) throw new Error(data.error || 'Firmware list failed');
+            waveState.serverFirmware = data.firmware || [];
+            if (listEl) {
+                if (waveState.serverFirmware.length === 0) {
+                    listEl.innerHTML = '<span style="color:var(--color-warning,#f59e0b);font-size:13px;">No firmware files found on server. Place .bin files in /opt/firmware/wave/ or use the upload override below.</span>';
+                } else {
+                    listEl.innerHTML = waveState.serverFirmware.map(f => `
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <span class="aviat-status-badge success" style="font-size:11px;">OK</span>
+                            <div>
+                                <div style="font-size:13px;font-weight:500;">${waveEscapeHtml(f.family_label)}</div>
+                                <div style="font-size:12px;color:var(--text-color-secondary);">${waveEscapeHtml(f.name)} &mdash; v${waveEscapeHtml(f.version)} &mdash; ${(f.size / 1024 / 1024).toFixed(1)} MB</div>
+                            </div>
+                        </div>`).join('');
+                }
+            }
+        } catch (err) {
+            if (listEl) listEl.innerHTML = `<span style="color:var(--color-error,#ef4444);font-size:13px;">Could not load firmware list: ${waveEscapeHtml(err.message)}</span>`;
+        }
+    }
+
+    function modelFamily(model) {
+        const m = (model || '').toLowerCase().replace(/-/g, '').replace(/\s/g, '');
+        if (['wavenano', 'wavelr', 'wavepico', 'nano', 'wlr', 'pico'].some(k => m.includes(k))) return 'nano';
+        return 'ap';
+    }
+
     async function runUpgrade() {
         if (waveState.isProcessing) return;
-        if (!waveState.fileId) {
-            addLog('Upload a firmware file before running the upgrade.', 'warning');
-            return;
-        }
         const selectedDevices = waveState.devices.filter(d => d.selected !== false);
         if (selectedDevices.length === 0) {
             addLog('Select at least one device to upgrade.', 'warning');
             return;
         }
-        const deviceIds = selectedDevices.map(d => d.ip || d.id).filter(Boolean);
+        // Require either an uploaded file or server firmware
+        const hasServerFirmware = waveState.serverFirmware && waveState.serverFirmware.length > 0;
+        if (!waveState.fileId && !hasServerFirmware) {
+            addLog('No firmware available. Upload a .bin file or check server firmware.', 'warning');
+            return;
+        }
+        const deviceIds = selectedDevices.map(d => stripCidr(d.ip || d.id)).filter(Boolean);
         addLog(`Starting Wave FW upgrade for ${deviceIds.length} device(s)...`, 'info');
 
         waveState.taskId = null;
@@ -360,15 +468,27 @@
         selectedDevices.forEach(d => { d.status = 'processing'; d.detail = 'Queued'; });
         updateDeviceList();
 
+        const body = {
+            device_ids: deviceIds,
+            devices: selectedDevices.map(d => ({
+                id: d.id || stripCidr(d.ip),
+                ip: stripCidr(d.ip || ''),
+                name: d.name || d.hostname || stripCidr(d.ip),
+                model: d.model || ''
+            })),
+            requested_by: waveGetUsername()
+        };
+        if (waveState.fileId) {
+            body.file_id = waveState.fileId;
+        } else {
+            body.use_server_firmware = true;
+        }
+
         try {
             const response = await waveFetch('/upgrade', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    file_id: waveState.fileId,
-                    device_ids: deviceIds,
-                    requested_by: waveGetUsername()
-                })
+                body: JSON.stringify(body)
             });
             const data = await parseJson(response);
             if (!response.ok) throw new Error(data.error || `Upgrade failed (${response.status})`);
@@ -498,12 +618,15 @@
     // ── Select / deselect all ─────────────────────────────────────────────────
 
     function selectAll() {
-        waveState.devices.forEach(d => { d.selected = true; });
+        // Select only currently filtered devices (respects search)
+        const vis = filteredDevices();
+        vis.forEach(d => { d.selected = true; });
         updateDeviceList();
     }
 
     function deselectAll() {
-        waveState.devices.forEach(d => { d.selected = false; });
+        const vis = filteredDevices();
+        vis.forEach(d => { d.selected = false; });
         updateDeviceList();
     }
 
@@ -528,9 +651,17 @@
         if (fileInput) {
             fileInput.addEventListener('change', () => {
                 if (fileInput.files && fileInput.files.length > 0) {
-                    // Auto-upload on file selection
                     uploadFirmwareFile();
                 }
+            });
+        }
+
+        const searchInput = document.getElementById('waveFwSearch');
+        if (searchInput) {
+            searchInput.addEventListener('input', () => {
+                waveState.searchTerm = searchInput.value;
+                waveState.showLimit = PAGE_SIZE;
+                updateDeviceList();
             });
         }
     }
@@ -542,6 +673,7 @@
         updateDeviceList();
         setRunState(false);
         bindControls();
+        await loadServerFirmware();
         addLog('Ubiquiti Wave firmware updater ready.', 'info');
     }
 

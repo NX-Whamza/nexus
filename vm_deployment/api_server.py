@@ -1222,6 +1222,43 @@ def _wave_fw_upload_dir():
     return _WAVE_FW_UPLOAD_DIR
 
 
+def _wave_fw_server_firmware_dir():
+    """Path where bundled Wave .bin files live inside the container (/opt/firmware/wave)."""
+    import pathlib as _pl
+    return _pl.Path(os.getenv('FIRMWARE_PATH', '/opt/firmware')) / 'wave'
+
+
+def _wave_fw_model_family(model: str) -> str:
+    """Return 'nano' for Wave Nano/LR/Pico, 'ap' for everything else."""
+    m = model.lower().replace('-', '').replace(' ', '')
+    if any(k in m for k in ['wavenano', 'wavelr', 'wavepico', 'nano', 'wlr', 'pico']):
+        return 'nano'
+    return 'ap'
+
+
+def _wave_fw_select_firmware(model: str, firmware_dir) -> 'pathlib.Path | None':
+    """Pick the right server-side .bin file for a given device model."""
+    import pathlib as _pl
+    fdir = _pl.Path(firmware_dir)
+    if not fdir.exists():
+        return None
+    bin_files = sorted(fdir.glob('*.bin'))
+    if not bin_files:
+        return None
+    if len(bin_files) == 1:
+        return bin_files[0]
+    family = _wave_fw_model_family(model)
+    nano_keywords = ['nano', 'lr', 'pico']
+    ap_keywords = ['ap', 'micro', 'pro']
+    for f in bin_files:
+        name_lower = f.name.lower()
+        if family == 'nano' and any(k in name_lower for k in nano_keywords):
+            return f
+        if family == 'ap' and any(k in name_lower for k in ap_keywords):
+            return f
+    return bin_files[0]  # fallback
+
+
 def _purge_stale_tasks(tasks_dict, log_queues_dict):
     """Remove completed/aborted tasks older than _TASK_TTL_SECONDS to prevent OOM."""
     cutoff = datetime.utcnow().isoformat() + 'Z'
@@ -20518,12 +20555,25 @@ def _wave_fw_check_banks_ssh(ip, username, password, timeout=60):
     return active, backup
 
 
-def _wave_fw_upgrade_single(device, file_path, target_version, log_cb, should_abort):
+def _wave_fw_upgrade_single(device, file_path, target_version, log_cb, should_abort, firmware_dir=None):
     """Perform the full firmware upgrade sequence for a single Wave device."""
+    import pathlib as _pl
     ip = device['ip']
     name = device.get('name', ip)
     ap_pass = os.getenv('WAVE_AP_PASS', '')
     sm_pass = os.getenv('WAVE_SM_PASS', ap_pass)
+
+    # Auto-select server-side firmware if no uploaded file was provided
+    if file_path is None:
+        fdir = _pl.Path(firmware_dir) if firmware_dir else _wave_fw_server_firmware_dir()
+        file_path = _wave_fw_select_firmware(device.get('model', ''), fdir)
+        if file_path is None:
+            def result_early(status, error=''):
+                return {'ip': ip, 'name': name, 'status': status, 'error': error,
+                        'active_bank': '', 'backup_bank': '',
+                        'started_at': datetime.utcnow().isoformat() + 'Z',
+                        'completed_at': datetime.utcnow().isoformat() + 'Z'}
+            return result_early('failed', error='No firmware file found on server for this model')
     started_at = datetime.utcnow().isoformat() + 'Z'
 
     def result(status, error='', active='', backup=''):
@@ -20650,7 +20700,7 @@ def _wave_fw_upgrade_single(device, file_path, target_version, log_cb, should_ab
         return result('failed', error=str(exc))
 
 
-def _wave_fw_background_task_inner(task_id, file_path, devices, target_version):
+def _wave_fw_background_task_inner(task_id, file_path, devices, target_version, firmware_dir=None):
     _purge_stale_tasks(wave_fw_tasks, wave_fw_log_queues)
     wave_fw_tasks[task_id]['status'] = 'running'
 
@@ -20663,7 +20713,10 @@ def _wave_fw_background_task_inner(task_id, file_path, devices, target_version):
     max_workers = max(1, min(WAVE_FW_MAX_WORKERS, len(devices)))
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
-            executor.submit(_wave_fw_upgrade_single, device, file_path, target_version, log_cb, should_abort): device
+            executor.submit(
+                _wave_fw_upgrade_single, device, file_path, target_version,
+                log_cb, should_abort, firmware_dir
+            ): device
             for device in devices
         }
         for future in as_completed(futures):
@@ -20680,9 +20733,9 @@ def _wave_fw_background_task_inner(task_id, file_path, devices, target_version):
         wave_fw_log_queues[task_id].put(None)
 
 
-def _wave_fw_background_task(task_id, file_path, devices, target_version):
+def _wave_fw_background_task(task_id, file_path, devices, target_version, firmware_dir=None):
     try:
-        _wave_fw_background_task_inner(task_id, file_path, devices, target_version)
+        _wave_fw_background_task_inner(task_id, file_path, devices, target_version, firmware_dir=firmware_dir)
     except Exception as _exc:
         try:
             wave_fw_tasks[task_id]['status'] = 'failed'
@@ -20753,36 +20806,48 @@ def wave_fw_upgrade_start():
     """Start a background firmware upgrade job for the given device list."""
     if not HAS_WAVE_FW:
         return jsonify({'success': False, 'error': 'Wave FW updater not configured. Set WAVE_AP_PASS in .env.'}), 503
+    import re as _re
     data = request.json or {}
     file_id = data.get('file_id', '').strip()
     device_ids = data.get('device_ids') or []
     target_version = data.get('target_version', '').strip()
+    use_server_firmware = data.get('use_server_firmware', False)
 
-    if not file_id:
-        return jsonify({'success': False, 'error': 'file_id is required'}), 400
     if not device_ids:
         return jsonify({'success': False, 'error': 'device_ids must be a non-empty list'}), 400
 
-    # Resolve firmware file path
-    upload_base = _wave_fw_upload_dir()
-    file_dir = upload_base / file_id
-    if not file_dir.exists():
-        return jsonify({'success': False, 'error': f'file_id not found: {file_id}'}), 404
-    bin_files = list(file_dir.glob('*.bin'))
-    if not bin_files:
-        return jsonify({'success': False, 'error': 'No .bin file found for this file_id'}), 404
-    file_path = bin_files[0]
+    file_path = None
+    firmware_dir = None
 
-    # Derive target version from filename if not provided
+    if file_id:
+        # Caller uploaded a specific file — use it for all devices
+        upload_base = _wave_fw_upload_dir()
+        file_dir = upload_base / file_id
+        if not file_dir.exists():
+            return jsonify({'success': False, 'error': f'file_id not found: {file_id}'}), 404
+        bin_files = list(file_dir.glob('*.bin'))
+        if not bin_files:
+            return jsonify({'success': False, 'error': 'No .bin file found for this file_id'}), 404
+        file_path = bin_files[0]
+        if not target_version:
+            m = _re.search(r'v?(\d+\.\d+\.\d+)', file_path.name)
+            target_version = m.group(1) if m else ''
+    else:
+        # No uploaded file — use server-side firmware with per-device auto-selection
+        firmware_dir = _wave_fw_server_firmware_dir()
+        if not firmware_dir.exists() or not list(firmware_dir.glob('*.bin')):
+            return jsonify({'success': False, 'error': 'No server firmware found. Upload a .bin file or place firmware in /opt/firmware/wave/.'}), 400
+        if not target_version:
+            # Derive from first .bin file in the server dir
+            sample = sorted(firmware_dir.glob('*.bin'))[0]
+            m = _re.search(r'v?(\d+\.\d+\.\d+)', sample.name)
+            target_version = m.group(1) if m else '3.4.0'
+
     if not target_version:
-        import re as _re
-        m = _re.search(r'v?(\d+\.\d+\.\d+)', file_path.name)
-        target_version = m.group(1) if m else ''
-    if not target_version:
-        return jsonify({'success': False, 'error': 'Cannot determine target_version from filename. Pass it explicitly.'}), 400
+        return jsonify({'success': False, 'error': 'Cannot determine target_version. Pass it explicitly.'}), 400
 
     # Build device list from UISP discovery data passed in request, or use minimal dicts
-    devices = data.get('devices') or [{'id': d, 'ip': d, 'name': d} for d in device_ids]
+    devices = data.get('devices') or [{'id': d, 'ip': d, 'name': d, 'model': ''} for d in device_ids]
 
     task_id = str(uuid.uuid4())
     user_info = getattr(request, 'current_user', {})
@@ -20791,8 +20856,8 @@ def wave_fw_upgrade_start():
         'abort': False,
         'created_at': datetime.utcnow().isoformat() + 'Z',
         'completed_at': None,
-        'file_id': file_id,
-        'filename': file_path.name,
+        'file_id': file_id or 'server',
+        'filename': file_path.name if file_path else 'auto',
         'target_version': target_version,
         'device_count': len(devices),
         'results': [],
@@ -20804,10 +20869,34 @@ def wave_fw_upgrade_start():
     t = threading.Thread(
         target=_wave_fw_background_task,
         args=(task_id, file_path, devices, target_version),
+        kwargs={'firmware_dir': str(firmware_dir) if firmware_dir else None},
         daemon=True,
     )
     t.start()
     return jsonify({'success': True, 'task_id': task_id})
+
+
+@app.route('/api/wave-fw/firmware-list', methods=['GET'])
+@require_auth
+def wave_fw_firmware_list():
+    """List Wave firmware .bin files available on the server (/opt/firmware/wave/)."""
+    import re as _re
+    firmware_dir = _wave_fw_server_firmware_dir()
+    files = []
+    if firmware_dir.exists():
+        for f in sorted(firmware_dir.glob('*.bin')):
+            m = _re.search(r'v?(\d+\.\d+\.\d+)', f.name)
+            version = m.group(1) if m else ''
+            nano_kws = ['nano', 'lr', 'pico']
+            family = 'nano' if any(k in f.name.lower() for k in nano_kws) else 'ap'
+            files.append({
+                'name': f.name,
+                'size': f.stat().st_size,
+                'version': version,
+                'family': family,
+                'family_label': 'Wave Nano / LR / Pico' if family == 'nano' else 'Wave AP / AP Micro / PRO',
+            })
+    return jsonify({'success': True, 'firmware': files, 'firmware_dir': str(firmware_dir)})
 
 
 @app.route('/api/wave-fw/tasks', methods=['GET'])
