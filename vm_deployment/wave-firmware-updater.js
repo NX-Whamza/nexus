@@ -324,6 +324,20 @@
         updateDeviceList();
     };
 
+    window.waveFwUpdateDeadlineHint = function (val) {
+        const hint = document.getElementById('waveFwDeadlineHint');
+        if (!hint) return;
+        const mins = parseInt(val) || 0;
+        if (mins <= 0) {
+            hint.textContent = '2am\u20136am window = 240 min';
+            return;
+        }
+        const now = new Date();
+        const end = new Date(now.getTime() + mins * 60000);
+        const fmt = (d) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        hint.textContent = `Ends at ${fmt(end)} (started now)`;
+    };
+
     // ── Discover ─────────────────────────────────────────────────────────────
 
     async function discoverDevices() {

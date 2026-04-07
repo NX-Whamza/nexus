@@ -9090,9 +9090,11 @@
                                     <label for="waveFwDeadlineMinutes" style="font-size:12px;color:var(--text-color-secondary);display:block;margin-bottom:4px;">Max Runtime <span style="opacity:0.6;">(maintenance window)</span></label>
                                     <div style="display:flex;align-items:center;gap:6px;">
                                         <input type="number" id="waveFwDeadlineMinutes" min="0" placeholder="0 = unlimited"
-                                            style="flex:1;min-width:0;background:var(--input-bg,#1e293b);color:var(--text-color,#e2e8f0);border:1px solid var(--border-color,#334155);border-radius:4px;padding:6px 8px;font-size:13px;">
+                                            style="flex:1;min-width:0;background:var(--input-bg,#1e293b);color:var(--text-color,#e2e8f0);border:1px solid var(--border-color,#334155);border-radius:4px;padding:6px 8px;font-size:13px;"
+                                            oninput="waveFwUpdateDeadlineHint(this.value)">
                                         <span style="font-size:12px;color:var(--text-color-secondary);white-space:nowrap;">min</span>
                                     </div>
+                                    <div id="waveFwDeadlineHint" style="font-size:11px;color:var(--text-color-secondary);margin-top:3px;opacity:0.7;">2am–6am window = 240 min</div>
                                 </div>
                             </div>
                         </details>
