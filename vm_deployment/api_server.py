@@ -1293,6 +1293,15 @@ def _wave_fw_version_tuple(v: str):
     return tuple(int(x) for x in m.groups()) if m else (0, 0, 0)
 
 
+def _wave_fw_normalize_version(v: str) -> str:
+    """Extract X.Y.Z from a version string, stripping leading 'v', build suffixes, etc.
+    '4.1.0.1234', 'v4.1.0-beta', '4.1.0+hotfix' → '4.1.0'.
+    Returns the original stripped string if no X.Y.Z match (preserves intent)."""
+    import re as _re
+    m = _re.search(r'v?(\d+\.\d+\.\d+)', v or '')
+    return m.group(1) if m else (v or '').strip()
+
+
 def _wave_fw_version_below(v: str, minimum: str) -> bool:
     """Return True if version v is strictly below minimum.
     Returns False if minimum is empty or if v cannot be parsed (let upgrade proceed)."""
@@ -20460,74 +20469,142 @@ def _wave_fw_broadcast_log(message, level='info', task_id=None):
             pass
 
 
-def _wave_fw_uisp_discover(uisp_url, username, password, timeout=30):
-    """Query UISP and return all Wave devices with firmware information."""
+def _wave_fw_uisp_discover(uisp_url, username, password, timeout=30, retries=3, target_version=None):
+    """Query UISP and return all Wave devices with firmware information.
+
+    Retries UISP login and device query with exponential backoff (matching reference script).
+    Each device dict includes 'already_current': True when UISP reports the device is already
+    at target_version — the UI can surface these so the operator knows to deselect them.
+    """
     import urllib3 as _urllib3
     _urllib3.disable_warnings(_urllib3.exceptions.InsecureRequestWarning)
+    retries = max(1, int(retries))
     sess = requests.Session()
-    try:
-        login_resp = sess.post(
-            f'{uisp_url}/nms/api/v2.1/user/login',
-            json={'username': username, 'password': password},
-            verify=False,
-            timeout=timeout,
-        )
-        login_resp.raise_for_status()
-        token = login_resp.headers.get('x-auth-token')
-        if not token:
-            raise RuntimeError('UISP login succeeded but no x-auth-token in response headers')
-        auth_headers = {'x-auth-token': token}
-        devices_resp = sess.get(
-            f'{uisp_url}/nms/api/v2.1/devices',
-            headers=auth_headers,
-            verify=False,
-            timeout=timeout,
-        )
-        devices_resp.raise_for_status()
-        all_devices = devices_resp.json()
-        wave_devices = []
-        for dev in (all_devices if isinstance(all_devices, list) else []):
-            ident = dev.get('identification') or {}
-            model = ident.get('model') or ''
-            name = ident.get('name') or ''
-            if 'wave' not in model.lower() and 'wave' not in name.lower():
-                continue
-            overview = dev.get('overview') or {}
-            fw_version = (
-                ident.get('firmwareVersion')
-                or overview.get('firmwareVersion')
-                or ''
+    token = None
+
+    # ── Login with retry/backoff ──────────────────────────────────────────────
+    last_login_exc = None
+    for attempt in range(1, retries + 1):
+        try:
+            login_resp = sess.post(
+                f'{uisp_url}/nms/api/v2.1/user/login',
+                json={'username': username, 'password': password},
+                verify=False,
+                timeout=(10, timeout),
             )
-            ip_addr = dev.get('ipAddress') or ident.get('ip') or ''
-            wave_devices.append({
-                'id': ident.get('id') or dev.get('id') or '',
-                'name': name,
-                'ip': ip_addr,
-                'model': model,
-                'firmwareVersion': fw_version,
-                'role': ident.get('role') or '',
-            })
-        return wave_devices
-    except RuntimeError:
-        raise
-    except Exception as exc:
-        raise RuntimeError(f'UISP discovery failed: {exc}') from exc
+            if login_resp.status_code == 200:
+                token = login_resp.headers.get('x-auth-token')
+                if not token:
+                    try:
+                        token = login_resp.json().get('token')
+                    except Exception:
+                        pass
+                if token:
+                    break
+                raise RuntimeError('UISP login succeeded but no x-auth-token in response')
+            raise RuntimeError(f'UISP login HTTP {login_resp.status_code}')
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            last_login_exc = exc
+            if attempt < retries:
+                time.sleep(min(2 ** attempt, 8))
+    if not token:
+        raise RuntimeError(
+            f'UISP login failed after {retries} attempt(s): {last_login_exc}')
+
+    auth_headers = {'x-auth-token': token}
+
+    # ── Devices query with retry/backoff ──────────────────────────────────────
+    all_devices = None
+    last_dev_exc = None
+    for attempt in range(1, retries + 1):
+        try:
+            devices_resp = sess.get(
+                f'{uisp_url}/nms/api/v2.1/devices',
+                headers=auth_headers,
+                verify=False,
+                timeout=(10, timeout),
+            )
+            if not devices_resp.ok:
+                raise RuntimeError(f'UISP devices query HTTP {devices_resp.status_code}')
+            payload = devices_resp.json()
+            if isinstance(payload, list):
+                all_devices = payload
+            elif isinstance(payload, dict):
+                all_devices = payload.get('items') or payload.get('data') or []
+            else:
+                all_devices = []
+            break
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            last_dev_exc = exc
+            if attempt < retries:
+                time.sleep(min(2 ** attempt, 8))
+    if all_devices is None:
+        raise RuntimeError(
+            f'UISP device query failed after {retries} attempt(s): {last_dev_exc}')
+
+    # ── Filter and classify Wave devices ─────────────────────────────────────
+    norm_target = _wave_fw_normalize_version(target_version) if target_version else None
+    wave_devices = []
+    for dev in all_devices:
+        ident = dev.get('identification') or {}
+        overview = dev.get('overview') or {}
+        model = (ident.get('model') or dev.get('model') or dev.get('productModel') or '')
+        name = (ident.get('name') or dev.get('displayName') or dev.get('name') or '')
+        # Only include devices with 'wave' in model or name
+        if 'wave' not in model.lower() and 'wave' not in name.lower():
+            continue
+        # Collect role from multiple UISP field paths (reference checks all of these)
+        role = (ident.get('role') or dev.get('role') or overview.get('role') or
+                dev.get('deviceRole') or '')
+        # Firmware version from multiple field paths
+        fw_raw = (
+            ident.get('firmwareVersion')
+            or overview.get('firmwareVersion')
+            or dev.get('firmwareVersion')
+            or ''
+        )
+        fw_version = _wave_fw_normalize_version(fw_raw) if fw_raw else ''
+        # Strip CIDR notation from IP if present
+        ip_addr = (dev.get('ipAddress') or ident.get('ip') or dev.get('ip') or dev.get('address') or '')
+        if ip_addr and '/' in ip_addr:
+            ip_addr = ip_addr.split('/')[0]
+        wave_devices.append({
+            'id': ident.get('id') or dev.get('id') or '',
+            'name': name,
+            'ip': ip_addr,
+            'model': model,
+            'firmwareVersion': fw_version,
+            'role': role,
+            # Surface to UI so operator can see which are already done
+            'already_current': bool(norm_target and fw_version and fw_version == norm_target),
+        })
+    return wave_devices
 
 
-def _wave_fw_login_device(ip, ap_pass, sm_pass, timeout=30):
+def _wave_fw_login_device(ip, ap_pass, sm_pass, timeout=30, role='unknown'):
     """Try credential pairs against the Wave HTTPS API.
-    Returns (session, headers, working_password) — working_password is the one that succeeded,
-    used later for SSH authentication."""
+    Returns (session, headers, working_password).
+
+    Credential order follows the device role: APs try ap_pass first; Stations try sm_pass first.
+    Only operator-supplied passwords are used — no hardcoded ubnt/ubnt fallback."""
     import urllib3 as _urllib3
     _urllib3.disable_warnings(_urllib3.exceptions.InsecureRequestWarning)
-    # Build credential list without hardcoded ubnt/ubnt fallback —
-    # only use operator-provided passwords to avoid polluting auth logs.
+    import re as _re
+    _role = _re.sub(r'[^a-z]', '', (role or '').lower())
+    if 'station' in _role:
+        ordered_pws = [sm_pass, ap_pass]
+    else:
+        ordered_pws = [ap_pass, sm_pass]  # APs and unknowns: ap_pass first
     seen = set()
     credential_pairs = []
-    for user, pw in [('admin', ap_pass), ('admin', sm_pass)]:
-        if pw and (user, pw) not in seen:
-            credential_pairs.append((user, pw))
-            seen.add((user, pw))
+    for pw in ordered_pws:
+        if pw and ('admin', pw) not in seen:
+            credential_pairs.append(('admin', pw))
+            seen.add(('admin', pw))
     last_exc = None
     for user, pw in credential_pairs:
         try:
@@ -20623,34 +20700,61 @@ rm -rf $MOUNTPOINT
 """
 
 
-def _wave_fw_check_banks_ssh(ip, username, password, timeout=60):
-    """SSH into the Wave device and run the bank-check script. Returns (active, backup) strings."""
-    import paramiko as _paramiko
-    client = _paramiko.SSHClient()
-    client.set_missing_host_key_policy(_paramiko.AutoAddPolicy())
-    client.connect(
-        ip,
-        username=username,
-        password=password,
-        timeout=15,
-        look_for_keys=False,
-        allow_agent=False,
-    )
+def _wave_fw_check_banks_ssh(ip, username, password, timeout=60, deadline_ts=None):
+    """SSH into the Wave device and run the bank-check script. Returns (active, backup) strings.
+
+    Retries the SSH connect for up to 60 seconds (or until deadline) to handle the brief delay
+    after SSH is enabled via the services API. Normalizes version strings so '4.1.0.1234'
+    compares equal to '4.1.0'."""
+    import paramiko as _paramiko, re as _re
+    connect_deadline = time.time() + 60.0
+    if deadline_ts is not None:
+        connect_deadline = min(connect_deadline, deadline_ts)
+    last_exc = None
+    client = None
+    while time.time() < connect_deadline:
+        client = _paramiko.SSHClient()
+        client.set_missing_host_key_policy(_paramiko.AutoAddPolicy())
+        _connect_timeout = max(3.0, min(15.0, connect_deadline - time.time()))
+        try:
+            client.connect(
+                ip,
+                username=username,
+                password=password,
+                timeout=_connect_timeout,
+                banner_timeout=_connect_timeout,
+                auth_timeout=_connect_timeout,
+                look_for_keys=False,
+                allow_agent=False,
+            )
+            if client.get_transport() and client.get_transport().is_active():
+                break
+        except Exception as exc:
+            last_exc = exc
+            try:
+                client.close()
+            except Exception:
+                pass
+            client = None
+            time.sleep(2)
+    if client is None or not (client.get_transport() and client.get_transport().is_active()):
+        raise RuntimeError(f'SSH connect to {ip} failed: {last_exc}')
     try:
         stdin, stdout, stderr = client.exec_command('sh -s', timeout=timeout)
         stdin.write(_WAVE_BANK_CHECK_SCRIPT)
         stdin.channel.shutdown_write()
         output = stdout.read().decode('utf-8', errors='replace')
+        err_output = stderr.read().decode('utf-8', errors='replace')
     finally:
         client.close()
-    active = ''
-    backup = ''
-    for line in output.splitlines():
-        line = line.strip()
-        if line.startswith('ACTIVE='):
-            active = line[len('ACTIVE='):]
-        elif line.startswith('BACKUP='):
-            backup = line[len('BACKUP='):]
+    # Parse and normalize version strings (strips leading v, build suffixes, etc.)
+    active_m = _re.search(r'ACTIVE=([^\s]+)', output)
+    backup_m = _re.search(r'BACKUP=([^\s]+)', output)
+    active = _wave_fw_normalize_version(active_m.group(1)) if active_m else ''
+    backup = _wave_fw_normalize_version(backup_m.group(1)) if backup_m else ''
+    # Surface SSH-side errors rather than silently returning empty banks
+    if not active and err_output.strip():
+        raise RuntimeError(f'SSH bank check script error on {ip}: {err_output.strip()[:200]}')
     return active, backup
 
 
@@ -20675,9 +20779,12 @@ def _wave_fw_upgrade_single(device, file_path, target_version, log_cb, should_ab
     import pathlib as _pl, socket as _socket
     ip = device['ip']
     name = device.get('name', ip)
+    device_role = device.get('role', 'unknown')
     ap_pass = os.getenv('WAVE_AP_PASS', '')
     sm_pass = os.getenv('WAVE_SM_PASS', ap_pass)
     max_passes = int(os.getenv('WAVE_FW_MAX_PASSES', '4'))
+    # Normalize target_version once so SSH output (which is also normalized) compares cleanly
+    target_version = _wave_fw_normalize_version(target_version)
 
     def _now():
         return datetime.utcnow().isoformat() + 'Z'
@@ -20727,14 +20834,13 @@ def _wave_fw_upgrade_single(device, file_path, target_version, log_cb, should_ab
         tag = f' ({label})' if label else ''
         log_cb(f'[{name}] Enabling SSH{tag}...')
         _wave_fw_enable_ssh(session[0], ip, headers[0])
-        time.sleep(1.5)
         log_cb(f'[{name}] Checking firmware banks{tag}...')
         alt_pass = sm_pass if ssh_pass[0] == ap_pass else ap_pass
         for pw in (ssh_pass[0], alt_pass):
             if not pw:
                 continue
             try:
-                _a, _b = _wave_fw_check_banks_ssh(ip, 'admin', pw)
+                _a, _b = _wave_fw_check_banks_ssh(ip, 'admin', pw, deadline_ts=deadline_ts)
                 ssh_pass[0] = pw  # Remember which SSH password worked
                 return _a, _b
             except Exception:
@@ -20751,7 +20857,7 @@ def _wave_fw_upgrade_single(device, file_path, target_version, log_cb, should_ab
 
         # ── Initial login ────────────────────────────────────────────────────
         log_cb(f'[{name}] Logging in...')
-        _s, _h, _pw = _wave_fw_login_device(ip, ap_pass, sm_pass)
+        _s, _h, _pw = _wave_fw_login_device(ip, ap_pass, sm_pass, role=device_role)
         session[0], headers[0], ssh_pass[0] = _s, _h, _pw
 
         if should_abort():
@@ -20787,21 +20893,38 @@ def _wave_fw_upgrade_single(device, file_path, target_version, log_cb, should_ab
                 break  # Both banks match — done
 
             log_cb(f'[{name}] Pass {pass_num + 1}/{max_passes}: uploading {file_path.name}...')
-            with open(file_path, 'rb') as fh:
-                up_resp = session[0].post(
-                    f'https://{ip}/api/v1.0/system/upgrade/direct',
-                    headers=headers[0],
-                    files={'file': (file_path.name, fh, 'application/octet-stream')},
-                    verify=False,
-                    timeout=int(deadline_timeout(180)),
-                )
+            # Retry upload once on 401/403 (re-login and re-try, matching reference behavior)
+            _up_last_status = None
+            for _up_attempt in range(2):
+                if _up_attempt > 0:
+                    try:
+                        _s2, _h2, _ = _wave_fw_login_device(ip, ap_pass, sm_pass, role=device_role)
+                        session[0], headers[0] = _s2, _h2
+                    except Exception:
+                        pass
+                with open(file_path, 'rb') as fh:
+                    up_resp = session[0].post(
+                        f'https://{ip}/api/v1.0/system/upgrade/direct',
+                        headers=headers[0],
+                        files={'file': (file_path.name, fh, 'application/octet-stream')},
+                        verify=False,
+                        timeout=int(deadline_timeout(180)),
+                    )
+                _up_last_status = up_resp.status_code
+                if up_resp.status_code not in (401, 403):
+                    break
             if not up_resp.ok:
                 return result('failed',
-                              error=f'Pass {pass_num + 1} upload: HTTP {up_resp.status_code}',
+                              error=f'Pass {pass_num + 1} upload: HTTP {_up_last_status}',
                               active=active, backup=backup)
 
+            # Poll upgrade status.  Only 'in_progress' continues the loop; any other status
+            # (including 'uploading' which indicates the stream is still incoming) exits and is
+            # then validated — we expect 'finished'.
             log_cb(f'[{name}] Pass {pass_num + 1}: polling upgrade status...')
-            for _ in range(120):  # up to ~4 min at 2s intervals
+            _poll_status = ''
+            _poll_pct_seen = set()
+            for _ in range(int(deadline_timeout(int(os.getenv('WAVE_FW_UPGRADE_TIMEOUT', '180'))) / 2)):
                 if should_abort():
                     return result('aborted', active=active, backup=backup)
                 check_deadline('during upgrade poll')
@@ -20812,17 +20935,18 @@ def _wave_fw_upgrade_single(device, file_path, target_version, log_cb, should_ab
                     if poll.ok:
                         poll_data = poll.json()
                         pct = poll_data.get('progressPercent')
-                        if pct is not None:
+                        if pct is not None and pct not in _poll_pct_seen:
+                            _poll_pct_seen.add(pct)
                             log_cb(f'[{name}] Pass {pass_num + 1} progress: {pct}%')
-                        status_val = poll_data.get('status', '')
-                        if status_val == 'finished':
-                            break
-                        if status_val not in ('in_progress', 'uploading', ''):
-                            return result('failed',
-                                          error=f'Pass {pass_num + 1} upgrade status: {status_val}',
-                                          active=active, backup=backup)
+                        _poll_status = poll_data.get('status', '')
+                        if _poll_status != 'in_progress':
+                            break  # Any non-in_progress status ends the loop
                 except Exception:
                     pass
+            if _poll_status != 'finished':
+                return result('failed',
+                              error=f'Pass {pass_num + 1} upgrade did not finish (status: {_poll_status or "unknown"})',
+                              active=active, backup=backup)
 
             log_cb(f'[{name}] Pass {pass_num + 1}: rebooting...')
             try:
@@ -20831,33 +20955,52 @@ def _wave_fw_upgrade_single(device, file_path, target_version, log_cb, should_ab
             except Exception:
                 pass  # Expected — connection drops when device reboots
 
+            # Two-phase reboot wait (matches reference):
+            # Phase 1: wait for port 443 to go DOWN (up to 90s) — confirms reboot started
+            # Phase 2: wait for port 443 to come back UP (up to full reboot_timeout)
             reboot_secs = int(deadline_timeout(int(os.getenv('WAVE_FW_REBOOT_TIMEOUT', '300'))))
-            log_cb(f'[{name}] Pass {pass_num + 1}: waiting for reboot (up to {reboot_secs}s)...')
-            time.sleep(8)
-            reboot_until = time.time() + reboot_secs
+            log_cb(f'[{name}] Pass {pass_num + 1}: waiting for device to go offline...')
+            time.sleep(5)  # Brief initial delay before polling (device needs a moment to shut down)
+            phase1_until = time.time() + min(90, reboot_secs)
             went_down = False
-            while time.time() < reboot_until:
+            while time.time() < phase1_until:
                 if should_abort():
                     return result('aborted', active=active, backup=backup)
                 try:
                     with _socket.create_connection((ip, 443), timeout=3):
-                        if went_down:
-                            break
+                        pass  # Still up
                 except OSError:
                     went_down = True
+                    break
                 time.sleep(2)
-
-            if not went_down:
-                log_cb(f'[{name}] Pass {pass_num + 1}: device did not go offline during reboot — '
-                       f'may still be rebooting; continuing.', 'warning')
+            if went_down:
+                log_cb(f'[{name}] Pass {pass_num + 1}: device went offline, waiting for it to return...')
+            else:
+                log_cb(f'[{name}] Pass {pass_num + 1}: device did not visibly go offline — '
+                       f'may have rebooted quickly; waiting for login anyway.', 'warning')
+            phase2_until = time.time() + reboot_secs
+            came_back = False
+            while time.time() < phase2_until:
+                if should_abort():
+                    return result('aborted', active=active, backup=backup)
+                try:
+                    with _socket.create_connection((ip, 443), timeout=3):
+                        came_back = True
+                        break
+                except OSError:
+                    pass
+                time.sleep(2)
+            if not came_back:
+                return result('failed',
+                              error=f'Pass {pass_num + 1}: HTTPS did not return after {reboot_secs}s',
+                              active=active, backup=backup)
 
             # Re-login and re-enable SSH.  Wave disables SSH on every reboot; must re-enable
             # before we can run the bank-check script again.
             log_cb(f'[{name}] Pass {pass_num + 1}: re-logging in after reboot...')
             try:
-                _s2, _h2, _pw2 = _wave_fw_login_device(ip, ap_pass, sm_pass)
+                _s2, _h2, _ = _wave_fw_login_device(ip, ap_pass, sm_pass, role=device_role)
                 session[0], headers[0] = _s2, _h2
-                # Keep whichever SSH password worked before; update only if login succeeded with different one
             except Exception as re_exc:
                 return result('failed',
                               error=f'Pass {pass_num + 1} re-login failed: {re_exc}',
