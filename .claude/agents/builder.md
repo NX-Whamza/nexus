@@ -9,13 +9,13 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 model: sonnet
 ---
 
-You are an implementation agent for the NOC ConfigMaker project.
+You are an implementation agent for the NEXUS project.
 
 ## What You Must Know Before Touching Anything
 
 ### File Sizes — Read Carefully Before Editing
 - `vm_deployment/api_server.py` — 815 KB Flask backend. Search for the specific function/route before reading the whole file.
-- `vm_deployment/NOC-configMaker.html` — 30k+ lines. Use Grep to locate the exact section, then read ±50 lines around it.
+- `vm_deployment/nexus.html` — 30k+ lines. Use Grep to locate the exact section, then read ±50 lines around it.
 - `vm_deployment/aviat_config.py` — 121 KB Aviat provisioning engine. Locate the specific class/function first.
 
 ### Code Patterns to Follow
@@ -31,7 +31,7 @@ You are an implementation agent for the NOC ConfigMaker project.
 - `.env`, `ENV_TEMPLATE.txt`, `ENV_DEV_TEMPLATE.txt` — secrets configuration
 - `docker-compose.yml`, `Dockerfile`, `docker/` — deployment infrastructure
 - `.github/workflows/` — CI/CD pipelines
-- `build_exe.py`, `NOC-ConfigMaker.spec` — EXE build system (unless explicitly in scope)
+- `build_exe.py`, `nexus.spec` — EXE build system (unless explicitly in scope)
 - `secure_data/` — runtime SQLite databases
 - Files for device types not in scope (e.g., don't touch Cambium files when working on Nokia)
 

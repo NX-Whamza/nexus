@@ -9,7 +9,7 @@ try {
   process.exit(2);
 }
 
-const htmlPath = path.join(__dirname, '..', 'vm_deployment', 'NOC-configMaker.html');
+const htmlPath = path.join(__dirname, '..', 'vm_deployment', 'nexus.html');
 const html = fs.readFileSync(htmlPath, 'utf8');
 
 const dom = new JSDOM(html, {

@@ -2,11 +2,11 @@
 # =============================================================================
 # update_dev.sh — Pull latest main into dev clone and rebuild
 # =============================================================================
-# Production (~/noc-configmaker) is NEVER touched.
+# Production (~/nexus) is NEVER touched.
 # Run this to test new changes before promoting to prod.
 #
 # USAGE (on the VM):
-#   cd ~/noc-configmaker-dev && bash vm_deployment/update_dev.sh
+#   cd ~/nexus-dev && bash vm_deployment/update_dev.sh
 # =============================================================================
 set -euo pipefail
 
@@ -27,7 +27,7 @@ generate_version_env() {
 }
 
 echo "=========================================="
-echo "NOC Config Maker – DEV Update"
+echo "NEXUS – DEV Update"
 echo "Dir: $DEV_DIR"
 echo "=========================================="
 echo ""
@@ -54,7 +54,7 @@ DEV_PORT="${DEV_PORT:-8100}"
 info "Health check (port $DEV_PORT):"
 if curl -fsS "http://127.0.0.1:${DEV_PORT}/api/health" | head -c 200; then
   echo ""
-  ok "DEV is healthy at https://dev-noc-configmaker.nxlink.com"
+  ok "DEV is healthy at https://dev-nexus.nxlink.com"
 else
   echo ""
   echo -e "${RED}[WARN] Health check failed — check logs:${NC}"
@@ -64,10 +64,10 @@ fi
 echo ""
 echo "=========================================="
 echo "Production status (untouched):"
-if [ -d "$HOME/noc-configmaker/.git" ]; then
-  echo "  Commit: $(cd "$HOME/noc-configmaker" && git rev-parse --short HEAD)"
-  echo "  (run 'bash vm_deployment/update_prod.sh' from ~/noc-configmaker to update prod)"
+if [ -d "$HOME/nexus/.git" ]; then
+  echo "  Commit: $(cd "$HOME/nexus" && git rev-parse --short HEAD)"
+  echo "  (run 'bash vm_deployment/update_prod.sh' from ~/nexus to update prod)"
 else
-  echo "  ~/noc-configmaker not found"
+  echo "  ~/nexus not found"
 fi
 echo "=========================================="

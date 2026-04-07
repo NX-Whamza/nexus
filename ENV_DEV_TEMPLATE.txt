@@ -1,15 +1,15 @@
 # =============================================================================
-# NOC Config Maker – DEV environment variables
+# NEXUS – DEV environment variables
 # =============================================================================
 # This file is a TEMPLATE — it is committed to GitHub with placeholders only.
 # Real secrets are NEVER stored in this file.
 #
 # USAGE:
-#   setup_dev.sh copies this to ~/noc-configmaker-dev/.env
+#   setup_dev.sh copies this to ~/nexus-dev/.env
 #   Then you MUST manually fill in every CHANGE_ME value in .env
 #   (The .env file itself is git-ignored and never pushed.)
 #
-# The production clone (~/noc-configmaker/) keeps its own .env file untouched.
+# The production clone (~/nexus/) keeps its own .env file untouched.
 # =============================================================================
 
 # ── Dev-specific overrides ──

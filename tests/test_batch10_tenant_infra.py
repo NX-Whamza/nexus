@@ -134,7 +134,7 @@ def test_custom_tenant_compliance_checks_differ_from_nextlink(monkeypatch):
 
 def test_html_uses_tenant_infra_variable_for_noc_monitor(monkeypatch):
     html = (
-        Path(__file__).resolve().parents[1] / "vm_deployment" / "NOC-configMaker.html"
+        Path(__file__).resolve().parents[1] / "vm_deployment" / "nexus.html"
     ).read_text(encoding="utf-8")
     import re
 

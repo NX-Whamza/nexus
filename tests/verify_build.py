@@ -36,16 +36,16 @@ else:
     sys.exit(1)
 
 # Check spec file
-spec_path = Path('NOC-ConfigMaker.spec')
+spec_path = Path('NEXUS.spec')
 if spec_path.exists():
-    print(f"[OK] NOC-ConfigMaker.spec found")
+    print(f"[OK] NEXUS.spec found")
     spec_content = spec_path.read_text(encoding='utf-8')
     if "'api_server'" in spec_content or '"api_server"' in spec_content:
         print(f"[OK] spec file mentions api_server")
     else:
         print(f"[WARN] spec file does not explicitly mention api_server")
 else:
-    print(f"[WARN] NOC-ConfigMaker.spec not found")
+    print(f"[WARN] NEXUS.spec not found")
 
 print()
 print("=" * 70)

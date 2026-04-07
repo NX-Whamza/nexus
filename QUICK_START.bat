@@ -1,11 +1,11 @@
 @echo off
 REM Quick Start - Prefer Docker (most consistent); fallback to local Python servers
 
-title NOC Config Maker - Quick Start
+title NEXUS - Quick Start
 color 0E
 
 echo ========================================
-echo  NOC Config Maker - Quick Start
+echo  NEXUS - Quick Start
 echo ========================================
 echo.
 
@@ -52,14 +52,14 @@ REM Wait for frontend to start
 timeout /t 3 /nobreak >nul
 
 echo Opening browser...
-start http://localhost:8000/NOC-configMaker.html
+start http://localhost:8000/nexus.html
 
 echo.
 echo ========================================
 echo  Services Started (Fallback Mode)
 echo ========================================
 echo Backend:  http://localhost:5000
-echo Frontend: http://localhost:8000/NOC-configMaker.html
+echo Frontend: http://localhost:8000/nexus.html
 echo.
 echo KEEP THE SERVER WINDOWS OPEN!
 echo.

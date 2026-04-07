@@ -594,7 +594,7 @@
             }
         })();
 
-        // API Base URL detection (mirrors NOC-configMaker.html logic)
+        // API Base URL detection (mirrors nexus.html logic)
         const _isFileProtocol = window.location.protocol === 'file:';
         const _isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         const _isLocalDev = _isFileProtocol || _isLocalhost;
@@ -647,7 +647,7 @@
                     const userObj = JSON.parse(ssoUser);
                     localStorage.setItem('auth_token', ssoToken);
                     localStorage.setItem('user_info', JSON.stringify(userObj));
-                    window.location.replace('NOC-configMaker.html');
+                    window.location.replace('nexus.html');
                     return;
                 } catch (e) {
                     console.error('Failed to parse SSO user info', e);
@@ -660,7 +660,7 @@
             const user = localStorage.getItem('user_info');
 
             if (token && user) {
-                window.location.href = 'NOC-configMaker.html';
+                window.location.href = 'nexus.html';
             }
         });
 
@@ -733,7 +733,7 @@
                     if (data.requiresPasswordChange) {
                         window.location.href = 'change-password.html?firstLogin=true';
                     } else {
-                        window.location.href = 'NOC-configMaker.html';
+                        window.location.href = 'nexus.html';
                     }
                 } else {
                     throw new Error(data.error || 'Login failed');

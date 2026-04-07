@@ -1,7 +1,29 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python -m pytest:*)"
+      "Bash(python -m pytest:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(python -c \":*)",
+      "Bash(python -c \"from vm_deployment.api_server import app; print\\(''Import OK''\\)\")",
+      "Bash(python -c \"from api_server import app; print\\(''Import OK''\\)\")",
+      "Bash(grep -n \"Error generating\\\\|authentication\\\\|''''Content-Type'''': ''''application/json''''\" \"nexus.html\")",
+      "Bash(grep -n \"sys.exit\\\\|os.exit\\\\|raise.*Exception\\\\|raise\\\\s*$\" /c/Users/WalihlahHamza/Downloads/nexus-api/vm_deployment/api_server.py)",
+      "Bash(python3 -c \"import os; print\\(''OK''\\)\")",
+      "Bash(python -m py_compile vm_deployment/api_server.py)",
+      "Bash(du -sh */)",
+      "Bash(for f:*)",
+      "Bash(do echo:*)",
+      "Read(//c/Users/WalihlahHamza/Downloads/nexus-api/**)",
+      "Bash(done)",
+      "Bash(ssh -V)",
+      "Bash(gh pr:*)",
+      "Bash(grep -r \"message.*ConfigMaker\\\\|message.*noc\\\\|health.*message\" /c/Users/WalihlahHamza/Downloads/nexus-api/vm_deployment/ --include=*.py)",
+      "Bash(find /c/Users/WalihlahHamza/Downloads/nexus-api -type f -name *.bat -o -name *.ps1 -o -name *.sh)",
+      "Bash(grep -r NOC_ /c/Users/WalihlahHamza/Downloads/nexus-api --include=*.py --include=*.yml --include=*.txt)",
+      "Bash(cd:*)",
+      "Bash(python3 -c \":*)",
+      "Bash(/c/Python314/python -c \":*)"
     ]
   }
 }

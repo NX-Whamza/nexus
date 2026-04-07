@@ -14,7 +14,7 @@ if (-not $VM_USER) { throw "Set NOC_VM_USER (or pass -VM_USER)" }
 if (-not $VM_PATH) { $VM_PATH = "/home/$VM_USER/vm_deployment" }
 
 Write-Host "================================" -ForegroundColor Cyan
-Write-Host "NOC Config Maker - Quick Update" -ForegroundColor Cyan
+Write-Host "NEXUS - Quick Update" -ForegroundColor Cyan
 Write-Host "================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -26,7 +26,7 @@ Write-Host "[1/2] Uploading files to VM ($VM_IP)..." -ForegroundColor Yellow
 
 $uploads = @(
     @{ Local = "vm_deployment/api_server.py"; Remote = "$VM_PATH/api_server.py" },
-    @{ Local = "vm_deployment/NOC-configMaker.html"; Remote = "$VM_PATH/NOC-configMaker.html" },
+    @{ Local = "vm_deployment/nexus.html"; Remote = "$VM_PATH/nexus.html" },
     @{ Local = "vm_deployment/login.html"; Remote = "$VM_PATH/login.html" },
     @{ Local = "vm_deployment/change-password.html"; Remote = "$VM_PATH/change-password.html" },
     @{ Local = "vm_deployment/nextlink_standards.py"; Remote = "$VM_PATH/nextlink_standards.py" },
@@ -55,7 +55,7 @@ Write-Host "[OK] Upload complete" -ForegroundColor Green
 
 Write-Host ""
 Write-Host "[2/2] Restarting service on VM..." -ForegroundColor Yellow
-ssh "$VM_USER@$VM_IP" "cd $VM_PATH && sudo systemctl restart noc-configmaker || (pkill -f api_server.py; nohup python3 api_server.py > nohup.out 2>&1 &)"
+ssh "$VM_USER@$VM_IP" "cd $VM_PATH && sudo systemctl restart nexus || (pkill -f api_server.py; nohup python3 api_server.py > nohup.out 2>&1 &)"
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "[OK] Service restarted" -ForegroundColor Green
@@ -64,7 +64,7 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "Manual restart:" -ForegroundColor Gray
     Write-Host "  ssh $VM_USER@$VM_IP" -ForegroundColor Gray
     Write-Host "  cd $VM_PATH" -ForegroundColor Gray
-    Write-Host "  sudo systemctl restart noc-configmaker" -ForegroundColor Gray
+    Write-Host "  sudo systemctl restart nexus" -ForegroundColor Gray
 }
 
 Write-Host ""
@@ -74,5 +74,5 @@ Write-Host "================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Test:" -ForegroundColor Yellow
 Write-Host "  http://$VM_IP:5000/api/health" -ForegroundColor Cyan
-Write-Host "  http://$VM_IP:8000/NOC-configMaker.html" -ForegroundColor Cyan
+Write-Host "  http://$VM_IP:8000/nexus.html" -ForegroundColor Cyan
 Write-Host ""

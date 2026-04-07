@@ -1,5 +1,5 @@
 @echo off
-title NOC Config Maker - Docker Stop
+title NEXUS - Docker Stop
 color 0C
 
 cd /d "%~dp0.."
@@ -11,7 +11,7 @@ if %errorlevel% neq 0 (
   exit /b 1
 )
 
-echo Stopping NOC Config Maker containers...
+echo Stopping NEXUS containers...
 docker compose down
 pause
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Identity edge-case tests for NOC Config Maker backend."""
+"""Identity edge-case tests for NEXUS backend."""
 
 from __future__ import annotations
 

@@ -7,7 +7,7 @@ from pathlib import Path
 repo_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(repo_root))
 
-UI_FILE = repo_root / "vm_deployment" / "NOC-configMaker.html"
+UI_FILE = repo_root / "vm_deployment" / "nexus.html"
 
 
 def test_tenant_badge_and_switcher_are_present():

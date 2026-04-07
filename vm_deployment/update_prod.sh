@@ -2,10 +2,10 @@
 # =============================================================================
 # update_prod.sh — Pull latest main and rebuild PRODUCTION
 # =============================================================================
-# Run this ONLY after testing on dev (dev-noc-configmaker.nxlink.com).
+# Run this ONLY after testing on dev (dev-nexus.nxlink.com).
 #
 # USAGE (on the VM):
-#   cd ~/noc-configmaker && bash vm_deployment/update_prod.sh
+#   cd ~/nexus && bash vm_deployment/update_prod.sh
 # =============================================================================
 set -euo pipefail
 
@@ -27,13 +27,13 @@ generate_version_env() {
 }
 
 echo "=========================================="
-echo "NOC Config Maker – PRODUCTION Update"
+echo "NEXUS – PRODUCTION Update"
 echo "Dir: $PROD_DIR"
 echo "=========================================="
 echo ""
 
 # ── Safety: compare with dev to make sure you tested first ──
-DEV_DIR="$HOME/noc-configmaker-dev"
+DEV_DIR="$HOME/nexus-dev"
 if [ -d "$DEV_DIR/.git" ]; then
   DEV_COMMIT=$(cd "$DEV_DIR" && git rev-parse HEAD)
   REMOTE_COMMIT=$(git ls-remote origin main | cut -f1)
@@ -87,7 +87,7 @@ done
 
 echo ""
 if [ "$HEALTH_OK" -eq 1 ]; then
-  ok "PRODUCTION is healthy at https://noc-configmaker.nxlink.com"
+  ok "PRODUCTION is healthy at https://nexus.nxlink.com"
   info "Backend health payload:"
   curl -fsS "$HEALTH_URL" | head -c 1200
   echo ""

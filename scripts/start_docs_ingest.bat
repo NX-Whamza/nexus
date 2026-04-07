@@ -1,6 +1,6 @@
 @echo off
 REM ========================================
-REM NOC Config Maker - MikroTik Docs Ingest
+REM NEXUS - MikroTik Docs Ingest
 REM ========================================
 cd /d "%~dp0"
 

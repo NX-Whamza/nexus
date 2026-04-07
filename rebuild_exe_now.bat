@@ -1,13 +1,13 @@
 @echo off
 echo ========================================
-echo Rebuilding NOC-ConfigMaker.exe
+echo Rebuilding NEXUS.exe
 echo ========================================
 echo.
 
 cd /d "%~dp0"
 
 echo Cleaning old build files...
-if exist dist\NOC-ConfigMaker.exe del /F /Q dist\NOC-ConfigMaker.exe
+if exist dist\NEXUS.exe del /F /Q dist\NEXUS.exe
 if exist build rmdir /s /q build
 if exist __pycache__ rmdir /s /q __pycache__
 
@@ -23,9 +23,9 @@ echo Build completed!
 echo ========================================
 echo.
 
-if exist dist\NOC-ConfigMaker.exe (
-    echo EXE file found at: dist\NOC-ConfigMaker.exe
-    for %%F in (dist\NOC-ConfigMaker.exe) do (
+if exist dist\NEXUS.exe (
+    echo EXE file found at: dist\NEXUS.exe
+    for %%F in (dist\NEXUS.exe) do (
         echo File size: %%~zF bytes
         echo Last modified: %%~tF
     )

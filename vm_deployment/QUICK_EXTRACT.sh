@@ -2,7 +2,7 @@
 # Quick extract script - Run this in ~/vm_deployment directory
 
 echo "=========================================="
-echo "Extracting NOC Config Maker Files"
+echo "Extracting NEXUS Files"
 echo "=========================================="
 echo ""
 
@@ -12,7 +12,7 @@ echo "Current directory: $CURRENT_DIR"
 echo ""
 
 # Get the exact filename (avoid wildcard issues)
-ARCHIVE_FILE=$(ls -1 noc-configmaker-vm-*.tar.gz 2>/dev/null | head -n 1)
+ARCHIVE_FILE=$(ls -1 nexus-vm-*.tar.gz 2>/dev/null | head -n 1)
 
 if [ -z "$ARCHIVE_FILE" ]; then
     echo "❌ No archive file found in current directory!"
@@ -21,13 +21,13 @@ if [ -z "$ARCHIVE_FILE" ]; then
     ls -lh
     echo ""
     echo "Looking for archive in home directory..."
-    ARCHIVE_FILE=$(ls -1 ~/noc-configmaker-vm-*.tar.gz 2>/dev/null | head -n 1)
+    ARCHIVE_FILE=$(ls -1 ~/nexus-vm-*.tar.gz 2>/dev/null | head -n 1)
     
     if [ -z "$ARCHIVE_FILE" ]; then
         echo "❌ Archive not found in home directory either!"
         echo ""
         echo "Please find the archive file:"
-        echo "  find ~ -name 'noc-configmaker-vm-*.tar.gz' -type f"
+        echo "  find ~ -name 'nexus-vm-*.tar.gz' -type f"
         exit 1
     else
         echo "✓ Found archive in home: $ARCHIVE_FILE"
@@ -47,7 +47,7 @@ if [ $? -eq 0 ]; then
     echo "✅ Extraction complete!"
     echo ""
     echo "Files extracted. Next steps:"
-    echo "  cd ~/noc-configmaker"
+    echo "  cd ~/nexus"
     echo "  docker compose up -d --build"
     echo "  bash vm_deployment/configure_nginx_domain.sh"
     echo ""

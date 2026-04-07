@@ -87,6 +87,6 @@ api_keys.txt
 # VM deploy backup files (created by vm_deploy.sh)
 *.bak
 *.bak.*
-noc-configmaker-backups/
+nexus-backups/
 weekly_summary.log
 cambium_shared_queue.json

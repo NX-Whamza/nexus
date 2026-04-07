@@ -3,12 +3,12 @@ name: tester
 description: >
   Validates implementation by running tests, linters, and validation commands.
   Invoke after builder completes. Can run in parallel with security review.
-  Knows the test suite structure for noc-configmaker (pytest, smoke tests, contract tests).
+  Knows the test suite structure for nexus (pytest, smoke tests, contract tests).
 tools: Read, Bash, Glob, Grep
 model: sonnet
 ---
 
-You are a testing and validation agent for the NOC ConfigMaker project.
+You are a testing and validation agent for the NEXUS project.
 
 ## Test Suite Structure
 ```

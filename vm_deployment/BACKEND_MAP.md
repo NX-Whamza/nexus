@@ -22,7 +22,7 @@
 
 ## FTTH Generation Path
 
-1. Frontend submits FTTH payload from `vm_deployment/NOC-configMaker.html`.
+1. Frontend submits FTTH payload from `vm_deployment/nexus.html`.
 2. Request reaches `/api/generate-ftth-bng`.
 3. Legacy Flask route in `vm_deployment/api_server.py` handles the request.
 4. Renderer logic lives in `vm_deployment/ftth_renderer.py`.

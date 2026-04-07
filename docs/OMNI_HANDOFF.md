@@ -1,12 +1,12 @@
-# OMNI Handoff - API Key Contract (NOC ConfigMaker v2)
+# OMNI Handoff - API Key Contract (NEXUS v2)
 
-This document is the strict OMNI integration contract for NOC ConfigMaker.
+This document is the strict OMNI integration contract for NEXUS.
 Authentication model: API key only.
 
 ## Base URLs
 
-- API base: `https://noc-configmaker.nxlink.com/api/v2`
-- UI base: `https://noc-configmaker.nxlink.com/l`
+- API base: `https://nexus.nxlink.com/api/v2`
+- UI base: `https://nexus.nxlink.com/l`
 
 ## Required headers
 
@@ -31,18 +31,18 @@ Recommended environment configuration:
 
 ## Full OMNI endpoint URLs and purpose
 
-- `GET https://noc-configmaker.nxlink.com/api/v2/omni/health` -> health check
-- `GET https://noc-configmaker.nxlink.com/api/v2/omni/whoami` -> key identity and scopes
-- `GET https://noc-configmaker.nxlink.com/api/v2/omni/actions` -> available action IDs
-- `GET https://noc-configmaker.nxlink.com/api/v2/omni/bootstrap` -> integration contract metadata
-- `GET https://noc-configmaker.nxlink.com/api/v2/omni/workflows` -> workflow to action mapping
-- `POST https://noc-configmaker.nxlink.com/api/v2/omni/jobs` -> submit async job
-- `GET https://noc-configmaker.nxlink.com/api/v2/omni/jobs` -> list jobs
-- `GET https://noc-configmaker.nxlink.com/api/v2/omni/jobs/{job_id}` -> job detail
-- `GET https://noc-configmaker.nxlink.com/api/v2/omni/jobs/{job_id}/events` -> job events
-- `POST https://noc-configmaker.nxlink.com/api/v2/omni/jobs/{job_id}/cancel` -> cancel job
-- `PUT https://noc-configmaker.nxlink.com/api/v2/omni/jobs/{job_id}/cancel` -> cancel job
-- `PATCH https://noc-configmaker.nxlink.com/api/v2/omni/jobs/{job_id}` -> cancel job using patch op
+- `GET https://nexus.nxlink.com/api/v2/omni/health` -> health check
+- `GET https://nexus.nxlink.com/api/v2/omni/whoami` -> key identity and scopes
+- `GET https://nexus.nxlink.com/api/v2/omni/actions` -> available action IDs
+- `GET https://nexus.nxlink.com/api/v2/omni/bootstrap` -> integration contract metadata
+- `GET https://nexus.nxlink.com/api/v2/omni/workflows` -> workflow to action mapping
+- `POST https://nexus.nxlink.com/api/v2/omni/jobs` -> submit async job
+- `GET https://nexus.nxlink.com/api/v2/omni/jobs` -> list jobs
+- `GET https://nexus.nxlink.com/api/v2/omni/jobs/{job_id}` -> job detail
+- `GET https://nexus.nxlink.com/api/v2/omni/jobs/{job_id}/events` -> job events
+- `POST https://nexus.nxlink.com/api/v2/omni/jobs/{job_id}/cancel` -> cancel job
+- `PUT https://nexus.nxlink.com/api/v2/omni/jobs/{job_id}/cancel` -> cancel job
+- `PATCH https://nexus.nxlink.com/api/v2/omni/jobs/{job_id}` -> cancel job using patch op
 
 ## Common response envelope
 
@@ -74,7 +74,7 @@ Error responses use FastAPI detail shape:
 ### Request
 
 - Method: `GET`
-- URL: `https://noc-configmaker.nxlink.com/api/v2/omni/health`
+- URL: `https://nexus.nxlink.com/api/v2/omni/health`
 - Body: none
 
 ### Success response (`200`)
@@ -105,7 +105,7 @@ Error responses use FastAPI detail shape:
 ### Request
 
 - Method: `GET`
-- URL: `https://noc-configmaker.nxlink.com/api/v2/omni/whoami`
+- URL: `https://nexus.nxlink.com/api/v2/omni/whoami`
 - Body: none
 
 ### Success response (`200`)
@@ -131,7 +131,7 @@ Error responses use FastAPI detail shape:
 ### Request
 
 - Method: `GET`
-- URL: `https://noc-configmaker.nxlink.com/api/v2/omni/actions`
+- URL: `https://nexus.nxlink.com/api/v2/omni/actions`
 - Body: none
 
 ### Success response (`200`) with full action list
@@ -225,7 +225,7 @@ Error responses use FastAPI detail shape:
 ### Request
 
 - Method: `GET`
-- URL: `https://noc-configmaker.nxlink.com/api/v2/omni/bootstrap`
+- URL: `https://nexus.nxlink.com/api/v2/omni/bootstrap`
 - Body: none
 
 ### Success response (`200`)
@@ -237,7 +237,7 @@ Error responses use FastAPI detail shape:
   "message": "OMNI bootstrap contract",
   "data": {
     "api_version": "v2",
-    "service": "noc-configmaker",
+    "service": "nexus",
     "base_url_hint": "/api/v2",
     "methods_supported": [
       "GET",
@@ -272,7 +272,7 @@ Error responses use FastAPI detail shape:
 ### Request
 
 - Method: `GET`
-- URL: `https://noc-configmaker.nxlink.com/api/v2/omni/workflows`
+- URL: `https://nexus.nxlink.com/api/v2/omni/workflows`
 - Body: none
 
 ### Success response (`200`) with full workflow mapping
@@ -327,7 +327,7 @@ Error responses use FastAPI detail shape:
 ### Request
 
 - Method: `POST`
-- URL: `https://noc-configmaker.nxlink.com/api/v2/omni/jobs`
+- URL: `https://nexus.nxlink.com/api/v2/omni/jobs`
 
 Request JSON:
 
@@ -361,7 +361,7 @@ Request JSON:
 ### Request
 
 - Method: `GET`
-- URL: `https://noc-configmaker.nxlink.com/api/v2/omni/jobs?limit=100`
+- URL: `https://nexus.nxlink.com/api/v2/omni/jobs?limit=100`
 
 ### Success response (`200`)
 
@@ -406,7 +406,7 @@ Request JSON:
 ### Request
 
 - Method: `GET`
-- URL: `https://noc-configmaker.nxlink.com/api/v2/omni/jobs/089d0977-cec4-4cd8-9961-5c2dc9bbb34f`
+- URL: `https://nexus.nxlink.com/api/v2/omni/jobs/089d0977-cec4-4cd8-9961-5c2dc9bbb34f`
 
 ### Success response (`200`)
 
@@ -439,7 +439,7 @@ Request JSON:
 ### Request
 
 - Method: `GET`
-- URL: `https://noc-configmaker.nxlink.com/api/v2/omni/jobs/089d0977-cec4-4cd8-9961-5c2dc9bbb34f/events`
+- URL: `https://nexus.nxlink.com/api/v2/omni/jobs/089d0977-cec4-4cd8-9961-5c2dc9bbb34f/events`
 
 ### Success response (`200`)
 
@@ -469,7 +469,7 @@ Request JSON:
 ### POST cancel request
 
 - Method: `POST`
-- URL: `https://noc-configmaker.nxlink.com/api/v2/omni/jobs/089d0977-cec4-4cd8-9961-5c2dc9bbb34f/cancel`
+- URL: `https://nexus.nxlink.com/api/v2/omni/jobs/089d0977-cec4-4cd8-9961-5c2dc9bbb34f/cancel`
 - Body:
 
 ```json
@@ -479,7 +479,7 @@ Request JSON:
 ### PUT cancel request
 
 - Method: `PUT`
-- URL: `https://noc-configmaker.nxlink.com/api/v2/omni/jobs/089d0977-cec4-4cd8-9961-5c2dc9bbb34f/cancel`
+- URL: `https://nexus.nxlink.com/api/v2/omni/jobs/089d0977-cec4-4cd8-9961-5c2dc9bbb34f/cancel`
 - Body:
 
 ```json
@@ -489,7 +489,7 @@ Request JSON:
 ### PATCH cancel request
 
 - Method: `PATCH`
-- URL: `https://noc-configmaker.nxlink.com/api/v2/omni/jobs/089d0977-cec4-4cd8-9961-5c2dc9bbb34f`
+- URL: `https://nexus.nxlink.com/api/v2/omni/jobs/089d0977-cec4-4cd8-9961-5c2dc9bbb34f`
 - Body:
 
 ```json
@@ -595,7 +595,7 @@ Server configuration:
 ## Copy/paste curl examples
 
 ```bash
-export BASE_URL="https://noc-configmaker.nxlink.com"
+export BASE_URL="https://nexus.nxlink.com"
 export API_KEY="<OMNI_API_KEY>"
 ```
 

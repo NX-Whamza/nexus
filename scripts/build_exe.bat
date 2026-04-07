@@ -1,6 +1,6 @@
 @echo off
 REM ========================================
-REM NOC Config Maker - Executable Builder
+REM NEXUS - Executable Builder
 REM ========================================
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
@@ -8,7 +8,7 @@ for %%I in ("%~dp0..") do set "REPO_ROOT=%%~fI"
 cd /d "%REPO_ROOT%"
 
 echo ========================================
-echo NOC Config Maker - Executable Builder
+echo NEXUS - Executable Builder
 echo ========================================
 echo.
 
@@ -78,7 +78,7 @@ if %ERRORLEVEL% EQU 0 (
     echo Build Complete!
     echo ========================================
     echo.
-    echo Executable location: dist\NOC-ConfigMaker.exe
+    echo Executable location: dist\NEXUS.exe
     echo.
     echo You can now distribute this .exe file.
     echo Users can run it without installing Python.

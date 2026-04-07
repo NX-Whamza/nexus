@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-UI_FILE = REPO_ROOT / "vm_deployment" / "NOC-configMaker.html"
+UI_FILE = REPO_ROOT / "vm_deployment" / "nexus.html"
 
 
 def test_ui_route_registry_and_dynamic_palette_cover_newer_tools():

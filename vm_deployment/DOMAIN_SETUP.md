@@ -1,4 +1,4 @@
-# Domain Setup Guide: noc-configmaker.nxlink.com
+# Domain Setup Guide: nexus.nxlink.com
 
 Production runs through Docker Compose:
 - Docker frontend listens on `127.0.0.1:8000`
@@ -11,14 +11,14 @@ Run these commands on the VM:
 
 ```bash
 ssh <user>@<vm-ip>
-cd ~/noc-configmaker
+cd ~/nexus
 docker compose up -d --build
 bash vm_deployment/configure_nginx_domain.sh
 ```
 
 ## What The Script Does
 
-1. Creates or updates the host nginx site for `noc-configmaker.nxlink.com`
+1. Creates or updates the host nginx site for `nexus.nxlink.com`
 2. Proxies host nginx to the Docker frontend on port `8000`
 3. Obtains or reuses TLS certificates when available
 4. Enables HTTP to HTTPS redirect when certificates are configured
@@ -29,7 +29,7 @@ bash vm_deployment/configure_nginx_domain.sh
 Check the Docker stack:
 
 ```bash
-cd ~/noc-configmaker
+cd ~/nexus
 docker compose ps
 curl -fsS http://127.0.0.1:8000/api/health
 ```
@@ -43,7 +43,7 @@ sudo systemctl status nginx
 
 Then open:
 
-- `https://noc-configmaker.nxlink.com`
+- `https://nexus.nxlink.com`
 
 ## Troubleshooting
 
@@ -52,8 +52,8 @@ If you see the default nginx page:
 - Run `sudo nginx -t && sudo systemctl reload nginx`
 
 If the app is not responding:
-- Run `cd ~/noc-configmaker && docker compose ps`
-- Run `cd ~/noc-configmaker && docker compose logs --tail=200 backend frontend`
+- Run `cd ~/nexus && docker compose ps`
+- Run `cd ~/nexus && docker compose logs --tail=200 backend frontend`
 - Verify the local health endpoint: `curl -fsS http://127.0.0.1:8000/api/health`
 
 If TLS setup fails:
@@ -67,7 +67,7 @@ If you get connection errors:
 ## Manual Nginx Reload
 
 ```bash
-sudo nano /etc/nginx/sites-available/noc-configmaker-domain
+sudo nano /etc/nginx/sites-available/nexus-domain
 sudo nginx -t && sudo systemctl reload nginx
 ```
 

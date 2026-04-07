@@ -1,4 +1,4 @@
-# NOC Config Maker Documentation
+# NEXUS Documentation
 
 This directory is the canonical documentation set for the repository.
 

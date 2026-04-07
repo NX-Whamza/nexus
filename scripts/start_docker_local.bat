@@ -1,5 +1,5 @@
 @echo off
-title NOC Config Maker - Docker Local
+title NEXUS - Docker Local
 color 0A
 
 cd /d "%~dp0.."
@@ -12,7 +12,7 @@ if %errorlevel% neq 0 (
   exit /b 1
 )
 
-echo Starting NOC Config Maker via Docker Compose...
+echo Starting NEXUS via Docker Compose...
 docker compose up -d --build
 if errorlevel 1 (
   echo.

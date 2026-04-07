@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Complete HTML Update Script
-Updates both NOC-configMaker.html files with:
+Updates both nexus.html files with:
 1. Feedback form submission handler
 2. Migration UI with device selection
 3. All necessary JavaScript functions
@@ -12,8 +12,8 @@ import os
 from pathlib import Path
 
 # File paths
-ROOT_HTML = Path("NOC-configMaker.html")
-VM_HTML = Path("vm_deployment/NOC-configMaker.html")
+ROOT_HTML = Path("nexus.html")
+VM_HTML = Path("vm_deployment/nexus.html")
 
 def add_feedback_handler(html_content):
     """Add feedback form submission handler if missing"""
@@ -210,7 +210,7 @@ def process_html_file(filepath):
 def main():
     """Main execution"""
     print("="*60)
-    print("NOC Config Maker - Complete HTML Update")
+    print("NEXUS - Complete HTML Update")
     print("="*60)
     
     # Process both files

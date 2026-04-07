@@ -23,7 +23,7 @@ echo   3. Manual frontend:
 echo      python -m http.server 8000 --directory vm_deployment
 echo.
 echo   4. Open UI:
-echo      http://localhost:8000/NOC-configMaker.html
+echo      http://localhost:8000/nexus.html
 echo.
 echo For packaged/EXE-style local serving, use:
 echo      vm_deployment\launcher.py

@@ -1,4 +1,4 @@
-# NOC ConfigMaker API v2
+# NEXUS API v2
 
 This is the production contract for OMNI and other API clients.
 Everything below uses exact request/response JSON shapes with no abbreviated payloads.
@@ -6,10 +6,10 @@ Public examples should be read as tenant-neutral contract examples, not Nextlink
 
 ## Base URL
 
-- API: `https://noc-configmaker.nxlink.com/api/v2`
-- OMNI aliases: `https://noc-configmaker.nxlink.com/api/v2/omni/*`
-- Interactive Swagger: `https://noc-configmaker.nxlink.com/docs`
-- UI: `https://noc-configmaker.nxlink.com/l`
+- API: `https://nexus.nxlink.com/api/v2`
+- OMNI aliases: `https://nexus.nxlink.com/api/v2/omni/*`
+- Interactive Swagger: `https://nexus.nxlink.com/docs`
+- UI: `https://nexus.nxlink.com/l`
 
 ## Authentication
 
@@ -106,7 +106,7 @@ Idempotency-Key: 1dbff6c0-4676-4c48-85f1-49b40d09c89a
 
 ### Request
 
-`GET https://noc-configmaker.nxlink.com/api/v2/omni/health`
+`GET https://nexus.nxlink.com/api/v2/omni/health`
 
 ### Response `200`
 
@@ -135,7 +135,7 @@ Idempotency-Key: 1dbff6c0-4676-4c48-85f1-49b40d09c89a
 
 ### Request
 
-`GET https://noc-configmaker.nxlink.com/api/v2/omni/whoami`
+`GET https://nexus.nxlink.com/api/v2/omni/whoami`
 
 ### Response `200`
 
@@ -159,7 +159,7 @@ Idempotency-Key: 1dbff6c0-4676-4c48-85f1-49b40d09c89a
 
 ### Request
 
-`GET https://noc-configmaker.nxlink.com/api/v2/omni/actions`
+`GET https://nexus.nxlink.com/api/v2/omni/actions`
 
 ### Response `200`
 
@@ -270,7 +270,7 @@ Idempotency-Key: 1dbff6c0-4676-4c48-85f1-49b40d09c89a
 
 ### Request
 
-`GET https://noc-configmaker.nxlink.com/api/v2/omni/bootstrap`
+`GET https://nexus.nxlink.com/api/v2/omni/bootstrap`
 
 ### Response `200`
 
@@ -281,7 +281,7 @@ Idempotency-Key: 1dbff6c0-4676-4c48-85f1-49b40d09c89a
   "message": "OMNI bootstrap contract",
   "data": {
     "api_version": "v2",
-    "service": "noc-configmaker",
+    "service": "nexus",
     "base_url_hint": "/api/v2",
     "methods_supported": [
       "GET",
@@ -315,7 +315,7 @@ Idempotency-Key: 1dbff6c0-4676-4c48-85f1-49b40d09c89a
 
 ### Request
 
-`GET https://noc-configmaker.nxlink.com/api/v2/omni/workflows`
+`GET https://nexus.nxlink.com/api/v2/omni/workflows`
 
 ### Response `200`
 
@@ -417,7 +417,7 @@ Idempotency-Key: 1dbff6c0-4676-4c48-85f1-49b40d09c89a
 
 ### Request
 
-`POST https://noc-configmaker.nxlink.com/api/v2/omni/jobs`
+`POST https://nexus.nxlink.com/api/v2/omni/jobs`
 
 Request body:
 
@@ -484,7 +484,7 @@ Missing action:
 
 ### Request
 
-`GET https://noc-configmaker.nxlink.com/api/v2/omni/jobs?limit=100`
+`GET https://nexus.nxlink.com/api/v2/omni/jobs?limit=100`
 
 ### Response `200`
 
@@ -528,7 +528,7 @@ Missing action:
 
 ### Request
 
-`GET https://noc-configmaker.nxlink.com/api/v2/omni/jobs/089d0977-cec4-4cd8-9961-5c2dc9bbb34f`
+`GET https://nexus.nxlink.com/api/v2/omni/jobs/089d0977-cec4-4cd8-9961-5c2dc9bbb34f`
 
 ### Response `200`
 
@@ -574,7 +574,7 @@ Not found:
 
 ### Request
 
-`GET https://noc-configmaker.nxlink.com/api/v2/omni/jobs/089d0977-cec4-4cd8-9961-5c2dc9bbb34f/events`
+`GET https://nexus.nxlink.com/api/v2/omni/jobs/089d0977-cec4-4cd8-9961-5c2dc9bbb34f/events`
 
 ### Response `200`
 
@@ -610,7 +610,7 @@ All cancel variants perform the same operation.
 
 ### POST cancel
 
-`POST https://noc-configmaker.nxlink.com/api/v2/omni/jobs/089d0977-cec4-4cd8-9961-5c2dc9bbb34f/cancel`
+`POST https://nexus.nxlink.com/api/v2/omni/jobs/089d0977-cec4-4cd8-9961-5c2dc9bbb34f/cancel`
 
 Body:
 
@@ -620,7 +620,7 @@ Body:
 
 ### PUT cancel
 
-`PUT https://noc-configmaker.nxlink.com/api/v2/omni/jobs/089d0977-cec4-4cd8-9961-5c2dc9bbb34f/cancel`
+`PUT https://nexus.nxlink.com/api/v2/omni/jobs/089d0977-cec4-4cd8-9961-5c2dc9bbb34f/cancel`
 
 Body:
 
@@ -630,7 +630,7 @@ Body:
 
 ### PATCH cancel
 
-`PATCH https://noc-configmaker.nxlink.com/api/v2/omni/jobs/089d0977-cec4-4cd8-9961-5c2dc9bbb34f`
+`PATCH https://nexus.nxlink.com/api/v2/omni/jobs/089d0977-cec4-4cd8-9961-5c2dc9bbb34f`
 
 Body:
 
@@ -1089,6 +1089,6 @@ Re-run prechecks on devices.
 
 ## Runtime API Docs
 
-- Swagger UI: `https://noc-configmaker.nxlink.com/docs`
+- Swagger UI: `https://nexus.nxlink.com/docs`
 - The published integration surface is the interactive Swagger at `/docs`.
 - OMNI consumers should treat `/docs` as the primary contract reference for request/response JSON shapes.

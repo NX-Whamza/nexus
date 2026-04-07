@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('vm_deployment/NOC-configMaker.html', '.'), ('vm_deployment/login.html', '.'), ('vm_deployment/change-password.html', '.'), ('vm_deployment/config_policies', 'config_policies'), ('vm_deployment/nextlink_standards.py', '.'), ('vm_deployment/nextlink_enterprise_reference.py', '.'), ('vm_deployment/nextlink_compliance_reference.py', '.')]
+datas = [('vm_deployment/nexus.html', '.'), ('vm_deployment/login.html', '.'), ('vm_deployment/change-password.html', '.'), ('vm_deployment/config_policies', 'config_policies'), ('vm_deployment/nextlink_standards.py', '.'), ('vm_deployment/nextlink_enterprise_reference.py', '.'), ('vm_deployment/nextlink_compliance_reference.py', '.')]
 binaries = []
 hiddenimports = ['flask', 'flask_cors', 'werkzeug', 'werkzeug.serving', 'requests', 'sqlite3', 'dotenv', 'api_server', 'nextlink_standards', 'nextlink_enterprise_reference', 'nextlink_compliance_reference', 'hashlib', 'secrets', 'base64', 'json', 'jwt', 'jwt.algorithms']
 tmp_ret = collect_all('flask')
@@ -31,7 +31,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='NOC-ConfigMaker',
+    name='NEXUS',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

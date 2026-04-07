@@ -1,13 +1,13 @@
 @echo off
 REM ========================================
-REM NOC Config Maker - Network Access Setup
+REM NEXUS - Network Access Setup
 REM Adds Windows Firewall rules for network access
 REM Run this as Administrator
 REM ========================================
 cd /d "%~dp0"
 
 echo ========================================
-echo NOC Config Maker - Network Access Setup
+echo NEXUS - Network Access Setup
 echo ========================================
 echo.
 echo This script will add Windows Firewall rules to allow:
@@ -29,8 +29,8 @@ if %ERRORLEVEL% NEQ 0 (
 echo [*] Adding firewall rules...
 
 REM Add rule for HTML server (port 8000)
-netsh advfirewall firewall delete rule name="NOC ConfigMaker HTTP Server" >nul 2>&1
-netsh advfirewall firewall add rule name="NOC ConfigMaker HTTP Server" dir=in action=allow protocol=TCP localport=8000
+netsh advfirewall firewall delete rule name="NEXUS HTTP Server" >nul 2>&1
+netsh advfirewall firewall add rule name="NEXUS HTTP Server" dir=in action=allow protocol=TCP localport=8000
 if %ERRORLEVEL% EQU 0 (
     echo [OK] Port 8000 rule added
 ) else (
@@ -38,8 +38,8 @@ if %ERRORLEVEL% EQU 0 (
 )
 
 REM Add rule for API server (port 5000)
-netsh advfirewall firewall delete rule name="NOC ConfigMaker API Server" >nul 2>&1
-netsh advfirewall firewall add rule name="NOC ConfigMaker API Server" dir=in action=allow protocol=TCP localport=5000
+netsh advfirewall firewall delete rule name="NEXUS API Server" >nul 2>&1
+netsh advfirewall firewall add rule name="NEXUS API Server" dir=in action=allow protocol=TCP localport=5000
 if %ERRORLEVEL% EQU 0 (
     echo [OK] Port 5000 rule added
 ) else (
@@ -52,7 +52,7 @@ echo Setup complete!
 echo ========================================
 echo.
 echo Servers should now be accessible from network:
-echo - Frontend: http://YOUR_IP:8000/NOC-configMaker.html
+echo - Frontend: http://YOUR_IP:8000/nexus.html
 echo - Backend API: http://YOUR_IP:5000
 echo.
 echo To find your IP address, run: ipconfig

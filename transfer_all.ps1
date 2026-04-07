@@ -1,4 +1,4 @@
-# NOC Config Maker - Build & Deploy Script
+# NEXUS - Build & Deploy Script
 # Combines package creation and VM transfer into a single workflow.
 
 $vmUser = if ($env:NOC_VM_USER) { $env:NOC_VM_USER } else { "CHANGE_ME" }
@@ -8,7 +8,7 @@ $sshKeyPath = "$env:USERPROFILE\.ssh\id_rsa_noc_vm"
 $sshTarget = "{0}@{1}" -f $vmUser, $vmIP
 
 Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "NOC Config Maker - Build & Deploy" -ForegroundColor Cyan
+Write-Host "NEXUS - Build & Deploy" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -29,7 +29,7 @@ if (-not (Test-Path $vmDeploymentPath)) {
 $includeItems = @(
     "api_server.py",
     "launcher.py",
-    "NOC-configMaker.html",
+    "nexus.html",
     "login.html",
     "change-password.html",
     "requirements.txt",
@@ -40,7 +40,7 @@ $includeItems = @(
     "nextlink_compliance_reference.py",
     "nextlink_enterprise_reference.py",
     "nextlink_standards.py",
-    "noc-configmaker.service",
+    "nexus.service",
     "setup_vm.sh",
     "configure_nginx_domain.sh",
     "fix_nginx_now.sh",
@@ -80,7 +80,7 @@ ADMIN_EMAILS=netops@team.nxlink.com,whamza@team.nxlink.com
 '@
 $envTemplate | Out-File -FilePath (Join-Path $tempDir ".env.template") -Encoding UTF8
 
-$archiveName = "noc-configmaker-vm-$(Get-Date -Format 'yyyyMMdd-HHmmss').tar.gz"
+$archiveName = "nexus-vm-$(Get-Date -Format 'yyyyMMdd-HHmmss').tar.gz"
 $archivePath = Join-Path $projectRoot $archiveName
 
 if (Get-Command tar -ErrorAction SilentlyContinue) {
@@ -122,7 +122,7 @@ if ($scpExit -eq 0) {
     Write-Host "1. ssh $vmUser@$vmIP" -ForegroundColor White
     Write-Host "2. cd ~/vm_deployment" -ForegroundColor White
     Write-Host "3. Extract the archive:" -ForegroundColor White
-    Write-Host "   tar -xzf noc-configmaker-vm-*.tar.gz" -ForegroundColor Gray
+    Write-Host "   tar -xzf nexus-vm-*.tar.gz" -ForegroundColor Gray
     Write-Host "4. Make scripts executable:" -ForegroundColor White
     Write-Host "   chmod +x *.sh" -ForegroundColor Gray
     Write-Host "5. Run fix script:" -ForegroundColor White

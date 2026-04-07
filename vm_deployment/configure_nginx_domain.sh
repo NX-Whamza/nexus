@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DOMAIN="${DOMAIN:-noc-configmaker.nxlink.com}"
+DOMAIN="${DOMAIN:-nexus.nxlink.com}"
 IP_ADDR="${IP_ADDR:-192.168.11.118}"
 
 # Repo docker-compose exposes the frontend container on host port 8000.
 # The frontend Nginx proxies /api/* to the backend container.
 UPSTREAM_URL="${UPSTREAM_URL:-http://127.0.0.1:8000}"
 
-CONFIG_NAME="noc-configmaker-domain"
+CONFIG_NAME="nexus-domain"
 CONFIG_PATH="/etc/nginx/sites-available/${CONFIG_NAME}"
 ENABLED_PATH="/etc/nginx/sites-enabled/${CONFIG_NAME}"
 
@@ -136,8 +136,8 @@ attempt_certbot() {
 configure_firewall() {
   if command -v ufw >/dev/null 2>&1 && sudo ufw status | grep -q "Status: active"; then
     info "Opening HTTP/HTTPS ports in ufw..."
-    sudo ufw allow 80/tcp comment "HTTP - NOC Config Maker" >/dev/null 2>&1 || true
-    sudo ufw allow 443/tcp comment "HTTPS - NOC Config Maker" >/dev/null 2>&1 || true
+    sudo ufw allow 80/tcp comment "HTTP - NEXUS" >/dev/null 2>&1 || true
+    sudo ufw allow 443/tcp comment "HTTPS - NEXUS" >/dev/null 2>&1 || true
     ok "Firewall rules updated (ports 80 and 443)."
   fi
 }
@@ -245,4 +245,4 @@ curl -fsS "${UPSTREAM_URL}/api/health" | head -c 200 || warn "Upstream not reach
 
 echo ""
 info "If docker isn't running yet, start it from the repo root:"
-echo "  cd ~/noc-configmaker && docker compose up -d --build"
+echo "  cd ~/nexus && docker compose up -d --build"

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Minimal smoke tests for NOC Config Maker backend.
+Minimal smoke tests for NEXUS backend.
 
 Run:
   python tests/smoke_api.py

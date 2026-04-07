@@ -24,7 +24,7 @@ def get(path):
 results = []
 
 # 1. HTML page
-code, _ = get("/NOC-configMaker.html")
+code, _ = get("/nexus.html")
 results.append(("HTML Page", code, code == 200))
 
 # 2. Health

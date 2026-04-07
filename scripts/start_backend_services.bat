@@ -1,6 +1,6 @@
 @echo off
 REM ========================================
-REM NOC Config Maker - Unified Backend Startup
+REM NEXUS - Unified Backend Startup
 REM Starts all required backend services in one script
 REM ========================================
 setlocal enabledelayedexpansion
@@ -9,7 +9,7 @@ for %%I in ("%SCRIPT_DIR%..") do set "REPO_ROOT=%%~fI"
 cd /d "%REPO_ROOT%"
 
 echo ========================================
-echo NOC Config Maker - Unified Backend Startup
+echo NEXUS - Unified Backend Startup
 echo ========================================
 echo.
 echo This script will start:
@@ -73,7 +73,7 @@ echo.
 REM ===== Step 2: Start HTML Frontend Server =====
 echo [2/2] Starting HTML Frontend Server...
 REM Check if frontend is already running
-curl -s http://localhost:8000/NOC-configMaker.html >nul 2>&1
+curl -s http://localhost:8000/nexus.html >nul 2>&1
 if %ERRORLEVEL% EQU 0 (
     echo [2/2] WARNING: Frontend server is already running on port 8000
     echo [2/2]    Skipping startup to avoid conflicts
@@ -93,7 +93,7 @@ echo ========================================
 echo.
 echo Backend Services:
 echo   Backend API:   http://localhost:5000
-echo   Frontend:      http://localhost:8000/NOC-configMaker.html
+echo   Frontend:      http://localhost:8000/nexus.html
 echo.
 
 REM Try to get local IP address (multiple methods)
@@ -109,13 +109,13 @@ for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /i /c:"IPv4"') do (
 :found_ip
 if defined LOCAL_IP (
     echo Network Access (for coworkers):
-    echo   Frontend:      http://%LOCAL_IP%:8000/NOC-configMaker.html
+    echo   Frontend:      http://%LOCAL_IP%:8000/nexus.html
     echo   Backend API:   http://%LOCAL_IP%:5000/api
     echo.
 ) else (
     echo Network Access:
     echo   Run 'ipconfig' to find your IP address
-    echo   Then use: http://YOUR_IP:8000/NOC-configMaker.html
+    echo   Then use: http://YOUR_IP:8000/nexus.html
     echo.
 )
 

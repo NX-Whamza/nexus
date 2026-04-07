@@ -16,19 +16,19 @@ python build_exe.py
 
 After building, the executable is here:
 ```
-dist\NOC-ConfigMaker.exe
+dist\NEXUS.exe
 ```
 
 ## Step 3: Test It
 
-1. Double-click `NOC-ConfigMaker.exe`
+1. Double-click `NEXUS.exe`
 2. A console window will open showing status
-3. Your browser will open automatically to `http://localhost:8000/NOC-configMaker.html`
+3. Your browser will open automatically to `http://localhost:8000/nexus.html`
 4. The application is ready to use!
 
 ## Step 4: Distribute
 
-Share the `NOC-ConfigMaker.exe` file with your team. They can:
+Share the `NEXUS.exe` file with your team. They can:
 - Download it
 - Run it (no Python installation needed)
 - Use the tool immediately

@@ -1,15 +1,15 @@
 @echo off
 REM ========================================
-REM NOC Config Maker - GitHub Setup
+REM NEXUS - GitHub Setup
 REM ========================================
 cd /d "%~dp0"
 
 echo ========================================
-echo NOC Config Maker - GitHub Repository Setup
+echo NEXUS - GitHub Repository Setup
 echo ========================================
 echo.
 echo This script will help you create a GitHub repository
-echo and push your NOC Config Maker project to it.
+echo and push your NEXUS project to it.
 echo.
 echo Prerequisites:
 echo 1. GitHub account (https://github.com)
@@ -45,7 +45,7 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo [3/6] Creating initial commit...
-git commit -m "Initial commit: NOC Config Maker with AI chat memory system"
+git commit -m "Initial commit: NEXUS with AI chat memory system"
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Failed to create initial commit
     pause
@@ -58,7 +58,7 @@ if %ERRORLEVEL% EQU 0 (
     echo [GITHUB CLI] Found! Creating repository automatically...
     echo.
     echo Please enter your GitHub repository name:
-    echo (e.g., noc-configmaker, routeros-ai-tool, etc.)
+    echo (e.g., nexus, routeros-ai-tool, etc.)
     set /p REPO_NAME="Repository name: "
     
     echo.
@@ -103,7 +103,7 @@ if %ERRORLEVEL% EQU 0 (
     echo ========================================
     echo.
     echo 1. Go to https://github.com/new
-    echo 2. Create a new repository (e.g., 'noc-configmaker')
+    echo 2. Create a new repository (e.g., 'nexus')
     echo 3. Copy the repository URL
     echo 4. Run these commands:
     echo.
@@ -112,12 +112,12 @@ if %ERRORLEVEL% EQU 0 (
     echo    git push -u origin main
     echo.
     echo Example:
-    echo    git remote add origin https://github.com/username/noc-configmaker.git
+    echo    git remote add origin https://github.com/username/nexus.git
     echo    git branch -M main
     echo    git push -u origin main
     echo.
     echo 5. Your project will be available at:
-    echo    https://github.com/username/noc-configmaker
+    echo    https://github.com/username/nexus
     echo.
 )
 
@@ -134,6 +134,6 @@ echo    pip install -r requirements.txt
 echo 4. Start the server:
 echo    start_backend.bat
 echo.
-echo Your NOC Config Maker is now on GitHub! 🚀
+echo Your NEXUS is now on GitHub! 🚀
 echo.
 pause

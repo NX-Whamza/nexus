@@ -1,6 +1,6 @@
-# NOC Config Maker - Changelog
+# NEXUS - Changelog
 
-This document tracks all updates, improvements, and fixes to the NOC Config Maker tool.
+This document tracks all updates, improvements, and fixes to the NEXUS tool.
 
 ---
 
@@ -262,7 +262,7 @@ This document tracks all updates, improvements, and fixes to the NOC Config Make
    - Better tracking of when/where activities are being logged
 
 **FILES MODIFIED**:
-- `NOC-configMaker.html`: Fixed API endpoints, integrated ongoing display, enhanced logging
+- `nexus.html`: Fixed API endpoints, integrated ongoing display, enhanced logging
 - `build_exe.py`: Rebuilt with all fixes
 
 **DATA PERSISTENCE CONFIRMED**:
@@ -331,7 +331,7 @@ This document tracks all updates, improvements, and fixes to the NOC Config Make
 - ✅ `ENV_TEMPLATE.txt` - Environment variable template for deployment
 - ✅ `config_policies/nextlink/router-interface-policy.md` - Universal interface policy
 - ✅ `api_server.py` - Email functionality uncommented and enhanced
-- ✅ `NOC-configMaker.html` - Auto-refresh for dashboard metrics
+- ✅ `nexus.html` - Auto-refresh for dashboard metrics
 - ✅ `README.md` - Complete rewrite with VM deployment focus
 - ✅ `docs/COMPLETE_DOCUMENTATION.md` - Security section updated
 
@@ -484,7 +484,7 @@ The frontend and backend were calling different endpoints! Fixed:
 - **Multi-User Visibility**: See what everyone is working on (with shared backend)
 
 **Files Modified**:
-- `NOC-configMaker.html` - Added `saveConfigToHistory()` calls after each config generation
+- `nexus.html` - Added `saveConfigToHistory()` calls after each config generation
 - `api_server.py` - Added 6 new endpoints with SQLite database integration
 
 **How It Works**:
@@ -555,7 +555,7 @@ The frontend and backend were calling different endpoints! Fixed:
 - All modals use consistent styling and animations
 
 **Files Modified**:
-- `NOC-configMaker.html` (~400 lines added for Settings/Feedback/Announcements)
+- `nexus.html` (~400 lines added for Settings/Feedback/Announcements)
 - `api_server.py` (~150 lines added for feedback and activity endpoints)
 
 **Critical Fixes Applied**:
@@ -635,7 +635,7 @@ The frontend and backend were calling different endpoints! Fixed:
    - Persistent across browser sessions
 
 **Technical Details**:
-- **Files Modified**: Only `NOC-configMaker.html` (~500 lines changed)
+- **Files Modified**: Only `nexus.html` (~500 lines changed)
 - **No Backend Changes**: All Python files unchanged
 - **Navigation System**: New `navigateToTab()` function for centralized routing
 - **Metrics Updates**: Automatic `updateDashboardMetrics()` and `updateRecentActivity()`
@@ -684,19 +684,19 @@ The frontend and backend were calling different endpoints! Fixed:
 - Correct format for RouterOS 7.11.2: `speed=10Gbps` (no duplex parameter)
 
 **Solutions Applied**:
-1. ✅ **Fixed 6GHz Switch Config speed syntax** (`NOC-configMaker.html` lines 2641, 2857):
+1. ✅ **Fixed 6GHz Switch Config speed syntax** (`nexus.html` lines 2641, 2857):
    - Changed: `'10Gbps-duplex=full'` → `'10Gbps'`
    - Now generates: `set [ find default-name=sfp-sfpplus8 ] comment="SWT-CRS326 Uplink #1 - BONDED" speed=10Gbps` ✅
    - Applies to both IN-STATE (MT326 bonding) and OUT-OF-STATE (MT309/CCR2004 single port) configs
 
-2. ✅ **Fixed Enterprise Feeding dropdown options** (`NOC-configMaker.html` lines 2401-2406):
+2. ✅ **Fixed Enterprise Feeding dropdown options** (`nexus.html` lines 2401-2406):
    - Changed dropdown values:
      - `10Mbps-duplex=full` → `10Mbps`
      - `100Mbps-duplex=full` → `100Mbps`
      - `1Gbps-duplex=full` → `1Gbps`
      - `10Gbps-duplex=full` → `10Gbps`
 
-3. ✅ **Fixed getSpeedSyntax() function** (`NOC-configMaker.html` lines 2330-2334):
+3. ✅ **Fixed getSpeedSyntax() function** (`nexus.html` lines 2330-2334):
    - Legacy syntax now returns: `1Gbps` (no duplex parameter)
    - Code at line 8918-8923 correctly handles format by adding `speed=` prefix
 
@@ -722,7 +722,7 @@ The frontend and backend were calling different endpoints! Fixed:
 5. **Scattered sections** - BGP template, firewall rules in wrong places
 
 **Solutions Applied**:
-1. ✅ **Fixed sourceDevice undefined error** (`NOC-configMaker.html` line 9477-9493):
+1. ✅ **Fixed sourceDevice undefined error** (`nexus.html` line 9477-9493):
    - Added `sourceDevice` extraction at start of `performUpgrade()` function
    - Extracts from uploaded filename or system identity
    - Progress bar now completes 0% → 100% without errors
@@ -1065,7 +1065,7 @@ set [ find default-name=sfp28-5 ] auto-negotiation=no comment=TX-LAMPASAS-NE-1 l
 ### Removed Duplicates
 - **Fixed**: Removed duplicate `from pathlib import Path` (was on lines 40 and 50)
 - **Fixed**: Removed duplicate `import os` and `import shutil` (already imported at top)
-- **Fixed**: Removed duplicate `downloadUpgradeOutput()` function in `NOC-configMaker.html`
+- **Fixed**: Removed duplicate `downloadUpgradeOutput()` function in `nexus.html`
 - **Removed**: `rebuild_exe.bat` (duplicate of `rebuild_exe_safe.bat`)
 
 ### Improved Print Statement Handling
@@ -1101,7 +1101,7 @@ set [ find default-name=sfp28-5 ] auto-negotiation=no comment=TX-LAMPASAS-NE-1 l
 - **Only migrates**: If files exist and new location doesn't already have them
 
 ### HTTP Server Security
-- ✅ Only `NOC-configMaker.html` accessible
+- ✅ Only `nexus.html` accessible
 - ✅ All sensitive files/directories blocked:
   - `secure_data/` (databases)
   - `.git/`, `__pycache__/`

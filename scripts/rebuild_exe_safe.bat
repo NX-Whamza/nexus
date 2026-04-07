@@ -4,14 +4,14 @@ setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 echo ========================================
-echo NOC Config Maker - Safe Rebuild
+echo NEXUS - Safe Rebuild
 echo ========================================
 echo.
 
 REM Check if executable is running
-tasklist /FI "IMAGENAME eq NOC-ConfigMaker.exe" 2>NUL | find /I /N "NOC-ConfigMaker.exe">NUL
+tasklist /FI "IMAGENAME eq NEXUS.exe" 2>NUL | find /I /N "NEXUS.exe">NUL
 if "%ERRORLEVEL%"=="0" (
-    echo [WARNING] NOC-ConfigMaker.exe is currently running!
+    echo [WARNING] NEXUS.exe is currently running!
     echo.
     echo Please close the application window first, then press any key to continue...
     pause >nul
@@ -19,7 +19,7 @@ if "%ERRORLEVEL%"=="0" (
 )
 
 REM Check again after pause
-tasklist /FI "IMAGENAME eq NOC-ConfigMaker.exe" 2>NUL | find /I /N "NOC-ConfigMaker.exe">NUL
+tasklist /FI "IMAGENAME eq NEXUS.exe" 2>NUL | find /I /N "NEXUS.exe">NUL
 if "%ERRORLEVEL%"=="0" (
     echo [ERROR] Executable is still running. Please close it manually.
     echo.
@@ -55,7 +55,7 @@ echo [2/3] Rebuilding executable...
 echo This may take several minutes...
 echo.
 
-python -m PyInstaller --clean --noconfirm NOC-ConfigMaker.spec
+python -m PyInstaller --clean --noconfirm nexus.spec
 
 if %ERRORLEVEL% EQU 0 (
     echo.
@@ -63,7 +63,7 @@ if %ERRORLEVEL% EQU 0 (
     echo ✓ Build Complete!
     echo ========================================
     echo.
-    echo Executable location: dist\NOC-ConfigMaker.exe
+    echo Executable location: dist\NEXUS.exe
     echo.
     echo You can now test the new executable.
     echo.

@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 repo_root = Path(__file__).resolve().parents[1]
-UI_FILE = repo_root / "vm_deployment" / "NOC-configMaker.html"
+UI_FILE = repo_root / "vm_deployment" / "nexus.html"
 AP_FILE = repo_root / "vm_deployment" / "ido_modules" / "rest" / "ap.py"
 SWITCH_FILE = repo_root / "vm_deployment" / "ido_modules" / "rest" / "switch.py"
 UPS_FILE = repo_root / "vm_deployment" / "ido_modules" / "rest" / "ups.py"

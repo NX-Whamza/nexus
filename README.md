@@ -1,4 +1,4 @@
-# NOC Config Maker
+# NEXUS
 
 > **Intelligent Network Configuration Generator for Nextlink Internet**  
 > Automate MikroTik RouterOS configurations with AI-powered validation and compliance checking
@@ -71,7 +71,7 @@ Network operations teams face significant challenges when configuring MikroTik r
 
 ## ✅ Our Solution
 
-### NOC Config Maker: Intelligent Automation Platform
+### NEXUS: Intelligent Automation Platform
 
 A unified web application that generates production-ready MikroTik RouterOS configurations with:
 
@@ -157,14 +157,14 @@ RouterOS Ver Interface Mapping   Syntax Validation   Audit Trail    Verify
 
 1. **Download the latest release**:
    ```bash
-   # Get NOC-ConfigMaker.exe from releases
+   # Get NEXUS.exe from releases
    ```
 
 2. **Run the application**:
    ```bash
-   # Double-click NOC-ConfigMaker.exe
+   # Double-click NEXUS.exe
    # Or from command line:
-   NOC-ConfigMaker.exe
+   NEXUS.exe
    ```
 
 3. **Access the web interface**:
@@ -178,8 +178,8 @@ RouterOS Ver Interface Mapping   Syntax Validation   Audit Trail    Verify
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/NX-Whamza/noc-configmaker.git
-   cd noc-configmaker
+   git clone https://github.com/NX-Whamza/nexus.git
+   cd nexus
    ```
 
 2. **Install dependencies**:
@@ -198,7 +198,7 @@ RouterOS Ver Interface Mapping   Syntax Validation   Audit Trail    Verify
    ```
 
 5. **Access the application**:
-   - Navigate to `http://localhost:8000/NOC-configMaker.html`
+   - Navigate to `http://localhost:8000/nexus.html`
    - Login and start generating configs
 
 ### Option 3: Production VM Deployment
@@ -467,7 +467,7 @@ Follow steps 5-8 from Scenario 1
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     NOC Config Maker                        │
+│                     NEXUS                        │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  ┌──────────────┐      ┌──────────────┐      ┌──────────┐ │
@@ -502,9 +502,9 @@ Follow steps 5-8 from Scenario 1
 ### File Structure
 
 ```
-noc-configmaker/
+nexus/
 ├── api_server.py                 # Backend API server
-├── NOC-configMaker.html          # Main application UI
+├── nexus.html          # Main application UI
 ├── login.html                    # Authentication page
 ├── change-password.html          # Password management
 ├── vm_deployment/launcher.py     # Packaged launcher / EXE entrypoint
@@ -527,7 +527,7 @@ noc-configmaker/
 │   └── feedback.db               # User feedback
 │
 ├── vm_deployment/                # VM deployment files
-│   ├── NOC-configMaker.html
+│   ├── nexus.html
 │   ├── login.html
 │   ├── api_server.py
 │   └── ...
@@ -546,8 +546,8 @@ noc-configmaker/
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/NX-Whamza/noc-configmaker.git
-cd noc-configmaker
+git clone https://github.com/NX-Whamza/nexus.git
+cd nexus
 
 # 2. Install dependencies
 py -3.13 -m pip install -r requirements.txt
@@ -559,7 +559,7 @@ py -3.13 -m uvicorn --app-dir vm_deployment fastapi_server:app --host 0.0.0.0 --
 py -3.13 -m http.server 8000 --directory vm_deployment
 
 # 5. Access application
-# http://localhost:8000/NOC-configMaker.html
+# http://localhost:8000/nexus.html
 ```
 
 ### Production VM Deployment
@@ -584,13 +584,13 @@ py -3.13 -m http.server 8000 --directory vm_deployment
 ```bash
 # Files are automatically transferred via SCP
 # Or manually:
-scp noc-configmaker-vm-*.tar.gz user@vm:/opt/noc/
+scp nexus-vm-*.tar.gz user@vm:/opt/noc/
 ```
 
 **3. Extract on VM**
 ```bash
 cd /opt/noc
-tar -xzf noc-configmaker-vm-*.tar.gz
+tar -xzf nexus-vm-*.tar.gz
 ```
 
 **4. Configure Environment**
@@ -658,10 +658,10 @@ https://config.nxlink.com
 # 2. Deploy to VM
 ssh user@vm
 cd /opt/noc
-tar -xzf noc-configmaker-vm-*.tar.gz
+tar -xzf nexus-vm-*.tar.gz
 
 # 3. Restart service
-sudo systemctl restart noc-configmaker
+sudo systemctl restart nexus
 
 # 4. Verify
 curl http://localhost:5000/api/health

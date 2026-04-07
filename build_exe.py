@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Build script to create executable for NOC Config Maker
+Build script to create executable for NEXUS
 Uses PyInstaller to bundle backend, frontend, and dependencies
 """
 import os
@@ -28,7 +28,7 @@ def build_exe():
     vm_dir = script_dir / "vm_deployment"
     
     print("=" * 70)
-    print("NOC Config Maker - Unified Backend Builder")
+    print("NEXUS - Unified Backend Builder")
     print("=" * 70)
     print()
     print("Building single executable with integrated backend...")
@@ -55,13 +55,13 @@ def build_exe():
     # Build PyInstaller command with clean, minimal imports
     cmd = [
         sys.executable, "-m", "PyInstaller",
-        "--name=NOC-ConfigMaker",
+        "--name=NEXUS",
         "--onefile",
         "--console",  # Keep console for backend logs
         "--clean",  # Clean PyInstaller cache before building
         
         # Data files (IMPORTANT: secure_data is NOT bundled - it stays separate for data persistence)
-        data_arg("NOC-configMaker.html", "."),
+        data_arg("nexus.html", "."),
         data_arg("login.html", "."),
         data_arg("change-password.html", "."),
         data_arg("config_policies", "config_policies"),
@@ -132,7 +132,7 @@ def build_exe():
         print("Build successful!")
         print("=" * 70)
         print()
-        print(f"Executable location: {script_dir / 'dist' / 'NOC-ConfigMaker.exe'}")
+        print(f"Executable location: {script_dir / 'dist' / 'NEXUS.exe'}")
         print()
         print("You can now distribute this .exe file to users.")
         print("They can run it without installing Python or dependencies.")

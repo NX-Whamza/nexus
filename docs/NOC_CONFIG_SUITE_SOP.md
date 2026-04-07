@@ -2,7 +2,7 @@
 
 ## Status
 - Environment: Production URL currently used for testing.
-- Current production URL: `https://noc-configmaker.nxlink.com`
+- Current production URL: `https://nexus.nxlink.com`
 - Dev URL: Pending URL and approval.
 - Current phase: Testing/Beta for selected modules.
 

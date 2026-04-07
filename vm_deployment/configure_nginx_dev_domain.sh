@@ -2,19 +2,19 @@
 # =============================================================================
 # configure_nginx_dev_domain.sh
 # Sets up the host-level nginx reverse-proxy for the DEV instance:
-#   https://dev-noc-configmaker.nxlink.com  →  127.0.0.1:8100
+#   https://dev-nexus.nxlink.com  →  127.0.0.1:8100
 #
-# Runs alongside the production proxy (noc-configmaker.nxlink.com → :8000).
+# Runs alongside the production proxy (nexus.nxlink.com → :8000).
 # =============================================================================
 set -euo pipefail
 
-DOMAIN="${DOMAIN:-dev-noc-configmaker.nxlink.com}"
+DOMAIN="${DOMAIN:-dev-nexus.nxlink.com}"
 IP_ADDR="${IP_ADDR:-192.168.11.118}"
 
 # Dev docker-compose exposes the dev frontend on host port 8100.
 UPSTREAM_URL="${UPSTREAM_URL:-http://127.0.0.1:8100}"
 
-CONFIG_NAME="noc-configmaker-dev-domain"
+CONFIG_NAME="nexus-dev-domain"
 CONFIG_PATH="/etc/nginx/sites-available/${CONFIG_NAME}"
 ENABLED_PATH="/etc/nginx/sites-enabled/${CONFIG_NAME}"
 
@@ -245,4 +245,4 @@ curl -fsS "${UPSTREAM_URL}/api/health" | head -c 200 || warn "Upstream not reach
 
 echo ""
 info "To start the dev stack:"
-echo "  cd ~/noc-configmaker-dev && docker compose up -d --build"
+echo "  cd ~/nexus-dev && docker compose up -d --build"

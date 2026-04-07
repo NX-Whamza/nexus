@@ -3,7 +3,7 @@
 # update_env_gitlab.sh — Patch .env with GitLab compliance vars
 #
 # Run ON THE VM:
-#   cd ~/noc-configmaker && bash update_env_gitlab.sh
+#   cd ~/nexus && bash update_env_gitlab.sh
 #
 # What it does:
 #   1. Checks if .env exists (creates from ENV_TEMPLATE.txt if needed)
@@ -14,7 +14,7 @@
 # ───────────────────────────────────────────────────────────────────
 set -euo pipefail
 
-cd "$(dirname "$0")" || cd ~/noc-configmaker
+cd "$(dirname "$0")" || cd ~/nexus
 
 ENV_FILE=".env"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)

@@ -7449,7 +7449,7 @@
                     <div id="adminApiKeysSection" style="display:none;">
                         <div class="section" style="margin-bottom:24px;">
                             <h2 style="font-size:14px; margin-bottom:12px; color:var(--text-color);">API Keys</h2>
-                            <p style="font-size:12px; color:var(--text-color-secondary); margin-bottom:12px;">Create API keys to authenticate programmatic access to the NOC Config Maker API. The full key is shown only once at creation.</p>
+                            <p style="font-size:12px; color:var(--text-color-secondary); margin-bottom:12px;">Create API keys to authenticate programmatic access to the NEXUS API. The full key is shown only once at creation.</p>
                             <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; align-items:flex-end;">
                                 <input id="newApiKeyName" placeholder="Key name (e.g. CI/CD Pipeline)" style="padding:6px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; width:200px;" />
                                 <select id="newApiKeyExpiry" style="padding:6px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px;">
@@ -24734,7 +24734,7 @@ Ready for translation!`);
 
             // Check if we're in file:// protocol (CORS will block)
             if (window.location.protocol === 'file:') {
-                listContainer.innerHTML = '<div style="background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px; padding: 20px; text-align: center;"><strong> CORS Issue Detected</strong><br><br>The HTML file is opened via <code>file://</code> protocol, which blocks API requests.<br><br><strong>Solution:</strong> Serve the HTML file via HTTP server:<br><br><code style="background: #f5f5f5; padding: 5px 10px; border-radius: 3px;">python -m http.server 8000</code><br><br>Then open: <code style="background: #f5f5f5; padding: 5px 10px; border-radius: 3px;">http://localhost:8000/NOC-configMaker.html</code></div>';
+                listContainer.innerHTML = '<div style="background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px; padding: 20px; text-align: center;"><strong> CORS Issue Detected</strong><br><br>The HTML file is opened via <code>file://</code> protocol, which blocks API requests.<br><br><strong>Solution:</strong> Serve the HTML file via HTTP server:<br><br><code style="background: #f5f5f5; padding: 5px 10px; border-radius: 3px;">python -m http.server 8000</code><br><br>Then open: <code style="background: #f5f5f5; padding: 5px 10px; border-radius: 3px;">http://localhost:8000/nexus.html</code></div>';
                 return;
             }
 

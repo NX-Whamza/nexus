@@ -2,7 +2,7 @@
 
 ## CURRENT STATUS: Most scripts are OBSOLETE
 
-**Reason**: The NOC ConfigMaker now has a unified backend entrypoint (`api_server.py` from the repo root) and a Docker-first quick start. The EXE auto-starts all services.
+**Reason**: The NEXUS now has a unified backend entrypoint (`api_server.py` from the repo root) and a Docker-first quick start. The EXE auto-starts all services.
 
 ---
 
@@ -83,7 +83,7 @@ Env vars:
 
 ## 🎯 FOR END USERS
 
-**Just run**: `NOC-ConfigMaker.exe`  
+**Just run**: `NEXUS.exe`  
 Everything auto-starts:
 - Backend API (port 5000)
 - Frontend UI (port 8000)

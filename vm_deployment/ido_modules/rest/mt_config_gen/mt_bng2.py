@@ -83,7 +83,7 @@ def _base_config_path() -> Path:
         required = configured / "Router" / "BNG2" / "config"
         if required.is_dir():
             return configured
-    # Bundled fallback inside noc-configmaker repo
+    # Bundled fallback inside nexus repo
     return Path(__file__).resolve().parent.parent / "base_configs"
 
 

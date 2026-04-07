@@ -1,6 +1,6 @@
 ﻿# Configuration Policy Directory
 
-This directory contains **all** configuration policies, standards, and references for the NOC Config Maker backend. The backend automatically loads every Markdown file in this tree and exposes them through the policy APIs.
+This directory contains **all** configuration policies, standards, and references for the NEXUS backend. The backend automatically loads every Markdown file in this tree and exposes them through the policy APIs.
 
 ## Directory Structure
 

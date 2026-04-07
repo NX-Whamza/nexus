@@ -2,7 +2,7 @@
 # Copy/paste these commands on the VM.
 
 # 1) Pull latest code
-cd ~/noc-configmaker
+cd ~/nexus
 git pull
 
 # 2) Rebuild + restart containers

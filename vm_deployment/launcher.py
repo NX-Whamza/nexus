@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-NOC Config Maker - Unified Launcher
+NEXUS - Unified Launcher
 Starts both backend API and frontend server in a single executable
 """
 import sys
@@ -22,7 +22,7 @@ if sys.platform == 'win32':
         pass  # If already wrapped or not available, continue
 
 # Force immediate output
-print("NOC Config Maker - Starting...", flush=True)
+print("NEXUS - Starting...", flush=True)
 sys.stdout.flush()
 sys.stderr.flush()
 
@@ -94,7 +94,7 @@ except Exception as e:
 BACKEND_PORT = 5000
 FRONTEND_PORT = 8000
 BACKEND_URL = f"http://localhost:{BACKEND_PORT}"
-FRONTEND_URL = f"http://localhost:{FRONTEND_PORT}/NOC-configMaker.html"
+FRONTEND_URL = f"http://localhost:{FRONTEND_PORT}/nexus.html"
 
 # Global flags
 backend_process = None
@@ -274,9 +274,9 @@ def start_frontend():
     # Find HTML file - check both BASE_DIR (extracted) and APP_DIR (exe location)
     html_file = None
     possible_paths = [
-        BASE_DIR / "NOC-configMaker.html",  # In extracted temp directory
-        APP_DIR / "NOC-configMaker.html",    # Next to executable
-        Path("NOC-configMaker.html"),        # Current directory
+        BASE_DIR / "nexus.html",  # In extracted temp directory
+        APP_DIR / "nexus.html",    # Next to executable
+        Path("nexus.html"),        # Current directory
     ]
     
     for path in possible_paths:
@@ -470,7 +470,7 @@ def start_frontend():
                     break
             
             allowed_files = {
-                "NOC-configMaker.html": html_file,
+                "nexus.html": html_file,
             }
             if login_file:
                 allowed_files["login.html"] = login_file
@@ -564,7 +564,7 @@ def start_frontend():
                         return  # Suppress all bad request errors
                     
                     # Only log successful access to the UI file
-                    if 'GET' in log_line and ('NOC-configMaker.html' in log_line or 'GET / HTTP' in log_line):
+                    if 'GET' in log_line and ('nexus.html' in log_line or 'GET / HTTP' in log_line):
                         super().log_message(format, *args)
                 except:
                     # If parsing fails, suppress the log to avoid errors
@@ -637,7 +637,7 @@ def main():
     except Exception as e:
         # If print fails, try writing directly
         try:
-            sys.stdout.write("NOC Config Maker - Starting...\n")
+            sys.stdout.write("NEXUS - Starting...\n")
             sys.stdout.flush()
         except:
             pass
@@ -738,7 +738,7 @@ def main():
 if __name__ == '__main__':
     # Show immediate startup message
     print("\n" + "=" * 70)
-    print("NOC ConfigMaker - STARTING...")
+    print("NEXUS - STARTING...")
     print("=" * 70 + "\n")
     sys.stdout.flush()
     

@@ -1,7 +1,7 @@
 /**
  * Nextlink Configuration Constants
  * Based on Nextscape Navigator standards
- * Include this in NOC-configMaker.html
+ * Include this in nexus.html
  * 
  * IMPORTANT: All infrastructure IPs and secrets should be configured here.
  * These are defaults - in production, load from environment variables or config file.

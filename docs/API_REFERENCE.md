@@ -1,4 +1,4 @@
-# NOC ConfigMaker — Full API Reference
+# NEXUS — Full API Reference
 
 > **Auto-maintained** — update this document every time an endpoint is added, removed, or its payload changes.
 >
@@ -10,9 +10,9 @@
 
 | Environment | URL |
 |---|---|
-| Production | `https://noc-configmaker.nxlink.com` |
+| Production | `https://nexus.nxlink.com` |
 | Local dev | `http://localhost:5000` |
-| V2 (OMNI) | `https://noc-configmaker.nxlink.com/api/v2` (see `docs/API_V2.md`) |
+| V2 (OMNI) | `https://nexus.nxlink.com/api/v2` (see `docs/API_V2.md`) |
 
 ---
 
@@ -77,7 +77,7 @@ Health check — server alive + AI provider status.
   "ai_provider": "openai",
   "api_key_configured": true,
   "timestamp": "2026-03-02T01:30:00Z",
-  "message": "NOC ConfigMaker API is running"
+  "message": "NEXUS API is running"
 }
 ```
 
@@ -364,7 +364,7 @@ For external UIs like Open WebUI.
 {
   "object": "list",
   "data": [
-    { "id": "noc-configmaker", "object": "model", "created": 1709337600, "owned_by": "nextlink" }
+    { "id": "nexus", "object": "model", "created": 1709337600, "owned_by": "nextlink" }
   ]
 }
 ```
@@ -376,7 +376,7 @@ For external UIs like Open WebUI.
 **Request**
 ```json
 {
-  "model": "noc-configmaker",
+  "model": "nexus",
   "messages": [{ "role": "user", "content": "Configure BGP..." }],
   "temperature": 0.7,
   "max_tokens": 4096
@@ -389,7 +389,7 @@ For external UIs like Open WebUI.
   "id": "chatcmpl-abc123",
   "object": "chat.completion",
   "created": 1709337600,
-  "model": "noc-configmaker",
+  "model": "nexus",
   "choices": [{ "index": 0, "message": { "role": "assistant", "content": "..." }, "finish_reason": "stop" }],
   "usage": { "prompt_tokens": 50, "completion_tokens": 200, "total_tokens": 250 }
 }

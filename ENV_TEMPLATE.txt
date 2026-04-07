@@ -1,4 +1,4 @@
-# NOC Config Maker - Environment Template
+# NEXUS - Environment Template
 # Copy this file to `.env` (optional) or set these as system environment variables.
 # SMTP/email is no longer used; feedback is stored in the local database and managed via the Admin panel.
 
@@ -132,7 +132,7 @@ AZURE_CLIENT_SECRET=PASTE_YOUR_CLIENT_SECRET_HERE
 # WEEKLY_SUMMARY_TIMEZONE=America/Chicago
 # WEEKLY_SUMMARY_DAYS=7
 # WEEKLY_SUMMARY_TOP_N=5
-# WEEKLY_SUMMARY_TITLE=NOC Config Maker Weekly Summary
+# WEEKLY_SUMMARY_TITLE=NEXUS Weekly Summary
 # WEEKLY_SUMMARY_THEME_COLOR=0078D7
 # WEEKLY_SUMMARY_FOOTER=If there are any issues, gaps, or feedback on the tool, please let me know so we can tighten it up.
 

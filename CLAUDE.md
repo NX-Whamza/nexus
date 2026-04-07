@@ -1,4 +1,4 @@
-# NOC ConfigMaker — Claude Project Rules
+# NEXUS — Claude Project Rules
 
 ## What This Project Is
 AI-powered network configuration automation for Nextlink Internet. Generates production-ready
@@ -16,7 +16,7 @@ Accuracy and safety matter more than cleverness.
 ### Large Files — Always Grep First
 These files are too large to read whole. Use Grep to locate the exact section, then read ±50 lines:
 - `vm_deployment/api_server.py` — 815 KB Flask backend
-- `vm_deployment/NOC-configMaker.html` — 30k+ lines monolithic SPA
+- `vm_deployment/nexus.html` — 30k+ lines monolithic SPA
 - `vm_deployment/aviat_config.py` — 121 KB Aviat provisioning engine
 
 ### Device Type Isolation
@@ -37,7 +37,7 @@ Changes to any compliance file affect all device types. Flag for extra review.
 - `.env`, `ENV_TEMPLATE.txt`, `ENV_DEV_TEMPLATE.txt` — secrets
 - `docker-compose.yml`, `Dockerfile`, `docker/` — deployment infra
 - `.github/workflows/` — CI/CD
-- `build_exe.py`, `NOC-ConfigMaker.spec` — EXE build system
+- `build_exe.py`, `NEXUS.spec` — EXE build system
 - `secure_data/` — runtime SQLite databases (config history, feedback)
 
 ## Code Standards
@@ -49,7 +49,7 @@ Changes to any compliance file affect all device types. Flag for extra review.
 - Error handling is mandatory — never let exceptions surface as 500s without logging
 - Use existing utilities in `nextlink_standards.py` before writing new validation logic
 
-### JavaScript (Frontend — NOC-configMaker.html)
+### JavaScript (Frontend — nexus.html)
 - Vanilla JS only — no frameworks, no imports
 - API calls: `fetch('/api/endpoint', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({...}) })`
 - Find the existing section for a device type and follow its pattern exactly

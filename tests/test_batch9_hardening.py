@@ -30,7 +30,7 @@ def _login(client, api_server, email):
 
 # Security: sensitive credentials not in browser HTML
 def test_ospf_key_not_in_html():
-    html = (Path(__file__).resolve().parents[1] / "vm_deployment" / "NOC-configMaker.html").read_text(encoding="utf-8")
+    html = (Path(__file__).resolve().parents[1] / "vm_deployment" / "nexus.html").read_text(encoding="utf-8")
     assert 'm8M5JwvdYM' not in html, "OSPF/BGP MD5 key must not appear in browser-served HTML"
 
 
@@ -205,7 +205,7 @@ def test_legacy_activity_endpoint_works(monkeypatch):
 
 # Frontend: auth headers present on key fetch calls
 def test_get_activity_fetches_use_auth_headers():
-    html = (Path(__file__).resolve().parents[1] / "vm_deployment" / "NOC-configMaker.html").read_text(encoding="utf-8")
+    html = (Path(__file__).resolve().parents[1] / "vm_deployment" / "nexus.html").read_text(encoding="utf-8")
     # All get-activity fetches should now use getAuthHeaders
     import re
     fetches = re.findall(r"fetch\([^)]*get-activity[^)]*\)", html, re.DOTALL)

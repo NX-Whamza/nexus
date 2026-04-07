@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NOC Config Maker - Setup Checker
+NEXUS - Setup Checker
 Validates that everything is configured correctly before running.
 
 This script is intended to run cleanly on Windows terminals that may not be UTF-8.
@@ -104,7 +104,7 @@ def check_files() -> bool:
         Path("api_server.py"),  # root shim for local dev
         Path("requirements.txt"),
         Path("vm_deployment") / "api_server.py",
-        Path("vm_deployment") / "NOC-configMaker.html",
+        Path("vm_deployment") / "nexus.html",
         Path("vm_deployment") / "login.html",
         Path("vm_deployment") / "change-password.html",
     ]
@@ -148,7 +148,7 @@ def check_dev_test_tools() -> bool:
 
 def main() -> int:
     safe_print("=" * 60)
-    safe_print("NOC Config Maker - Setup Checker")
+    safe_print("NEXUS - Setup Checker")
     safe_print("=" * 60)
 
     checks = [
@@ -178,7 +178,7 @@ def main() -> int:
         safe_print("Next:")
         safe_print("  1) python -m uvicorn --app-dir vm_deployment fastapi_server:app --host 0.0.0.0 --port 5000")
         safe_print("  2) python -m http.server 8000 --directory vm_deployment")
-        safe_print("  3) Open: http://localhost:8000/NOC-configMaker.html")
+        safe_print("  3) Open: http://localhost:8000/nexus.html")
         return 0
 
     safe_print(f"[ERROR] {total - passed} checks failed ({passed}/{total} passed)")

@@ -1,5 +1,5 @@
 from pathlib import Path
-p = Path(__file__).resolve().parents[1] / 'vm_deployment' / 'NOC-configMaker.html'
+p = Path(__file__).resolve().parents[1] / 'vm_deployment' / 'nexus.html'
 s = p.read_text(encoding='utf-8')
 print('len', len(s))
 print('ftthModal', 'ftthModal' in s)

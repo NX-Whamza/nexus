@@ -104,7 +104,7 @@ After setup, verify:
 ## Single Sign-On (SSO) Setup
 
 ### Overview
-The NOC Config Maker supports Microsoft Azure AD Single Sign-On (SSO) for authentication. This allows users to log in using their Microsoft/Office 365 credentials.
+The NEXUS supports Microsoft Azure AD Single Sign-On (SSO) for authentication. This allows users to log in using their Microsoft/Office 365 credentials.
 
 ### Current Status
 SSO functionality is partially implemented and requires Azure AD configuration to work fully.
@@ -118,7 +118,7 @@ You need to register an application in Azure AD:
 2. Navigate to **Azure Active Directory** -> **App registrations**
 3. Click **New registration**
 4. Fill in the details:
-   - **Name**: NOC Config Maker
+   - **Name**: NEXUS
    - **Supported account types**: Accounts in this organizational directory only
    - **Redirect URI**: `http://your-vm-ip:5000/auth/callback` (or your domain)
 

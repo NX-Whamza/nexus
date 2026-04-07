@@ -1,4 +1,4 @@
-# NOC Config Maker - Distribution & Update Guide
+# NEXUS - Distribution & Update Guide
 
 ## Architecture Decision: Web UI vs Native App
 
@@ -7,7 +7,7 @@
 The application uses a **web-based interface** served locally. This is the best approach because:
 
 ### ✅ Advantages of Web UI:
-1. **Easy Updates**: Update `NOC-configMaker.html` without rebuilding the entire executable
+1. **Easy Updates**: Update `nexus.html` without rebuilding the entire executable
 2. **Cross-Platform**: Works on Windows, Mac, Linux (if you build for each)
 3. **Familiar Interface**: Users already know how to use web browsers
 4. **Network Access**: Can be accessed from other devices on the network
@@ -25,7 +25,7 @@ The application uses a **web-based interface** served locally. This is the best 
 ## Distribution Best Practices
 
 ### 1. Versioning
-- Include version number in executable name: `NOC-ConfigMaker-v1.0.exe`
+- Include version number in executable name: `NEXUS-v1.0.exe`
 - Or use a version file: `VERSION.txt` bundled with the exe
 - Display version in the web UI footer
 
@@ -39,8 +39,8 @@ The application uses a **web-based interface** served locally. This is the best 
 #### Option B: Incremental Updates (Recommended)
 - **Structure**:
   ```
-  NOC-ConfigMaker.exe (launcher only, ~5 MB)
-  ├── NOC-configMaker.html (update this file)
+  NEXUS.exe (launcher only, ~5 MB)
+  ├── nexus.html (update this file)
   ├── config_policies/ (update as needed)
   └── data/ (other updateable files)
   ```
@@ -57,8 +57,8 @@ The application uses a **web-based interface** served locally. This is the best 
 
 **Recommended Structure:**
 ```
-NOC-ConfigMaker-v1.0/
-├── NOC-ConfigMaker.exe (main launcher)
+NEXUS-v1.0/
+├── NEXUS.exe (main launcher)
 ├── README.txt (user instructions)
 ├── CHANGELOG.txt (what's new)
 └── (optional) config_policies/ (if not bundled)
@@ -69,10 +69,10 @@ NOC-ConfigMaker-v1.0/
 Include this with your distribution:
 
 ```
-NOC Config Maker - Quick Start
+NEXUS - Quick Start
 ==============================
 
-1. Double-click NOC-ConfigMaker.exe
+1. Double-click NEXUS.exe
 2. Wait for browser to open automatically
 3. Use the web interface
 4. Keep the console window open while using
@@ -94,7 +94,7 @@ Troubleshooting:
 ## Update Workflow
 
 ### For Minor Updates (HTML/JS changes):
-1. Update `NOC-configMaker.html`
+1. Update `nexus.html`
 2. Rebuild executable: `rebuild_exe_safe.bat`
 3. Distribute new `.exe` file
 4. Users replace old `.exe` with new one

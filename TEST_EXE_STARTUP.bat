@@ -1,12 +1,12 @@
 @echo off
 REM ========================================
-REM Test NOC-ConfigMaker.exe Startup
+REM Test NEXUS.exe Startup
 REM ========================================
-title NOC ConfigMaker - Startup Test
+title NEXUS - Startup Test
 color 0B
 
 echo ========================================
-echo  NOC ConfigMaker - Startup Tester
+echo  NEXUS - Startup Tester
 echo ========================================
 echo.
 echo This script will:
@@ -20,9 +20,9 @@ echo.
 
 REM Step 1: Kill any existing instances
 echo [1/4] Checking for existing instances...
-taskkill /F /IM "NOC-ConfigMaker.exe" >nul 2>&1
+taskkill /F /IM "NEXUS.exe" >nul 2>&1
 if %ERRORLEVEL% EQU 0 (
-    echo [1/4] Killed existing NOC-ConfigMaker.exe
+    echo [1/4] Killed existing NEXUS.exe
 ) else (
     echo [1/4] No existing instances found
 )
@@ -58,11 +58,11 @@ timeout /t 2 /nobreak >nul
 
 REM Step 3: Check if EXE exists
 echo [3/4] Checking for EXE file...
-if exist "dist\NOC-ConfigMaker.exe" (
-    echo [3/4] Found: dist\NOC-ConfigMaker.exe
-    for %%A in ("dist\NOC-ConfigMaker.exe") do echo [3/4] Size: %%~zA bytes
+if exist "dist\NEXUS.exe" (
+    echo [3/4] Found: dist\NEXUS.exe
+    for %%A in ("dist\NEXUS.exe") do echo [3/4] Size: %%~zA bytes
 ) else (
-    echo [3/4] ERROR: dist\NOC-ConfigMaker.exe not found!
+    echo [3/4] ERROR: dist\NEXUS.exe not found!
     echo [3/4] Please run: python build_exe.py
     pause
     exit /b 1
@@ -87,10 +87,10 @@ echo    [FRONTEND] Starting web server on port 8000...
 echo.
 echo 3. Service status summary:
 echo    Backend API:  ✓ READY - http://localhost:5000
-echo    Frontend:     ✓ READY - http://localhost:8000/NOC-configMaker.html
+echo    Frontend:     ✓ READY - http://localhost:8000/nexus.html
 echo.
 echo 4. Browser opens automatically to:
-echo    http://localhost:8000/NOC-configMaker.html
+echo    http://localhost:8000/nexus.html
 echo.
 echo 5. Console stays open with message:
 echo    "Application is running. Keep this window open."
@@ -98,7 +98,7 @@ echo    "Press Ctrl+C to stop all services."
 echo.
 echo ========================================
 echo.
-echo [4/4] Starting NOC-ConfigMaker.exe NOW...
+echo [4/4] Starting NEXUS.exe NOW...
 echo       Watch the console for startup messages!
 echo.
 echo ========================================
@@ -106,7 +106,7 @@ timeout /t 3 /nobreak
 
 REM Step 4: Run the EXE
 cd /d "%~dp0"
-start "NOC ConfigMaker" "dist\NOC-ConfigMaker.exe"
+start "NEXUS" "dist\NEXUS.exe"
 
 echo.
 echo ========================================

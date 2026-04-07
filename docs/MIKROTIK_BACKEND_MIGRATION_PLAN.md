@@ -4,7 +4,7 @@
 Unify new-device MikroTik config generation behind backend APIs compatible with Netlaunch, while keeping `Upgrade Existing` workflow unchanged.
 
 ## Current State
-- UI has strong existing UX in `vm_deployment/NOC-configMaker.html`.
+- UI has strong existing UX in `vm_deployment/nexus.html`.
 - New-device tower generation is mostly JS-side generation logic.
 - Added backend-compatible endpoints:
   - `POST /api/mt/tower/config`

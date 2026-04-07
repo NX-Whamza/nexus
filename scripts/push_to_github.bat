@@ -1,11 +1,11 @@
 @echo off
 REM ========================================
-REM NOC Config Maker - Push to GitHub
+REM NEXUS - Push to GitHub
 REM ========================================
 cd /d "%~dp0"
 
 echo ========================================
-echo NOC Config Maker - Push to GitHub
+echo NEXUS - Push to GitHub
 echo ========================================
 echo.
 echo Your project is ready to push to GitHub!
@@ -13,7 +13,7 @@ echo.
 echo STEP 1: Create GitHub Repository
 echo ========================================
 echo 1. Go to https://github.com/new
-echo 2. Repository name: noc-configmaker
+echo 2. Repository name: nexus
 echo 3. Description: AI-powered RouterOS configuration tool with chat memory system
 echo 4. Make it PUBLIC
 echo 5. DO NOT initialize with README (we already have one)
@@ -22,11 +22,11 @@ echo.
 echo STEP 2: Copy the Repository URL
 echo ========================================
 echo After creating the repository, GitHub will show you a URL like:
-echo https://github.com/YOUR_USERNAME/noc-configmaker.git
+echo https://github.com/YOUR_USERNAME/nexus.git
 echo.
 echo Copy that URL and paste it below:
 echo.
-set /p REPO_URL="https://github.com/Wally0517/noc-configmaker.git: "
+set /p REPO_URL="https://github.com/Wally0517/nexus.git: "
 
 if "%REPO_URL%"=="" (
     echo [ERROR] No URL provided. Please run this script again.
@@ -70,7 +70,7 @@ if %ERRORLEVEL% EQU 0 (
     echo To update from another PC:
     echo git pull origin main
     echo.
-    echo Your NOC Config Maker is now backed up on GitHub! 🚀
+    echo Your NEXUS is now backed up on GitHub! 🚀
 ) else (
     echo.
     echo [ERROR] Failed to push to GitHub

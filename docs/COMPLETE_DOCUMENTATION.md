@@ -1,4 +1,4 @@
-# NOC Config Maker - Complete Documentation
+# NEXUS - Complete Documentation
 
 ## Table of Contents
 1. [Overview](#overview)
@@ -18,7 +18,7 @@
 
 ## Overview
 
-The NOC Config Maker is a unified MikroTik configuration generator designed for NextLink Internet. It provides automated configuration generation for:
+The NEXUS is a unified MikroTik configuration generator designed for NextLink Internet. It provides automated configuration generation for:
 - **Tower Sites**: Full BGP/OSPF/MPLS configurations
 - **Non-MPLS Enterprise**: Simplified enterprise customer configurations
 - **MPLS Enterprise**: Enterprise configurations with MPLS/OSPF/BGP support
@@ -93,11 +93,11 @@ This single script will:
 ### Access URLs
 
 **Local Access:**
-- Frontend: `http://localhost:8000/NOC-configMaker.html`
+- Frontend: `http://localhost:8000/nexus.html`
 - Backend API: `http://localhost:5000/api`
 
 **Network Access (for coworkers):**
-- Frontend: `http://YOUR_IP:8000/NOC-configMaker.html`
+- Frontend: `http://YOUR_IP:8000/nexus.html`
 - Backend API: `http://YOUR_IP:5000/api`
 
 ### Network Firewall Setup
@@ -111,7 +111,7 @@ To allow coworkers to access the tool:
 
 2. **Or manually configure Windows Firewall:**
    - Allow TCP ports 5000 and 8000
-   - Name: "NOC ConfigMaker Servers"
+   - Name: "NEXUS Servers"
 
 ---
 
@@ -259,7 +259,7 @@ These sections are **only included** if configured:
 
 ## System Architecture
 
-### Frontend (`NOC-configMaker.html`)
+### Frontend (`nexus.html`)
 - Single-page application with multiple tabs
 - Dynamic configuration based on `nextlink_constants.js`
 - Dark/light mode support
@@ -525,7 +525,7 @@ Windows Firewall may block incoming connections. To allow network access:
 
 2. **Or manually configure:**
    - Allow TCP ports 5000 and 8000
-   - Name: "NOC ConfigMaker Servers"
+   - Name: "NEXUS Servers"
 
 ### Troubleshooting
 
