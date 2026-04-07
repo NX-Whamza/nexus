@@ -2579,27 +2579,32 @@
         /* Live Progress Tracker (Inline Horizontal) */
         .progress-tracker {
             display: none;
-            width: 100%;
-            margin: 20px 0;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 9500;
             background: #1e1e1e;
-            border: 2px solid #4CAF50;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-            overflow: hidden;
+            border-top: 2px solid #4CAF50;
+            box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.5);
             flex-direction: column;
+            transform: translateY(100%);
+            transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         .progress-tracker.active {
             display: flex;
+            transform: translateY(0);
         }
 
         .progress-tracker.collapsed {
-            max-height: 60px;
             overflow: hidden;
         }
 
         .progress-tracker.collapsed .progress-log-content,
-        .progress-tracker.collapsed .progress-details {
+        .progress-tracker.collapsed .progress-details,
+        .progress-tracker.collapsed .progress-bar-container,
+        .progress-tracker.collapsed .progress-log-header {
             display: none;
         }
 
@@ -2734,7 +2739,7 @@
 
         .progress-log-content {
             background: #1a1a1a;
-            max-height: 200px;
+            max-height: 180px;
             overflow-y: auto;
             font-family: 'Courier New', monospace;
             font-size: 11px;
@@ -27252,41 +27257,21 @@ Ready for translation!`);
             }
 
             function repositionProgressTracker() {
-                const tracker = document.getElementById('progressTracker');
-                if (!tracker || !tracker.classList.contains('active')) return;
-
-                const root = resolveProgressTrackerRoot();
-                if (!root) return;
-
-                if (root.id === 'ftth-pane' || root.id === 'ftth-home-pane') {
-                    const anchor = root.querySelector('#ftth_progress_anchor');
-                    if (anchor && anchor.parentNode && anchor.nextSibling !== tracker) {
-                        anchor.parentNode.insertBefore(tracker, anchor.nextSibling);
-                        return;
-                    }
-                }
-
-                const generateBtn = root.querySelector('button[onclick*="generate"], button[onclick*="Generate"], button[id*="generate"], button[id*="Generate"]') ||
-                    Array.from(root.querySelectorAll('button')).find(btn =>
-                        btn.textContent && btn.textContent.toLowerCase().includes('generate')
-                    );
-
-                if (generateBtn && generateBtn.parentElement) {
-                    const container = generateBtn.closest('.section, div') || generateBtn.parentElement;
-                    if (container && container.parentNode && container.nextSibling !== tracker) {
-                        container.parentNode.insertBefore(tracker, container.nextSibling);
-                        return;
-                    }
-                }
-
-                if (root.firstChild) {
-                    root.insertBefore(tracker, root.firstChild);
-                } else {
-                    root.appendChild(tracker);
-                }
+                // No-op: tracker is fixed-position at bottom of viewport, no DOM insertion needed.
             }
 
             window.repositionProgressTracker = repositionProgressTracker;
+
+            function _updateBodyPaddingForTracker() {
+                const tracker = document.getElementById('progressTracker');
+                if (tracker && tracker.classList.contains('active') && !tracker.classList.contains('collapsed')) {
+                    document.body.style.paddingBottom = tracker.offsetHeight + 'px';
+                } else if (tracker && tracker.classList.contains('active') && tracker.classList.contains('collapsed')) {
+                    document.body.style.paddingBottom = (tracker.offsetHeight || 48) + 'px';
+                } else {
+                    document.body.style.paddingBottom = '';
+                }
+            }
 
             window.showProgressTracker = function (title = 'Configuration In Progress') {
                 const tracker = document.getElementById('progressTracker');
@@ -27309,8 +27294,12 @@ Ready for translation!`);
                     const collapseToggle = document.getElementById('progressCollapseToggle');
                     if (collapseToggle) collapseToggle.textContent = ' Collapse';
 
-                    // Place tracker near the active mode's Generate button.
-                    repositionProgressTracker();
+                    // Ensure tracker is a direct child of body so fixed positioning works correctly
+                    if (tracker.parentNode !== document.body) {
+                        document.body.appendChild(tracker);
+                    }
+
+                    setTimeout(_updateBodyPaddingForTracker, 50);
                 }
 
                 // Start elapsed time counter
@@ -27391,6 +27380,7 @@ Ready for translation!`);
             window.closeProgressTracker = function () {
                 const tracker = document.getElementById('progressTracker');
                 if (tracker) tracker.classList.remove('active');
+                document.body.style.paddingBottom = '';
 
                 if (progressTrackerInterval) {
                     clearInterval(progressTrackerInterval);
@@ -27413,6 +27403,7 @@ Ready for translation!`);
                     tracker.classList.add('collapsed');
                     toggle.textContent = ' Expand';
                 }
+                setTimeout(_updateBodyPaddingForTracker, 50);
             };
 
             window.toggleProgressLog = function () {
