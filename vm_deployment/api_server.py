@@ -21270,6 +21270,10 @@ def _wave_fw_uisp_discover(uisp_url, username, password, timeout=30, retries=3, 
         ip_addr = (dev.get('ipAddress') or ident.get('ip') or dev.get('ip') or dev.get('address') or '')
         if ip_addr and '/' in ip_addr:
             ip_addr = ip_addr.split('/')[0]
+        # Parent AP reference — used for auto-discovery of associated stations
+        ap_dev = (overview.get('apDevice') or dev.get('apDevice') or
+                  ident.get('apDevice') or {})
+        ap_device_id = ap_dev.get('id') or ap_dev.get('apId') or '' if isinstance(ap_dev, dict) else ''
         wave_devices.append({
             'id': ident.get('id') or dev.get('id') or '',
             'name': name,
@@ -21277,6 +21281,7 @@ def _wave_fw_uisp_discover(uisp_url, username, password, timeout=30, retries=3, 
             'model': model,
             'firmwareVersion': fw_version,
             'role': role,
+            'ap_device_id': ap_device_id,  # empty string for APs; filled for stations
             # Surface to UI so operator can see which are already done
             'already_current': bool(norm_target and fw_version and fw_version == norm_target),
         })
@@ -21581,6 +21586,8 @@ def _wave_fw_upgrade_single(device, file_path, target_version, log_cb, should_ab
         # ── Multi-pass upgrade loop ───────────────────────────────────────────
         # Wave dual-bank scheme: pass 1 writes the inactive bank and reboots into it;
         # pass 2 writes the remaining old bank, making both match target.
+        # Optimisation: if the backup bank already carries target_version we skip the
+        # upload and go straight to reboot — the bank-swap alone is sufficient.
         pass_num = 0
         while pass_num < max_passes:
             if should_abort():
@@ -21590,61 +21597,67 @@ def _wave_fw_upgrade_single(device, file_path, target_version, log_cb, should_ab
             if active == target_version and backup == target_version:
                 break  # Both banks match — done
 
-            log_cb(f'[{name}] Pass {pass_num + 1}/{max_passes}: uploading {file_path.name}...')
-            # Retry upload once on 401/403 (re-login and re-try, matching reference behavior)
-            _up_last_status = None
-            for _up_attempt in range(2):
-                if _up_attempt > 0:
+            if backup == target_version:
+                # Backup already has the target — no need to upload; just reboot to
+                # activate it.  The next pass (if needed) will fill the remaining bank.
+                log_cb(f'[{name}] Pass {pass_num + 1}/{max_passes}: backup already at '
+                       f'{target_version} — rebooting to activate (skipping upload)...')
+            else:
+                log_cb(f'[{name}] Pass {pass_num + 1}/{max_passes}: uploading {file_path.name}...')
+                # Retry upload once on 401/403 (re-login and re-try, matching reference behavior)
+                _up_last_status = None
+                for _up_attempt in range(2):
+                    if _up_attempt > 0:
+                        try:
+                            _s2, _h2, _ = _wave_fw_login_device(ip, ap_pass, sm_pass, role=device_role)
+                            session[0], headers[0] = _s2, _h2
+                        except Exception:
+                            pass
+                    with open(file_path, 'rb') as fh:
+                        up_resp = session[0].post(
+                            f'https://{ip}/api/v1.0/system/upgrade/direct',
+                            headers=headers[0],
+                            files={'file': (file_path.name, fh, 'application/octet-stream')},
+                            verify=False,
+                            timeout=int(deadline_timeout(180)),
+                        )
+                    _up_last_status = up_resp.status_code
+                    if up_resp.status_code not in (401, 403):
+                        break
+                if not up_resp.ok:
+                    return result('failed',
+                                  error=f'Pass {pass_num + 1} upload: HTTP {_up_last_status}',
+                                  active=active, backup=backup)
+
+                # Poll upgrade status.  Only 'in_progress' continues the loop; any other status
+                # (including 'uploading' which indicates the stream is still incoming) exits and is
+                # then validated — we expect 'finished'.
+                log_cb(f'[{name}] Pass {pass_num + 1}: polling upgrade status...')
+                _poll_status = ''
+                _poll_pct_seen = set()
+                for _ in range(int(deadline_timeout(int(os.getenv('WAVE_FW_UPGRADE_TIMEOUT', '180'))) / 2)):
+                    if should_abort():
+                        return result('aborted', active=active, backup=backup)
+                    check_deadline('during upgrade poll')
+                    time.sleep(2)
                     try:
-                        _s2, _h2, _ = _wave_fw_login_device(ip, ap_pass, sm_pass, role=device_role)
-                        session[0], headers[0] = _s2, _h2
+                        poll = session[0].get(f'https://{ip}/api/v1.0/system/upgrade',
+                                              headers=headers[0], verify=False, timeout=15)
+                        if poll.ok:
+                            poll_data = poll.json()
+                            pct = poll_data.get('progressPercent')
+                            if pct is not None and pct not in _poll_pct_seen:
+                                _poll_pct_seen.add(pct)
+                                log_cb(f'[{name}] Pass {pass_num + 1} progress: {pct}%')
+                            _poll_status = poll_data.get('status', '')
+                            if _poll_status != 'in_progress':
+                                break  # Any non-in_progress status ends the loop
                     except Exception:
                         pass
-                with open(file_path, 'rb') as fh:
-                    up_resp = session[0].post(
-                        f'https://{ip}/api/v1.0/system/upgrade/direct',
-                        headers=headers[0],
-                        files={'file': (file_path.name, fh, 'application/octet-stream')},
-                        verify=False,
-                        timeout=int(deadline_timeout(180)),
-                    )
-                _up_last_status = up_resp.status_code
-                if up_resp.status_code not in (401, 403):
-                    break
-            if not up_resp.ok:
-                return result('failed',
-                              error=f'Pass {pass_num + 1} upload: HTTP {_up_last_status}',
-                              active=active, backup=backup)
-
-            # Poll upgrade status.  Only 'in_progress' continues the loop; any other status
-            # (including 'uploading' which indicates the stream is still incoming) exits and is
-            # then validated — we expect 'finished'.
-            log_cb(f'[{name}] Pass {pass_num + 1}: polling upgrade status...')
-            _poll_status = ''
-            _poll_pct_seen = set()
-            for _ in range(int(deadline_timeout(int(os.getenv('WAVE_FW_UPGRADE_TIMEOUT', '180'))) / 2)):
-                if should_abort():
-                    return result('aborted', active=active, backup=backup)
-                check_deadline('during upgrade poll')
-                time.sleep(2)
-                try:
-                    poll = session[0].get(f'https://{ip}/api/v1.0/system/upgrade',
-                                          headers=headers[0], verify=False, timeout=15)
-                    if poll.ok:
-                        poll_data = poll.json()
-                        pct = poll_data.get('progressPercent')
-                        if pct is not None and pct not in _poll_pct_seen:
-                            _poll_pct_seen.add(pct)
-                            log_cb(f'[{name}] Pass {pass_num + 1} progress: {pct}%')
-                        _poll_status = poll_data.get('status', '')
-                        if _poll_status != 'in_progress':
-                            break  # Any non-in_progress status ends the loop
-                except Exception:
-                    pass
-            if _poll_status != 'finished':
-                return result('failed',
-                              error=f'Pass {pass_num + 1} upgrade did not finish (status: {_poll_status or "unknown"})',
-                              active=active, backup=backup)
+                if _poll_status != 'finished':
+                    return result('failed',
+                                  error=f'Pass {pass_num + 1} upgrade did not finish (status: {_poll_status or "unknown"})',
+                                  active=active, backup=backup)
 
             log_cb(f'[{name}] Pass {pass_num + 1}: rebooting...')
             try:
@@ -21724,7 +21737,8 @@ def _wave_fw_upgrade_single(device, file_path, target_version, log_cb, should_ab
 
 
 def _wave_fw_background_task_inner(task_id, file_path, devices, target_version, firmware_dir=None,
-                                   min_current_firmware=None, deadline_ts=None, role_scope='both'):
+                                   min_current_firmware=None, deadline_ts=None, role_scope='both',
+                                   uisp_creds=None):
     _purge_stale_tasks(wave_fw_tasks, wave_fw_log_queues)
     wave_fw_tasks[task_id]['status'] = 'running'
     _wave_fw_persist_task(task_id)
@@ -21760,22 +21774,90 @@ def _wave_fw_background_task_inner(task_id, file_path, devices, target_version, 
     if min_current_firmware:
         log_cb(f'Minimum firmware gate: {min_current_firmware} — devices below this version will be skipped', 'info')
 
-    max_workers = max(1, min(WAVE_FW_MAX_WORKERS, len(devices))) if devices else 1
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {
-            executor.submit(
-                _wave_fw_upgrade_single, device, file_path, target_version,
-                log_cb, should_abort, firmware_dir, min_current_firmware, deadline_ts
-            ): device
-            for device in devices
-        }
-        for future in as_completed(futures):
-            res = future.result()
-            wave_fw_tasks[task_id]['results'].append(res)
-            level = 'success' if res.get('status') == 'success' else (
-                'warning' if res.get('status') in ('skipped', 'aborted') else 'error'
-            )
-            log_cb(f"[{res.get('name', res.get('ip'))}] {res.get('status')}: {res.get('error') or 'OK'}", level)
+    def _run_batch(batch, label=None):
+        """Run a batch of devices in parallel and collect results."""
+        if not batch:
+            return
+        if label:
+            log_cb(label, 'info')
+        workers = max(1, min(WAVE_FW_MAX_WORKERS, len(batch)))
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {
+                executor.submit(
+                    _wave_fw_upgrade_single, device, file_path, target_version,
+                    log_cb, should_abort, firmware_dir, min_current_firmware, deadline_ts
+                ): device
+                for device in batch
+            }
+            for future in as_completed(futures):
+                res = future.result()
+                wave_fw_tasks[task_id]['results'].append(res)
+                level = 'success' if res.get('status') == 'success' else (
+                    'warning' if res.get('status') in ('skipped', 'aborted') else 'error'
+                )
+                log_cb(f"[{res.get('name', res.get('ip'))}] {res.get('status')}: {res.get('error') or 'OK'}", level)
+
+    if role_scope == 'both':
+        # Safety ordering: upgrade stations (SMs) first so they're on the new firmware
+        # before the AP reboots.  If the AP were upgraded first, a firmware-version gap
+        # could prevent stations from re-associating until they're also upgraded.
+        stations = [d for d in devices if _wave_fw_classify_role(d) == 'station']
+        aps = [d for d in devices if _wave_fw_classify_role(d) == 'ap']
+        others = [d for d in devices if _wave_fw_classify_role(d) == 'unknown']
+
+        # ── Auto-discover associated stations for selected APs ──────────────
+        # When the user selects AP(s) and role_scope='both', query UISP for all
+        # Wave devices and find every station whose apDevice.id matches a selected AP.
+        # This means the user only needs to select the AP — its subs are pulled in
+        # automatically and upgraded first.
+        if aps and uisp_creds:
+            selected_ap_ids = {d.get('id') for d in aps if d.get('id')}
+            already_selected_ips = {d.get('ip') for d in devices if d.get('ip')}
+            already_selected_ids = {d.get('id') for d in devices if d.get('id')}
+            if selected_ap_ids:
+                try:
+                    log_cb('Querying UISP to auto-discover stations associated with selected AP(s)...', 'info')
+                    all_wave = _wave_fw_uisp_discover(
+                        uisp_creds['url'], uisp_creds['username'], uisp_creds['password'],
+                        target_version=target_version,
+                    )
+                    auto_stations = []
+                    for dev in all_wave:
+                        if _wave_fw_classify_role(dev) != 'station':
+                            continue
+                        if dev.get('ap_device_id') not in selected_ap_ids:
+                            continue
+                        # Skip if already explicitly selected by IP or ID
+                        if dev.get('ip') in already_selected_ips or dev.get('id') in already_selected_ids:
+                            continue
+                        if not dev.get('ip'):
+                            continue
+                        auto_stations.append(dev)
+                    if auto_stations:
+                        # Group by AP name for a clean log line
+                        by_ap = {}
+                        for dev in auto_stations:
+                            ap_match = next((a for a in aps if a.get('id') == dev.get('ap_device_id')), None)
+                            ap_label = ap_match.get('name', dev.get('ap_device_id')) if ap_match else dev.get('ap_device_id', '?')
+                            by_ap.setdefault(ap_label, []).append(dev)
+                        for ap_label, subs in sorted(by_ap.items()):
+                            log_cb(f'Auto-discovered {len(subs)} station(s) on {ap_label} — '
+                                   f'adding to upgrade queue', 'info')
+                        stations = auto_stations + stations  # prepend so auto-found subs run first
+                        wave_fw_tasks[task_id]['device_count'] = len(stations) + len(aps) + len(others)
+                    else:
+                        log_cb('No additional stations found associated with selected AP(s).', 'info')
+                except Exception as _disc_exc:
+                    log_cb(f'Station auto-discovery failed (continuing without): {_disc_exc}', 'warning')
+
+        if stations and aps:
+            _run_batch(stations, f'Phase 1/2: upgrading {len(stations)} station(s) first...')
+            if not should_abort():
+                _run_batch(aps + others, f'Phase 2/2: upgrading {len(aps + others)} AP(s)...')
+        else:
+            _run_batch(devices)
+    else:
+        _run_batch(devices)
 
     wave_fw_tasks[task_id]['status'] = 'aborted' if should_abort() else 'completed'
     wave_fw_tasks[task_id]['completed_at'] = datetime.utcnow().isoformat() + 'Z'
@@ -21785,11 +21867,13 @@ def _wave_fw_background_task_inner(task_id, file_path, devices, target_version, 
 
 
 def _wave_fw_background_task(task_id, file_path, devices, target_version, firmware_dir=None,
-                             min_current_firmware=None, deadline_ts=None, role_scope='both'):
+                             min_current_firmware=None, deadline_ts=None, role_scope='both',
+                             uisp_creds=None):
     try:
         _wave_fw_background_task_inner(task_id, file_path, devices, target_version,
                                        firmware_dir=firmware_dir, min_current_firmware=min_current_firmware,
-                                       deadline_ts=deadline_ts, role_scope=role_scope)
+                                       deadline_ts=deadline_ts, role_scope=role_scope,
+                                       uisp_creds=uisp_creds)
     except Exception as _exc:
         try:
             wave_fw_tasks[task_id]['status'] = 'failed'
@@ -21932,6 +22016,14 @@ def wave_fw_upgrade_start():
 
     _wave_fw_persist_task(task_id)  # write to disk so other workers can find it
 
+    # Pass UISP credentials so the background task can auto-discover stations
+    # associated with selected APs (used when role_scope='both').
+    _uisp_url = os.getenv('UISP_API_URL', '')
+    _uisp_user = os.getenv('UISP_USERNAME', '')
+    _uisp_pass = os.getenv('UISP_PASSWORD', '')
+    uisp_creds = ({'url': _uisp_url, 'username': _uisp_user, 'password': _uisp_pass}
+                  if _uisp_url and _uisp_user and _uisp_pass else None)
+
     t = threading.Thread(
         target=_wave_fw_background_task,
         args=(task_id, file_path, devices, target_version),
@@ -21940,6 +22032,7 @@ def wave_fw_upgrade_start():
             'min_current_firmware': min_current_firmware or None,
             'deadline_ts': deadline_ts,
             'role_scope': role_scope,
+            'uisp_creds': uisp_creds,
         },
         daemon=True,
     )
