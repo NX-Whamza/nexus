@@ -9083,7 +9083,7 @@
                     <div class="aviat-card">
                         <h2>Step 2 &mdash; Firmware</h2>
                         <p style="color:var(--text-color-secondary);font-size:13px;margin-bottom:12px;">
-                            Firmware is served from the server (<code>/opt/firmware/wave/</code>). A single universal .bin works for all Wave devices (AP, Micro, PRO, Nano, LR, Pico). If two files are present, the correct one is auto-selected per device family.
+                            Firmware is served from the server (<code>/opt/firmware/wave/</code>). Preferred setup is two files: one for <strong>Wave AP / AP Micro / PRO</strong> and one for <strong>Wave Nano / LR / Pico</strong>. The updater reads the UISP device model and auto-selects the correct family file for each device.
                         </p>
                         <div id="waveFwFirmwareList" style="display:flex;flex-direction:column;gap:8px;">
                             <span style="color:var(--text-color-secondary);font-size:13px;">Loading available firmware...</span>
