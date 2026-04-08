@@ -506,8 +506,8 @@
     }
 
     function modelFamily(model) {
-        const m = (model || '').toLowerCase().replace(/-/g, '').replace(/\s/g, '');
-        if (['wavenano', 'wavelr', 'wavepico', 'nano', 'wlr', 'pico'].some(k => m.includes(k))) return 'nano';
+        const m = (model || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (['wavenano', 'wavelr', 'wavelongrange', 'wavepico', 'nano', 'lr', 'wlr', 'pico'].some(k => m.includes(k))) return 'nano';
         return 'ap';
     }
 

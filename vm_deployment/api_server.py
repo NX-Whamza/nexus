@@ -1766,12 +1766,24 @@ def _wave_fw_server_firmware_dir():
     return _pl.Path(os.getenv('FIRMWARE_PATH', '/opt/firmware')) / 'wave'
 
 
+def _wave_fw_normalize_model(model: str) -> str:
+    """Normalize UISP model and firmware file names for family matching."""
+    import re as _re
+    return _re.sub(r'[^a-z0-9]', '', (model or '').lower())
+
+
 def _wave_fw_model_family(model: str) -> str:
-    """Return 'nano' for Wave Nano/LR/Pico, 'ap' for everything else."""
-    m = model.lower().replace('-', '').replace(' ', '')
-    if any(k in m for k in ['wavenano', 'wavelr', 'wavepico', 'nano', 'wlr', 'pico']):
+    """Return 'nano' for Wave Nano/LR/Pico, 'ap' for Wave AP/Micro/PRO."""
+    m = _wave_fw_normalize_model(model)
+    if any(k in m for k in ('wavenano', 'wavelr', 'wavelongrange', 'wavepico', 'nano', 'lr', 'wlr', 'pico')):
         return 'nano'
+    if any(k in m for k in ('waveapmicro', 'waveappro', 'waveap', 'apmicro', 'micro', 'pro')):
+        return 'ap'
     return 'ap'
+
+
+def _wave_fw_family_label(family: str) -> str:
+    return 'Nano/LR/Pico' if family == 'nano' else 'AP/Micro/PRO'
 
 
 def _wave_fw_version_tuple(v: str):
@@ -1834,10 +1846,10 @@ def _wave_fw_select_firmware(model: str, firmware_dir) -> 'pathlib.Path | None':
     if len(bin_files) == 1:
         return bin_files[0]
     family = _wave_fw_model_family(model)
-    nano_keywords = ['nano', 'lr', 'pico']
-    ap_keywords = ['ap', 'micro', 'pro']
+    nano_keywords = ('wavenanolrpico', 'nanolrpico', 'wavenano', 'wavelr', 'wavelongrange', 'wavepico', 'nano', 'lr', 'pico')
+    ap_keywords = ('waveapmicropro', 'apmicropro', 'waveapmicro', 'waveappro', 'waveap', 'apmicro', 'micro', 'pro')
     for f in bin_files:
-        name_lower = f.name.lower()
+        name_lower = _wave_fw_normalize_model(f.name)
         if family == 'nano' and any(k in name_lower for k in nano_keywords):
             return f
         if family == 'ap' and any(k in name_lower for k in ap_keywords):
@@ -21547,11 +21559,14 @@ def _wave_fw_upgrade_single(device, file_path, target_version, log_cb, should_ab
         return _early('skipped', 'Maintenance window deadline exceeded')
 
     # Resolve firmware file (uploaded or server-side auto-select)
+    model_name = device.get('model', '')
     if file_path is None:
         fdir = _pl.Path(firmware_dir) if firmware_dir else _wave_fw_server_firmware_dir()
-        file_path = _wave_fw_select_firmware(device.get('model', ''), fdir)
+        file_path = _wave_fw_select_firmware(model_name, fdir)
         if file_path is None:
             return _early('failed', 'No firmware file found on server for this model')
+    selected_family = _wave_fw_model_family(model_name)
+    selected_family_label = _wave_fw_family_label(selected_family)
 
     started_at = _now()
 
@@ -21602,6 +21617,8 @@ def _wave_fw_upgrade_single(device, file_path, target_version, log_cb, should_ab
     try:
         if should_abort():
             return result('aborted')
+
+        log_cb(f'[{name}] Model "{model_name or "unknown"}" mapped to {selected_family_label} -> {file_path.name}')
 
         # ── Initial login ────────────────────────────────────────────────────
         log_cb(f'[{name}] Logging in...')
@@ -22079,7 +22096,7 @@ def wave_fw_firmware_list():
     if firmware_dir.exists():
         all_bins = sorted(firmware_dir.glob('*.bin'))
         is_universal = len(all_bins) == 1
-        nano_kws = ['nano', 'lr', 'pico']
+        nano_kws = ('wavenanolrpico', 'nanolrpico', 'wavenano', 'wavelr', 'wavelongrange', 'wavepico', 'nano', 'lr', 'pico')
         for f in all_bins:
             m = _re.search(r'v?(\d+\.\d+\.\d+)', f.name)
             version = m.group(1) if m else ''
@@ -22087,7 +22104,7 @@ def wave_fw_firmware_list():
                 family = 'universal'
                 family_label = 'Universal — all Wave devices (AP, Micro, PRO, Nano, LR, Pico)'
             else:
-                family = 'nano' if any(k in f.name.lower() for k in nano_kws) else 'ap'
+                family = 'nano' if any(k in _wave_fw_normalize_model(f.name) for k in nano_kws) else 'ap'
                 family_label = 'Wave Nano / LR / Pico' if family == 'nano' else 'Wave AP / AP Micro / PRO'
             files.append({
                 'name': f.name,
