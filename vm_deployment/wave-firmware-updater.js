@@ -247,11 +247,7 @@
             const totalSel = waveState.devices.filter(d => d.selected === true).length;
             const visSel = visible.filter(d => d.selected === true).length;
             if (waveState.searchTerm) {
-                const hiddenSel = totalSel - visSel;
-                countEl.innerHTML = `${visible.length} match${visible.length !== 1 ? 'es' : ''} · ${visSel} selected`
-                    + (hiddenSel > 0
-                        ? ` <span style="color:var(--color-warning,#f59e0b);font-weight:600;">⚠ +${hiddenSel} outside filter also selected</span>`
-                        : '');
+                countEl.textContent = `${visible.length} match${visible.length !== 1 ? 'es' : ''} · ${visSel} selected`;
             } else {
                 countEl.textContent = `${waveState.devices.length} device${waveState.devices.length !== 1 ? 's' : ''} · ${totalSel} selected`;
             }
@@ -492,14 +488,6 @@
             return;
         }
 
-        // Warn clearly if a filter is hiding other selected devices that will NOT run
-        if (waveState.searchTerm) {
-            const hiddenSel = allSelected.length - selectedDevices.length;
-            if (hiddenSel > 0) {
-                addLog(`Filter active — running on ${selectedDevices.length} visible selected device(s) only. `
-                    + `${hiddenSel} selected device(s) outside the filter are excluded from this run.`, 'warning');
-            }
-        }
         // Require either an uploaded file or server firmware
         const hasServerFirmware = waveState.serverFirmware && waveState.serverFirmware.length > 0;
         if (!waveState.fileId && !hasServerFirmware) {

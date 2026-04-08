@@ -21821,6 +21821,23 @@ def _wave_fw_background_task_inner(task_id, file_path, devices, target_version, 
                         uisp_creds['url'], uisp_creds['username'], uisp_creds['password'],
                         target_version=target_version,
                     )
+                    # Debug: log what IDs we're matching against and what UISP returned
+                    log_cb(f'[auto-discover] selected AP IDs: {selected_ap_ids}', 'info')
+                    uisp_stations = [d for d in all_wave if _wave_fw_classify_role(d) == 'station']
+                    uisp_with_apid = [d for d in all_wave if d.get('ap_device_id')]
+                    log_cb(f'[auto-discover] UISP: {len(all_wave)} Wave total, '
+                           f'{len(uisp_stations)} classified station, '
+                           f'{len(uisp_with_apid)} have ap_device_id set', 'info')
+                    # Show role distribution for anything that has an ap_device_id
+                    for d in uisp_with_apid[:5]:
+                        log_cb(f'[auto-discover] device "{d.get("name","?")}" '
+                               f'role="{d.get("role","")}" classified={_wave_fw_classify_role(d)} '
+                               f'ap_device_id={d.get("ap_device_id","?")}', 'info')
+                    if uisp_stations:
+                        for s in uisp_stations[:5]:
+                            log_cb(f'[auto-discover] station "{s.get("name","?")}" '
+                                   f'id={s.get("id","?")} ap_device_id={s.get("ap_device_id","?")} '
+                                   f'match={s.get("ap_device_id") in selected_ap_ids}', 'info')
                     auto_stations = []
                     for dev in all_wave:
                         if _wave_fw_classify_role(dev) != 'station':
