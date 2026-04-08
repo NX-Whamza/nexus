@@ -9040,7 +9040,7 @@
                     <div class="aviat-card">
                         <h2>Step 1 &mdash; Discover Devices</h2>
                         <p style="color:var(--text-color-secondary);font-size:13px;margin-bottom:12px;">
-                            Queries UISP for all online Wave access points and stations.
+                            Queries UISP for all online Wave AP, station, and backhaul devices.
                         </p>
                         <button id="waveFwDiscoverBtn" class="aviat-btn">Discover via UISP</button>
                     </div>
@@ -9088,9 +9088,11 @@
                                 <div>
                                     <label for="waveFwRoleScope" style="font-size:12px;color:var(--text-color-secondary);display:block;margin-bottom:4px;">Device Role</label>
                                     <select id="waveFwRoleScope" style="width:100%;background:var(--input-bg,#1e293b);color:var(--text-color,#e2e8f0);border:1px solid var(--border-color,#334155);border-radius:4px;padding:6px 8px;font-size:13px;">
-                                        <option value="both">Both APs &amp; Stations</option>
+                                        <option value="both">APs &amp; Stations</option>
                                         <option value="ap">APs only</option>
                                         <option value="station">Stations only</option>
+                                        <option value="backhaul">Backhauls only</option>
+                                        <option value="all">All devices</option>
                                     </select>
                                 </div>
                                 <div>
@@ -9128,6 +9130,7 @@
                                 <option value="all">All devices</option>
                                 <option value="ap">APs only</option>
                                 <option value="station">Stations only</option>
+                                <option value="backhaul">Backhauls only</option>
                             </select>
                         </div>
 

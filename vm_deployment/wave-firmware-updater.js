@@ -221,10 +221,11 @@
         const q = waveState.searchTerm.toLowerCase().trim();
         const rf = waveState.roleFilter;
         return waveState.devices.filter(d => {
+            const classified = _classifyRole(d);
             if (rf !== 'all') {
-                const classified = _classifyRole(d);
                 if (rf === 'ap' && classified !== 'ap') return false;
                 if (rf === 'station' && classified !== 'station') return false;
+                if (rf === 'backhaul' && classified !== 'backhaul') return false;
             }
             if (!q) return true;
             const ip = stripCidr(d.ip || '').toLowerCase();
@@ -236,12 +237,16 @@
     }
 
     function _classifyRole(d) {
+        const rawName = (d.name || '').trim();
+        const upperName = rawName.toUpperCase();
+        if (upperName.startsWith('BH-')) return 'backhaul';
+        if (upperName.startsWith('AP-')) return 'ap';
         const role = (d.role || '').toLowerCase().replace(/[^a-z]/g, '');
         if (role.includes('station')) return 'station';
         if (role === 'ap' || role === 'accesspoint' || role === 'wirelessap' || role.endsWith('ap')) return 'ap';
-        const name = (d.name || '').toLowerCase();
+        const name = rawName.toLowerCase();
         if (name.includes('station') || name.includes('-sm-') || name.includes('/sm/')) return 'station';
-        return 'unknown';
+        return name ? 'station' : 'unknown';
     }
 
     function updateDeviceList() {
@@ -289,8 +294,8 @@
             const activeBank = waveEscapeHtml(device.active_bank || '');
             const backupBank = waveEscapeHtml(device.backup_bank || '');
             const fwFamily = model ? (modelFamily(device.model) === 'nano' ? 'Nano/LR/Pico' : 'AP/Micro/PRO') : '';
-            const rawRole = (device.role || '').toLowerCase().replace(/[^a-z]/g, '');
-            const roleLabel = rawRole.includes('station') ? 'Station' : (rawRole === 'ap' || rawRole.endsWith('ap') ? 'AP' : '');
+            const classifiedRole = _classifyRole(device);
+            const roleLabel = classifiedRole === 'station' ? 'Station' : (classifiedRole === 'ap' ? 'AP' : (classifiedRole === 'backhaul' ? 'Backhaul' : ''));
             const checked = device.selected === true ? 'checked' : '';
 
             const statusBadge = status !== 'pending'
@@ -317,7 +322,7 @@
                         <span style="font-size:12px;color:var(--text-color-secondary);white-space:nowrap;flex-shrink:0;">${displayIp}</span>
                     </div>
                     <div style="display:flex;align-items:center;gap:5px;margin-top:2px;flex-wrap:wrap;">
-                        ${roleLabel ? `<span class="aviat-status-badge" style="font-size:10px;padding:1px 5px;background:${roleLabel==='AP'?'rgba(59,130,246,.25)':'rgba(168,85,247,.25)'};color:${roleLabel==='AP'?'#93c5fd':'#d8b4fe'};">${roleLabel}</span>` : ''}
+                        ${roleLabel ? `<span class="aviat-status-badge" style="font-size:10px;padding:1px 5px;background:${roleLabel==='AP'?'rgba(59,130,246,.25)':(roleLabel==='Backhaul'?'rgba(245,158,11,.22)':'rgba(168,85,247,.25)')};color:${roleLabel==='AP'?'#93c5fd':(roleLabel==='Backhaul'?'#fcd34d':'#d8b4fe')};">${roleLabel}</span>` : ''}
                         ${model ? `<span style="font-size:11px;color:var(--text-color-secondary);">${model}</span>` : ''}
                         ${fwFamily ? `<span style="font-size:11px;color:var(--text-color-secondary);opacity:0.7;">· ${fwFamily}</span>` : ''}
                         ${version ? `<span style="font-size:11px;color:var(--text-color-secondary);">· v${version}</span>` : ''}

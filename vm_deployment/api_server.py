@@ -1802,18 +1802,24 @@ def _wave_fw_version_below(v: str, minimum: str) -> bool:
 
 
 def _wave_fw_classify_role(device: dict) -> str:
-    """Return 'ap', 'station', or 'unknown' from a UISP device dict."""
+    """Return 'ap', 'station', 'backhaul', or 'unknown' from a UISP device dict."""
     import re as _re
+    name = (device.get('name') or '').strip()
+    upper_name = name.upper()
+    if upper_name.startswith('BH-'):
+        return 'backhaul'
+    if upper_name.startswith('AP-'):
+        return 'ap'
     role = _re.sub(r'[^a-z]', '', (device.get('role') or '').lower())
     if 'station' in role:
         return 'station'
     if role in ('ap', 'accesspoint', 'wirelessap') or role.endswith('ap'):
         return 'ap'
-    # Fallback: check name for station/SM patterns
-    name = (device.get('name') or '').lower()
+    # Fallback: check name for station/SM patterns only when it wasn't explicitly named.
+    name = name.lower()
     if any(k in name for k in ('station', '-sm-', '/sm/', ' sm ')):
         return 'station'
-    return 'unknown'
+    return 'station' if name else 'unknown'
 
 
 def _wave_fw_select_firmware(model: str, firmware_dir) -> 'pathlib.Path | None':
@@ -21791,7 +21797,7 @@ def _wave_fw_background_task_inner(task_id, file_path, devices, target_version, 
         return wave_fw_tasks.get(task_id, {}).get('abort', False) or _wave_fw_check_abort_signal(task_id)
 
     # Filter by role scope before launching upgrade threads
-    if role_scope != 'both':
+    if role_scope != 'both' and role_scope != 'all':
         role_filtered = []
         skipped_by_role = []
         for d in devices:
@@ -21799,6 +21805,8 @@ def _wave_fw_background_task_inner(task_id, file_path, devices, target_version, 
             if role_scope == 'ap' and dev_role != 'ap':
                 skipped_by_role.append(d)
             elif role_scope == 'station' and dev_role != 'station':
+                skipped_by_role.append(d)
+            elif role_scope == 'backhaul' and dev_role != 'backhaul':
                 skipped_by_role.append(d)
             else:
                 role_filtered.append(d)
@@ -21869,7 +21877,16 @@ def _wave_fw_background_task_inner(task_id, file_path, devices, target_version, 
         if stations and aps:
             _run_batch(stations, f'Phase 1/2: upgrading {len(stations)} station(s) first...')
             if not should_abort():
-                _run_batch(aps + others, f'Phase 2/2: upgrading {len(aps + others)} AP(s)...')
+                _run_batch(aps + others, f'Phase 2/2: upgrading {len(aps + others)} AP device(s)...')
+        else:
+            _run_batch([d for d in devices if _wave_fw_classify_role(d) != 'backhaul'])
+    elif role_scope == 'all':
+        stations = [d for d in devices if _wave_fw_classify_role(d) == 'station']
+        non_stations = [d for d in devices if _wave_fw_classify_role(d) != 'station']
+        if stations:
+            _run_batch(stations, f'Phase 1/2: upgrading {len(stations)} station(s) first...')
+            if not should_abort():
+                _run_batch(non_stations, f'Phase 2/2: upgrading {len(non_stations)} AP/backhaul device(s)...')
         else:
             _run_batch(devices)
     else:
@@ -21969,7 +21986,7 @@ def wave_fw_upgrade_start():
     use_server_firmware = data.get('use_server_firmware', False)
     min_current_firmware = data.get('min_current_firmware', '').strip()
     role_scope = data.get('role_scope', 'both')
-    if role_scope not in ('both', 'ap', 'station'):
+    if role_scope not in ('both', 'ap', 'station', 'backhaul', 'all'):
         role_scope = 'both'
     deadline_minutes = int(data.get('deadline_minutes') or 0)
     deadline_ts = (time.time() + deadline_minutes * 60) if deadline_minutes > 0 else None
