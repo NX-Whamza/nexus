@@ -123,6 +123,7 @@
             processing: '~',
             verifying: 'V',
             success: 'OK',
+            skipped: '–',
             error: 'X',
             aborted: 'A'
         }[status] || '?';
@@ -196,16 +197,19 @@
         const pending = waveState.devices.filter(d => normalizeStatus(d.status) === 'pending').length;
         const processing = waveState.devices.filter(d => normalizeStatus(d.status) === 'processing').length;
         const success = waveState.devices.filter(d => normalizeStatus(d.status) === 'success').length;
+        const skipped = waveState.devices.filter(d => normalizeStatus(d.status) === 'skipped').length;
         const error = waveState.devices.filter(d => normalizeStatus(d.status) === 'error').length;
         const statTotal = document.getElementById('waveFwStatTotal');
         const statPending = document.getElementById('waveFwStatPending');
         const statProcessing = document.getElementById('waveFwStatProcessing');
         const statSuccess = document.getElementById('waveFwStatSuccess');
+        const statSkipped = document.getElementById('waveFwStatSkipped');
         const statError = document.getElementById('waveFwStatError');
         if (statTotal) statTotal.textContent = total;
         if (statPending) statPending.textContent = pending;
         if (statProcessing) statProcessing.textContent = processing;
         if (statSuccess) statSuccess.textContent = success;
+        if (statSkipped) statSkipped.textContent = skipped;
         if (statError) statError.textContent = error;
     }
 
@@ -291,7 +295,9 @@
 
             const statusBadge = status !== 'pending'
                 ? `<span class="aviat-status-badge ${status}" style="font-size:10px;padding:1px 4px;">${statusIcon(status)}</span> `
-                : '';
+                : (device.already_current
+                    ? `<span class="aviat-status-badge skipped" style="font-size:10px;padding:1px 4px;" title="Already at target firmware">–</span> `
+                    : '');
 
             const detailHtml = device.detail
                 ? `<div style="font-size:11px;color:var(--text-color-secondary);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${waveEscapeHtml(device.detail)}</div>`
