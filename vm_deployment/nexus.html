@@ -7167,6 +7167,7 @@
                                     <option value="upgrade">Upgrade</option>
                                     <option value="aviat-upgrade">Aviat Backhaul Upgrade</option>
                                     <option value="cambium-upgrade">Cambium Radio Upgrade</option>
+                                    <option value="wave-fw-upgrade">Wave Radio Upgrade</option>
                                     <option value="field-config">Device Config Studio</option>
                                     <option value="config-diff">Config Diff Viewer</option>
                                     <option value="bulk-config">Bulk Operations</option>
@@ -11415,6 +11416,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 'enterprise-feeding-outstate-config': { icon: '\u{1F3E2}', label: 'Enterprise Feeding Out-of-State' },
                 'aviat-upgrade':        { icon: '\u{2B06}', label: 'Aviat Backhaul Upgrade' },
                 'cambium-upgrade':      { icon: '\u{1F4F6}', label: 'Cambium Radio Upgrade' },
+                'wave-fw-upgrade':      { icon: '\u{1F4F6}', label: 'Wave Radio Upgrade' },
                 'ftth-bng':             { icon: '\u{1F310}', label: 'FTTH BNG Config' },
                 'ftth-fiber-customer':  { icon: '\u{1F9F5}', label: 'FTTH Fiber Customer' },
                 'ftth-fiber-site':      { icon: '\u{1F3D7}', label: 'FTTH Fiber Site' },
@@ -14910,7 +14912,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                             const failCount = allActivities.filter(e => e.success === false || e.success === 0).length;
                             const nonFirmwareActivities = allActivities.filter(entry =>
                                 entry.countsTowardMetrics !== false &&
-                                !['aviat-upgrade', 'cambium-upgrade'].includes(entry.type) &&
+                                !['aviat-upgrade', 'cambium-upgrade', 'wave-fw-upgrade'].includes(entry.type) &&
                                 !(entry.type || '').startsWith('maintenance')
                             );
                             const totalCount = nonFirmwareActivities.length;
@@ -14918,7 +14920,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                             const successRate = totalCount > 0 ?
                                 Math.round((successCountFiltered / totalCount) * 100) : 100;
                             const firmwareUpgradeCount = allActivities.filter(entry =>
-                                ['aviat-upgrade', 'cambium-upgrade'].includes(entry.type)
+                                ['aviat-upgrade', 'cambium-upgrade', 'wave-fw-upgrade'].includes(entry.type)
                             ).length;
 
                             // Update UI elements

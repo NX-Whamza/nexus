@@ -20426,6 +20426,45 @@ def _log_cambium_activity(result):
                 pass
 
 
+def _log_wave_fw_activity(result, username=None, tenant_id=None):
+    """Log a Wave FW upgrade result to the shared activity database."""
+    conn = None
+    try:
+        if not isinstance(result, dict) or result.get('status') not in ('success', 'failed'):
+            return
+        init_activity_db()
+        secure_dir = 'secure_data'
+        db_path = os.path.join(secure_dir, 'activity_log.db')
+        conn = sqlite3.connect(db_path)
+        c = conn.cursor()
+        ts_unix = get_unix_timestamp()
+        ts_iso = get_utc_timestamp()
+        uname = _short_username(username or 'wave-fw-tool')
+        c.execute('''INSERT INTO activities
+                     (tenant_id, username, activity_type, device, site_name, routeros_version, success, timestamp, timestamp_unix)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                  (
+                      tenant_id,
+                      uname,
+                      'wave-fw-upgrade',
+                      'Wave Radio',
+                      result.get('ip') or 'Unknown',
+                      result.get('active_bank') or '',
+                      1 if result.get('status') == 'success' else 0,
+                      ts_iso,
+                      ts_unix,
+                  ))
+        conn.commit()
+    except Exception as e:
+        safe_print(f"[WAVE-FW] Failed to log activity: {e}")
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
 def _cambium_update_queue_from_result(result, username=None, tenant_id=None, tenant_slug=None):
     if not isinstance(result, dict):
         return
@@ -21790,6 +21829,26 @@ def _wave_fw_background_task_inner(task_id, file_path, devices, target_version, 
                     'warning' if res.get('status') in ('skipped', 'aborted') else 'error'
                 )
                 log_cb(f"[{res.get('name', res.get('ip'))}] {res.get('status')}: {res.get('error') or 'OK'}", level)
+                # Push structured result onto SSE queue so the frontend badge updates immediately
+                _result_event = {'result': res, 'timestamp': datetime.utcnow().isoformat() + 'Z'}
+                if task_id in wave_fw_log_queues:
+                    try:
+                        wave_fw_log_queues[task_id].put(_result_event)
+                    except Exception:
+                        pass
+                try:
+                    _log_path = _wave_fw_task_store_dir() / f'{task_id}.log.jsonl'
+                    with open(_log_path, 'a') as _lf:
+                        _lf.write(json.dumps(_result_event) + '\n')
+                except Exception:
+                    pass
+                # Log to activity DB so dashboard firmware upgrade counter includes Wave FW
+                _task_meta = wave_fw_tasks.get(task_id, {})
+                _log_wave_fw_activity(
+                    res,
+                    username=_task_meta.get('requested_by'),
+                    tenant_id=_task_meta.get('_tenant_id'),
+                )
 
     if role_scope == 'both':
         # Safety ordering: upgrade stations (SMs) first so they're on the new firmware
@@ -21960,6 +22019,7 @@ def wave_fw_upgrade_start():
         'deadline_ts': deadline_ts,
         '_tenant_id': user_info.get('tenant_id') or user_info.get('tenantId'),
         '_tenant_slug': '',
+        'requested_by': data.get('requested_by') or user_info.get('email') or 'wave-fw-tool',
     }
     wave_fw_log_queues[task_id] = queue.Queue()
 
