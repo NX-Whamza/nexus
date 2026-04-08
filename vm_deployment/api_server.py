@@ -22158,23 +22158,58 @@ def wave_fw_stream_logs(task_id):
 
     if task_id not in wave_fw_log_queues:
         log_path = _wave_fw_task_store_dir() / f'{task_id}.log.jsonl'
-        if not log_path.exists():
-            return Response(
-                'data: {"type":"done"}\n\n',
-                mimetype='text/event-stream',
-                headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
-            )
 
         @stream_with_context
         def generate_from_disk():
-            try:
-                with open(log_path) as _lf:
-                    for line in _lf:
-                        line = line.strip()
-                        if line:
-                            yield f'data: {line}\n\n'
-            except Exception:
-                pass
+            """Tail the on-disk log file in real-time while the task is running.
+
+            This handles the case where the SSE request lands on a different gunicorn
+            worker than the one running the background task.  We poll the file every
+            250 ms and emit any new lines, stopping once the task reaches a terminal
+            state and all lines have been flushed.
+            """
+            import time as _time
+            pos = 0
+            # Wait up to 5 s for the log file to appear (task may not have written yet)
+            for _ in range(20):
+                if log_path.exists():
+                    break
+                yield ': keep-alive\n\n'
+                _time.sleep(0.25)
+            else:
+                yield 'data: {"type":"done"}\n\n'
+                return
+
+            terminal = {'completed', 'failed', 'aborted', 'error'}
+            while True:
+                try:
+                    with open(log_path) as _lf:
+                        _lf.seek(pos)
+                        for line in _lf:
+                            line = line.strip()
+                            if line:
+                                yield f'data: {line}\n\n'
+                        pos = _lf.tell()
+                except Exception:
+                    pass
+                # Check if task reached a terminal state in the persisted task store
+                disk_task = _wave_fw_load_task_from_disk(task_id)
+                status = (disk_task or {}).get('status', '')
+                if status in terminal:
+                    # Drain any remaining lines written after we last read
+                    try:
+                        with open(log_path) as _lf:
+                            _lf.seek(pos)
+                            for line in _lf:
+                                line = line.strip()
+                                if line:
+                                    yield f'data: {line}\n\n'
+                    except Exception:
+                        pass
+                    break
+                yield ': keep-alive\n\n'
+                _time.sleep(0.25)
+
             yield 'data: {"type":"done"}\n\n'
 
         return Response(
