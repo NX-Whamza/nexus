@@ -236,6 +236,10 @@
         });
     }
 
+    function hasActiveSelectionFilter() {
+        return Boolean(waveState.searchTerm.trim()) || waveState.roleFilter !== 'all';
+    }
+
     function _classifyRole(d) {
         const rawName = (d.name || '').trim();
         const upperName = rawName.toUpperCase();
@@ -267,12 +271,10 @@
         const hasMore = visible.length > waveState.showLimit;
 
         if (countEl) {
-            // Always show TOTAL selected across ALL devices (not just visible) so the
-            // count is accurate even when a search filter is hiding devices.
             const totalSel = waveState.devices.filter(d => d.selected === true).length;
             const visSel = visible.filter(d => d.selected === true).length;
-            if (waveState.searchTerm) {
-                countEl.textContent = `${visible.length} match${visible.length !== 1 ? 'es' : ''} · ${visSel} selected`;
+            if (hasActiveSelectionFilter()) {
+                countEl.textContent = `${visible.length} visible device${visible.length !== 1 ? 's' : ''} · ${visSel} selected`;
             } else {
                 countEl.textContent = `${waveState.devices.length} device${waveState.devices.length !== 1 ? 's' : ''} · ${totalSel} selected`;
             }
@@ -506,7 +508,7 @@
         // the user filtered to find something specific.
         const allSelected = waveState.devices.filter(d => d.selected === true);
         const visible = filteredDevices();
-        const selectedDevices = waveState.searchTerm
+        const selectedDevices = hasActiveSelectionFilter()
             ? visible.filter(d => d.selected === true)
             : allSelected;
 
