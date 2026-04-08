@@ -21872,7 +21872,11 @@ def _wave_fw_background_task_inner(task_id, file_path, devices, target_version, 
         # could prevent stations from re-associating until they're also upgraded.
         stations = [d for d in devices if _wave_fw_classify_role(d) == 'station']
         aps = [d for d in devices if _wave_fw_classify_role(d) == 'ap']
+        backhauls = [d for d in devices if _wave_fw_classify_role(d) == 'backhaul']
         others = [d for d in devices if _wave_fw_classify_role(d) == 'unknown']
+
+        if backhauls:
+            log_cb(f'APs & Stations mode: ignoring {len(backhauls)} selected backhaul device(s)', 'info')
 
         if stations and aps:
             _run_batch(stations, f'Phase 1/2: upgrading {len(stations)} station(s) first...')

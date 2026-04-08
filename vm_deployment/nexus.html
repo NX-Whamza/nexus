@@ -3260,6 +3260,31 @@
             font-size: 13px;
         }
 
+        .device-firmware-note {
+            margin: 0 0 16px 0;
+            padding: 12px 14px;
+            border: 1px solid rgba(245, 158, 11, 0.35);
+            border-left: 4px solid #f59e0b;
+            border-radius: 10px;
+            background: rgba(245, 158, 11, 0.08);
+            color: var(--text-color);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .device-firmware-note strong {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 13px;
+            color: #fcd34d;
+        }
+
+        .device-firmware-note p {
+            margin: 0;
+            font-size: 12px;
+            line-height: 1.5;
+            color: var(--text-color-secondary);
+        }
+
         /* Aviat Backhaul Firmware Updater (NOC themed) */
         .aviat-tool {
             --aviat-card: var(--container-bg);
@@ -8892,6 +8917,11 @@
 
             <div id="device-firmware-aviat-section" class="device-firmware-section active">
 
+            <div class="device-firmware-note">
+                <strong>Upgrade Order Notice</strong>
+                <p>Start with downstream devices first, then move upstream. For backhaul work, upgrade the far-end/downstream radios before touching the upstream side so live paths are not stranded on mismatched firmware.</p>
+            </div>
+
             <div id="maintenanceBanner" class="aviat-maintenance-banner aviat-maintenance-off">
                 OUTSIDE MAINTENANCE WINDOW (2:00 AM - 6:00 AM) | Activation allowed 2:00 AM - 5:00 AM
             </div>
@@ -9036,6 +9066,11 @@
                     <p>Discover Wave devices via UISP, upload a firmware image, and run parallel bank-aware upgrades with live streaming logs.</p>
                 </div>
 
+                <div class="device-firmware-note">
+                    <strong>Upgrade Order Notice</strong>
+                    <p>Work downstream first. For AP and station upgrades, upgrade the station/SM before the AP. For backhaul upgrades, start with the downstream/far-end device first, then follow with the upstream side.</p>
+                </div>
+
                 <div class="aviat-grid">
                     <div class="aviat-card">
                         <h2>Step 1 &mdash; Discover Devices</h2>
@@ -9153,6 +9188,11 @@
                 <div class="aviat-card device-firmware-intro">
                     <h2>Cambium Radio Updater</h2>
                     <p>Queue ePMP and cnWave radios, select a firmware profile, and run upgrade and verification flows from the same workspace.</p>
+                </div>
+
+                <div class="device-firmware-note">
+                    <strong>Upgrade Order Notice</strong>
+                    <p>Work downstream first. Upgrade subscriber/downstream radios before upstream or aggregation radios so the path is preserved while firmware versions are changing.</p>
                 </div>
 
                 <div class="aviat-grid">
