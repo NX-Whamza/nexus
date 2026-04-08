@@ -8999,7 +8999,7 @@
                         <div style="grid-column: span 2;">
                             <label style="display: block; font-size: 12px; margin-bottom: 6px;">Firmware Target</label>
                             <select id="firmwareTarget">
-                                <option value="final">Final (6.1.0)</option>
+                                <option value="final">Final (6.2.4)</option>
                                 <option value="baseline">Baseline (2.11.11)</option>
                             </select>
                         </div>
@@ -32772,7 +32772,7 @@ Ready for translation!`);
                             return;
                         }
                         const selectedTarget = (document.getElementById('firmwareTarget') || {}).value || 'final';
-                        const expectedFirmware = radio.targetVersion || (selectedTarget === 'baseline' ? '2.11.11' : '6.1.0');
+                        const expectedFirmware = radio.targetVersion || (selectedTarget === 'baseline' ? '2.11.11' : '6.2.4');
                         const firmwareOk = res.firmware && String(res.firmware).startsWith(expectedFirmware);
                         radio.firmwareStatus = firmwareOk ? 'success' : 'pending';
                         radio.snmpStatus = res.snmp_ok ? 'success' : 'pending';

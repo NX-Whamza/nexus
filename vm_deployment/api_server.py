@@ -21597,13 +21597,7 @@ def _wave_fw_upgrade_single(device, file_path, target_version, log_cb, should_ab
             if active == target_version and backup == target_version:
                 break  # Both banks match — done
 
-            if backup == target_version:
-                # Backup already has the target — no need to upload; just reboot to
-                # activate it.  The next pass (if needed) will fill the remaining bank.
-                log_cb(f'[{name}] Pass {pass_num + 1}/{max_passes}: backup already at '
-                       f'{target_version} — rebooting to activate (skipping upload)...')
-            else:
-                log_cb(f'[{name}] Pass {pass_num + 1}/{max_passes}: uploading {file_path.name}...')
+            log_cb(f'[{name}] Pass {pass_num + 1}/{max_passes}: uploading {file_path.name}...')
                 # Retry upload once on 401/403 (re-login and re-try, matching reference behavior)
                 _up_last_status = None
                 for _up_attempt in range(2):
@@ -21805,68 +21799,6 @@ def _wave_fw_background_task_inner(task_id, file_path, devices, target_version, 
         aps = [d for d in devices if _wave_fw_classify_role(d) == 'ap']
         others = [d for d in devices if _wave_fw_classify_role(d) == 'unknown']
 
-        # ── Auto-discover associated stations for selected APs ──────────────
-        # When the user selects AP(s) and role_scope='both', query UISP for all
-        # Wave devices and find every station whose apDevice.id matches a selected AP.
-        # This means the user only needs to select the AP — its subs are pulled in
-        # automatically and upgraded first.
-        if aps and uisp_creds:
-            selected_ap_ids = {d.get('id') for d in aps if d.get('id')}
-            already_selected_ips = {d.get('ip') for d in devices if d.get('ip')}
-            already_selected_ids = {d.get('id') for d in devices if d.get('id')}
-            if selected_ap_ids:
-                try:
-                    log_cb('Querying UISP to auto-discover stations associated with selected AP(s)...', 'info')
-                    all_wave = _wave_fw_uisp_discover(
-                        uisp_creds['url'], uisp_creds['username'], uisp_creds['password'],
-                        target_version=target_version,
-                    )
-                    # Debug: log what IDs we're matching against and what UISP returned
-                    log_cb(f'[auto-discover] selected AP IDs: {selected_ap_ids}', 'info')
-                    uisp_stations = [d for d in all_wave if _wave_fw_classify_role(d) == 'station']
-                    uisp_with_apid = [d for d in all_wave if d.get('ap_device_id')]
-                    log_cb(f'[auto-discover] UISP: {len(all_wave)} Wave total, '
-                           f'{len(uisp_stations)} classified station, '
-                           f'{len(uisp_with_apid)} have ap_device_id set', 'info')
-                    # Show role distribution for anything that has an ap_device_id
-                    for d in uisp_with_apid[:5]:
-                        log_cb(f'[auto-discover] device "{d.get("name","?")}" '
-                               f'role="{d.get("role","")}" classified={_wave_fw_classify_role(d)} '
-                               f'ap_device_id={d.get("ap_device_id","?")}', 'info')
-                    if uisp_stations:
-                        for s in uisp_stations[:5]:
-                            log_cb(f'[auto-discover] station "{s.get("name","?")}" '
-                                   f'id={s.get("id","?")} ap_device_id={s.get("ap_device_id","?")} '
-                                   f'match={s.get("ap_device_id") in selected_ap_ids}', 'info')
-                    auto_stations = []
-                    for dev in all_wave:
-                        if _wave_fw_classify_role(dev) != 'station':
-                            continue
-                        if dev.get('ap_device_id') not in selected_ap_ids:
-                            continue
-                        # Skip if already explicitly selected by IP or ID
-                        if dev.get('ip') in already_selected_ips or dev.get('id') in already_selected_ids:
-                            continue
-                        if not dev.get('ip'):
-                            continue
-                        auto_stations.append(dev)
-                    if auto_stations:
-                        # Group by AP name for a clean log line
-                        by_ap = {}
-                        for dev in auto_stations:
-                            ap_match = next((a for a in aps if a.get('id') == dev.get('ap_device_id')), None)
-                            ap_label = ap_match.get('name', dev.get('ap_device_id')) if ap_match else dev.get('ap_device_id', '?')
-                            by_ap.setdefault(ap_label, []).append(dev)
-                        for ap_label, subs in sorted(by_ap.items()):
-                            log_cb(f'Auto-discovered {len(subs)} station(s) on {ap_label} — '
-                                   f'adding to upgrade queue', 'info')
-                        stations = auto_stations + stations  # prepend so auto-found subs run first
-                        wave_fw_tasks[task_id]['device_count'] = len(stations) + len(aps) + len(others)
-                    else:
-                        log_cb('No additional stations found associated with selected AP(s).', 'info')
-                except Exception as _disc_exc:
-                    log_cb(f'Station auto-discovery failed (continuing without): {_disc_exc}', 'warning')
-
         if stations and aps:
             _run_batch(stations, f'Phase 1/2: upgrading {len(stations)} station(s) first...')
             if not should_abort():
@@ -22033,14 +21965,6 @@ def wave_fw_upgrade_start():
 
     _wave_fw_persist_task(task_id)  # write to disk so other workers can find it
 
-    # Pass UISP credentials so the background task can auto-discover stations
-    # associated with selected APs (used when role_scope='both').
-    _uisp_url = os.getenv('UISP_API_URL', '')
-    _uisp_user = os.getenv('UISP_USERNAME', '')
-    _uisp_pass = os.getenv('UISP_PASSWORD', '')
-    uisp_creds = ({'url': _uisp_url, 'username': _uisp_user, 'password': _uisp_pass}
-                  if _uisp_url and _uisp_user and _uisp_pass else None)
-
     t = threading.Thread(
         target=_wave_fw_background_task,
         args=(task_id, file_path, devices, target_version),
@@ -22049,7 +21973,6 @@ def wave_fw_upgrade_start():
             'min_current_firmware': min_current_firmware or None,
             'deadline_ts': deadline_ts,
             'role_scope': role_scope,
-            'uisp_creds': uisp_creds,
         },
         daemon=True,
     )
