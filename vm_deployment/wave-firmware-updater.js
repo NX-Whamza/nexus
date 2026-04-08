@@ -12,6 +12,7 @@
         fileName: null,
         searchTerm: '',
         roleFilter: 'all',
+        showSelectedOnly: false,
         showLimit: 100,
         serverFirmware: []
     };
@@ -233,11 +234,20 @@
             const model = (d.model || '').toLowerCase();
             const fw = (d.firmwareVersion || d.version || '').toLowerCase();
             return ip.includes(q) || name.includes(q) || model.includes(q) || fw.includes(q);
-        });
+        }).filter(d => !waveState.showSelectedOnly || d.selected === true);
     }
 
     function hasActiveSelectionFilter() {
-        return Boolean(waveState.searchTerm.trim()) || waveState.roleFilter !== 'all';
+        return Boolean(waveState.searchTerm.trim()) || waveState.roleFilter !== 'all' || waveState.showSelectedOnly;
+    }
+
+    function updateShowSelectedButton() {
+        const btn = document.getElementById('waveFwShowSelectedBtn');
+        if (!btn) return;
+        btn.textContent = waveState.showSelectedOnly ? 'Show All' : 'Show Selected';
+        btn.title = waveState.showSelectedOnly
+            ? 'Return to the full filtered device list.'
+            : 'Show only devices that are currently selected.';
     }
 
     function _classifyRole(d) {
@@ -269,6 +279,7 @@
         const visible = filteredDevices();
         const capped = visible.slice(0, waveState.showLimit);
         const hasMore = visible.length > waveState.showLimit;
+        updateShowSelectedButton();
 
         if (countEl) {
             const totalSel = waveState.devices.filter(d => d.selected === true).length;
@@ -706,6 +717,12 @@
         updateDeviceList();
     }
 
+    function toggleShowSelected() {
+        waveState.showSelectedOnly = !waveState.showSelectedOnly;
+        waveState.showLimit = PAGE_SIZE;
+        updateDeviceList();
+    }
+
     // ── Controls ──────────────────────────────────────────────────────────────
 
     function bindControls() {
@@ -716,6 +733,7 @@
             ['waveFwAbortBtn', 'click', abortCurrentTask],
             ['waveFwSelectAllBtn', 'click', selectAll],
             ['waveFwDeselectAllBtn', 'click', deselectAll],
+            ['waveFwShowSelectedBtn', 'click', toggleShowSelected],
             ['waveFwClearLogBtn', 'click', clearLog]
         ];
         bindings.forEach(([id, eventName, handler]) => {
