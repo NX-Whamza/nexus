@@ -67,9 +67,17 @@
     async function cambiumFetch(path, options) {
         const bases = getCambiumCandidateBases();
         let lastError = null;
+        const authHeaders = (typeof getAuthHeaders === 'function') ? getAuthHeaders() : {};
+        const mergedOptions = {
+            ...(options || {}),
+            headers: {
+                ...authHeaders,
+                ...((options && options.headers) || {})
+            }
+        };
         for (const base of bases) {
             try {
-                const response = await fetch(`${base}${path}`, options);
+                const response = await fetch(`${base}${path}`, mergedOptions);
                 if (response.ok) {
                     cambiumApiOverride = base;
                     syncEndpointHint();
@@ -82,6 +90,13 @@
             }
         }
         throw lastError || new Error('Cambium API unavailable');
+    }
+
+    function getCambiumStreamUrl(path) {
+        const token = (typeof getAuthToken === 'function') ? getAuthToken() : (localStorage.getItem('auth_token') || '');
+        const url = new URL(`${getCambiumApiBase()}${path}`, window.location.origin);
+        if (token) url.searchParams.set('token', token);
+        return url.toString();
     }
 
     async function parseJson(response) {
@@ -659,7 +674,7 @@
         cambiumState.globalStreamStarted = true;
         let eventSource;
         try {
-            eventSource = new EventSource(`${getCambiumApiBase()}/stream/global`);
+            eventSource = new EventSource(getCambiumStreamUrl('/stream/global'));
         } catch (err) {
             cambiumState.globalStreamStarted = false;
             addLog(`Cambium global stream failed to start: ${err.message}`, 'warning');
@@ -692,7 +707,7 @@
         if (typeof EventSource === 'undefined') return;
         let eventSource;
         try {
-            eventSource = new EventSource(`${getCambiumApiBase()}/stream/${encodeURIComponent(taskId)}`);
+            eventSource = new EventSource(getCambiumStreamUrl(`/stream/${encodeURIComponent(taskId)}`));
         } catch (err) {
             addLog(`Cambium task stream failed to start: ${err.message}`, 'warning');
             return;

@@ -40,3 +40,38 @@ def test_version_endpoint_and_health_expose_app_metadata(monkeypatch):
     assert health_payload["status"] == "online"
     assert health_payload["app"]["version"] == "v2.6.7"
     assert health_payload["app"]["environment"] == "dev"
+
+
+def test_health_defaults_to_basic_checks_and_only_runs_dependency_checks_in_full_mode(monkeypatch):
+    api_server = _load_api_server()
+    api_server._HEALTH_CHECKS_CACHE.update(
+        {
+            "basic_timestamp": 0.0,
+            "basic_checks": None,
+            "full_timestamp": 0.0,
+            "full_checks": None,
+        }
+    )
+
+    calls = []
+
+    monkeypatch.setattr(api_server, "_health_check_secure_data", lambda: {"name": "secure_data", "ok": True})
+
+    def fake_ido_check(*, allow_autostart=False):
+        calls.append(allow_autostart)
+        return {"name": "ido_backend", "ok": True, "allow_autostart": allow_autostart}
+
+    monkeypatch.setattr(api_server, "_health_check_ido_backend", fake_ido_check)
+
+    client = api_server.app.test_client()
+
+    health_payload = client.get("/api/health").get_json()
+    assert health_payload["status"] == "online"
+    assert health_payload["checks_mode"] == "basic"
+    assert health_payload["dependencies_checked"] is False
+    assert calls == []
+
+    full_health_payload = client.get("/api/health?full=1&refresh=1").get_json()
+    assert full_health_payload["checks_mode"] == "full"
+    assert full_health_payload["dependencies_checked"] is True
+    assert calls == [True]

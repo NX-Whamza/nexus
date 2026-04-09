@@ -135,10 +135,10 @@ class Config:
     )
     firmware_final_uri: str = os.getenv(
         "AVIAT_FIRMWARE_FINAL_URI",
-        "http://143.55.35.76/updates/wtm4100-6.1.0.11.52799.swpack",
+        "http://192.168.11.118:8000/api/aviat/firmware/wtm4100-6.2.4.12.59373.swpack",
     )
     firmware_baseline_version: str = os.getenv("AVIAT_BASELINE_VERSION", "2.11.11")
-    firmware_final_version: str = os.getenv("AVIAT_FINAL_VERSION", "6.1.0")
+    firmware_final_version: str = os.getenv("AVIAT_FINAL_VERSION", "6.2.4")
     firmware_activation_time: str = os.getenv("AVIAT_ACTIVATION_TIME", "02:00")
     firmware_activate_now: bool = os.getenv("AVIAT_ACTIVATE_NOW", "false").lower() in (
         "1",

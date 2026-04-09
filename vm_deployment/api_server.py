@@ -7,6 +7,7 @@ Secure OpenAI API integration for RouterOS config generation and validation
 
 import sys
 import io
+import faulthandler
 from collections import deque
 # Fix Windows console encoding for Unicode - but only if not already wrapped
 # In PyInstaller, stdout/stderr might already be wrapped, so check first
@@ -20,6 +21,11 @@ if sys.platform == 'win32':
     except (AttributeError, ValueError):
         # If wrapping fails (e.g., in PyInstaller), just continue
         pass
+
+try:
+    faulthandler.enable(all_threads=True)
+except Exception:
+    pass
 
 from flask import Flask, request, jsonify, send_file, send_from_directory, stream_with_context
 from flask import make_response, abort, Response
@@ -218,13 +224,35 @@ def _health_check_secure_data():
     return result
 
 
-def _health_check_ido_backend():
-    backend_url = _ido_backend_url()
+def _configured_ido_backend_url():
+    candidates = (
+        "IDO_BACKEND_URL",
+        "IDO_TOOLS_BACKEND_URL",
+        "NETLAUNCH_IDO_BACKEND_URL",
+        "NEXTLINK_IDO_BACKEND_URL",
+        "NETLAUNCH_TOOLS_BACKEND_URL",
+    )
+    for key in candidates:
+        value = (os.getenv(key) or "").strip()
+        if value:
+            if not value.startswith(("http://", "https://")):
+                value = f"http://{value}"
+            return value.rstrip("/")
+    return ""
+
+
+def _health_check_ido_backend(allow_autostart: bool = False):
+    backend_url = _configured_ido_backend_url()
+    autostart_attempted = False
+    if not backend_url and allow_autostart:
+        autostart_attempted = True
+        backend_url = _ensure_local_ido_backend()
     result = {
         'name': 'ido_backend',
         'ok': True,
         'configured': bool(backend_url),
         'backend_url': backend_url,
+        'autostart_attempted': autostart_attempted,
         'detail': 'IDO backend reachable',
     }
     if not backend_url:
@@ -251,25 +279,29 @@ def _health_check_ido_backend():
 
 
 _HEALTH_CHECKS_CACHE: dict[str, object] = {
-    'timestamp': 0.0,
-    'checks': None,
+    'basic_timestamp': 0.0,
+    'basic_checks': None,
+    'full_timestamp': 0.0,
+    'full_checks': None,
 }
 _HEALTH_CHECKS_TTL_SECONDS = 30.0
 
 
-def _collect_health_checks(force: bool = False):
+def _collect_health_checks(force: bool = False, include_dependencies: bool = False):
+    cache_prefix = 'full' if include_dependencies else 'basic'
+    timestamp_key = f'{cache_prefix}_timestamp'
+    checks_key = f'{cache_prefix}_checks'
     now = time.time()
-    cached_checks = _HEALTH_CHECKS_CACHE.get('checks')
-    cached_at = float(_HEALTH_CHECKS_CACHE.get('timestamp') or 0.0)
+    cached_checks = _HEALTH_CHECKS_CACHE.get(checks_key)
+    cached_at = float(_HEALTH_CHECKS_CACHE.get(timestamp_key) or 0.0)
     if not force and cached_checks is not None and (now - cached_at) < _HEALTH_CHECKS_TTL_SECONDS:
         return cached_checks
 
-    checks = [
-        _health_check_secure_data(),
-        _health_check_ido_backend(),
-    ]
-    _HEALTH_CHECKS_CACHE['checks'] = checks
-    _HEALTH_CHECKS_CACHE['timestamp'] = now
+    checks = [_health_check_secure_data()]
+    if include_dependencies:
+        checks.append(_health_check_ido_backend(allow_autostart=True))
+    _HEALTH_CHECKS_CACHE[checks_key] = checks
+    _HEALTH_CHECKS_CACHE[timestamp_key] = now
     return checks
 
 
@@ -294,7 +326,20 @@ def _load_app_version_config():
     return config
 
 
-def _git_metadata():
+_GIT_METADATA_CACHE: dict[str, object] = {
+    'timestamp': 0.0,
+    'value': {'sha': None, 'count': None},
+}
+_GIT_METADATA_TTL_SECONDS = 300.0
+
+
+def _git_metadata(force: bool = False):
+    now = time.time()
+    cached_value = _GIT_METADATA_CACHE.get('value')
+    cached_at = float(_GIT_METADATA_CACHE.get('timestamp') or 0.0)
+    if not force and cached_value is not None and (now - cached_at) < _GIT_METADATA_TTL_SECONDS:
+        return dict(cached_value)
+
     repo_root = Path(__file__).resolve().parent.parent
     result = {'sha': None, 'count': None}
     try:
@@ -323,6 +368,8 @@ def _git_metadata():
             result['count'] = int(count_raw)
     except Exception:
         pass
+    _GIT_METADATA_CACHE['value'] = dict(result)
+    _GIT_METADATA_CACHE['timestamp'] = now
     return result
 
 
@@ -356,6 +403,23 @@ def get_app_version_meta():
         'release_date': release_date,
         'git_sha': git_sha,
         'environment': os.getenv('NOC_ENVIRONMENT', 'production'),
+    }
+
+
+def build_health_payload(include_dependencies: bool = False, force: bool = False):
+    checks = _collect_health_checks(force=force, include_dependencies=include_dependencies)
+    degraded = any(not check.get('ok') for check in checks)
+    return {
+        'status': 'online',
+        'degraded': degraded,
+        'checks_mode': 'full' if include_dependencies else 'basic',
+        'dependencies_checked': include_dependencies,
+        'app': get_app_version_meta(),
+        'ai_provider': AI_PROVIDER,
+        'api_key_configured': bool(OPENAI_API_KEY) if AI_PROVIDER == 'openai' else None,
+        'timestamp': get_cst_timestamp(),
+        'message': 'Unified backend (api_server.py) is online and ready',
+        'checks': checks,
     }
 
 
@@ -915,6 +979,10 @@ def _aviat_remaining_tasks_for_reboot(task_types):
 def _aviat_queue_remove(ip):
     aviat_shared_queue[:] = [e for e in aviat_shared_queue if e.get("ip") != ip]
 
+
+def _aviat_queue_for_tenant(tenant_id):
+    return [entry for entry in aviat_shared_queue if _queue_entry_matches_tenant(entry, tenant_id)]
+
 def _aviat_error_is_transient(error_text):
     text = str(error_text or "").strip().lower()
     if not text:
@@ -1207,6 +1275,442 @@ def _aviat_reboot_device(ip, callback=None):
 _TASK_TTL_SECONDS = 7200  # 2 hours — keep completed/aborted task state for status queries
 
 # ── Wave Firmware Updater state ───────────────────────────────────────────────
+_BACKGROUND_TASK_STORE_DIR = None
+_BACKGROUND_TASK_DB_PATH = None
+
+
+def _background_task_db_path() -> Path:
+    global _BACKGROUND_TASK_DB_PATH
+    if _BACKGROUND_TASK_DB_PATH is None:
+        _BACKGROUND_TASK_DB_PATH = ensure_secure_data_dir() / 'background_tasks.db'
+    return _BACKGROUND_TASK_DB_PATH
+
+
+def _background_task_db_conn() -> sqlite3.Connection:
+    conn = sqlite3.connect(str(_background_task_db_path()), check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA journal_mode=WAL')
+    conn.execute('PRAGMA busy_timeout=5000')
+    return conn
+
+
+def init_background_tasks_db() -> Path:
+    db_path = _background_task_db_path()
+    conn = _background_task_db_conn()
+    try:
+        conn.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS background_tasks (
+                kind TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                status TEXT,
+                tenant_id TEXT,
+                tenant_slug TEXT,
+                created_at TEXT,
+                started_at TEXT,
+                completed_at TEXT,
+                updated_at TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                PRIMARY KEY (kind, task_id)
+            )
+            '''
+        )
+        conn.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS background_task_logs (
+                kind TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                ts TEXT NOT NULL,
+                entry_json TEXT NOT NULL
+            )
+            '''
+        )
+        conn.execute(
+            'CREATE INDEX IF NOT EXISTS idx_background_tasks_kind_updated ON background_tasks(kind, updated_at DESC)'
+        )
+        conn.execute(
+            'CREATE INDEX IF NOT EXISTS idx_background_task_logs_kind_ts ON background_task_logs(kind, ts DESC)'
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return db_path
+
+
+def _background_task_cleanup_stale(ttl_seconds: int | None = None) -> None:
+    effective_ttl = int(ttl_seconds or _TASK_TTL_SECONDS)
+    cutoff_dt = get_utc_now() - timedelta(seconds=max(effective_ttl, 60))
+    cutoff = cutoff_dt.isoformat().replace('+00:00', 'Z')
+    stale_pairs: list[tuple[str, str]] = []
+    try:
+        init_background_tasks_db()
+        conn = _background_task_db_conn()
+        try:
+            rows = conn.execute(
+                '''
+                SELECT kind, task_id
+                FROM background_tasks
+                WHERE updated_at < ?
+                  AND COALESCE(status, '') IN ('completed', 'failed', 'aborted')
+                ''',
+                (cutoff,),
+            ).fetchall()
+            stale_pairs = [(str(row['kind']), str(row['task_id'])) for row in rows]
+            conn.execute(
+                '''
+                DELETE FROM background_task_logs
+                WHERE ts < ?
+                  AND task_id IN (
+                    SELECT task_id
+                    FROM background_tasks
+                    WHERE updated_at < ?
+                      AND COALESCE(status, '') IN ('completed', 'failed', 'aborted')
+                  )
+                ''',
+                (cutoff, cutoff),
+            )
+            conn.execute(
+                '''
+                DELETE FROM background_tasks
+                WHERE updated_at < ?
+                  AND COALESCE(status, '') IN ('completed', 'failed', 'aborted')
+                ''',
+                (cutoff,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass
+    for kind, task_id in stale_pairs:
+        state_path, log_path, abort_path = _background_task_paths(kind, task_id)
+        for path in (state_path, log_path, abort_path):
+            try:
+                path.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+
+def _background_task_store_dir(kind: str) -> Path:
+    global _BACKGROUND_TASK_STORE_DIR
+    if _BACKGROUND_TASK_STORE_DIR is None:
+        _BACKGROUND_TASK_STORE_DIR = ensure_secure_data_dir() / 'background_tasks'
+        _BACKGROUND_TASK_STORE_DIR.mkdir(parents=True, exist_ok=True)
+    kind_dir = _BACKGROUND_TASK_STORE_DIR / kind
+    kind_dir.mkdir(parents=True, exist_ok=True)
+    return kind_dir
+
+
+def _background_task_paths(kind: str, task_id: str) -> tuple[Path, Path, Path]:
+    base_dir = _background_task_store_dir(kind)
+    return (
+        base_dir / f'{task_id}.json',
+        base_dir / f'{task_id}.log.jsonl',
+        base_dir / f'{task_id}.abort',
+    )
+
+
+def _background_task_snapshot(task: dict | None) -> dict | None:
+    if not isinstance(task, dict):
+        return None
+    return json.loads(json.dumps(task))
+
+
+def _background_task_persist(kind: str, task_id: str, task: dict | None = None, extra: dict | None = None) -> None:
+    payload = _background_task_snapshot(task)
+    if payload is None:
+        return
+    if extra:
+        payload.update(extra)
+    payload['task_id'] = payload.get('task_id') or task_id
+    payload['updated_at'] = get_utc_timestamp()
+    state_path, _, _ = _background_task_paths(kind, task_id)
+    tmp_path = state_path.with_suffix('.json.tmp')
+    try:
+        tmp_path.write_text(json.dumps(payload), encoding='utf-8')
+        tmp_path.replace(state_path)
+    except Exception:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+    try:
+        init_background_tasks_db()
+        conn = _background_task_db_conn()
+        try:
+            conn.execute(
+                '''
+                INSERT INTO background_tasks (
+                    kind, task_id, status, tenant_id, tenant_slug,
+                    created_at, started_at, completed_at, updated_at, payload_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(kind, task_id) DO UPDATE SET
+                    status=excluded.status,
+                    tenant_id=excluded.tenant_id,
+                    tenant_slug=excluded.tenant_slug,
+                    created_at=excluded.created_at,
+                    started_at=excluded.started_at,
+                    completed_at=excluded.completed_at,
+                    updated_at=excluded.updated_at,
+                    payload_json=excluded.payload_json
+                ''',
+                (
+                    kind,
+                    task_id,
+                    payload.get('status'),
+                    str(payload.get('_tenant_id') or payload.get('tenant_id') or '') or None,
+                    payload.get('_tenant_slug') or payload.get('tenant_slug'),
+                    payload.get('created_at'),
+                    payload.get('started_at'),
+                    payload.get('completed_at'),
+                    payload.get('updated_at'),
+                    json.dumps(payload),
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
+def _background_task_load(kind: str, task_id: str) -> dict | None:
+    try:
+        init_background_tasks_db()
+        conn = _background_task_db_conn()
+        try:
+            row = conn.execute(
+                'SELECT payload_json FROM background_tasks WHERE kind = ? AND task_id = ?',
+                (kind, task_id),
+            ).fetchone()
+            if row and row['payload_json']:
+                return json.loads(row['payload_json'])
+        finally:
+            conn.close()
+    except Exception:
+        pass
+    state_path, _, _ = _background_task_paths(kind, task_id)
+    try:
+        if state_path.exists():
+            return json.loads(state_path.read_text(encoding='utf-8'))
+    except Exception:
+        pass
+    return None
+
+
+def _background_task_append_log(kind: str, task_id: str, entry: dict) -> None:
+    _, log_path, _ = _background_task_paths(kind, task_id)
+    try:
+        with log_path.open('a', encoding='utf-8') as handle:
+            handle.write(json.dumps(entry) + '\n')
+    except Exception:
+        pass
+    try:
+        init_background_tasks_db()
+        conn = _background_task_db_conn()
+        try:
+            conn.execute(
+                'INSERT INTO background_task_logs (kind, task_id, ts, entry_json) VALUES (?, ?, ?, ?)',
+                (
+                    kind,
+                    task_id,
+                    entry.get('ts') or entry.get('timestamp') or get_utc_timestamp(),
+                    json.dumps(entry),
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
+def _background_task_signal_abort(kind: str, task_id: str) -> None:
+    _, _, abort_path = _background_task_paths(kind, task_id)
+    try:
+        abort_path.touch()
+    except Exception:
+        pass
+
+
+def _background_task_has_abort(kind: str, task_id: str) -> bool:
+    _, _, abort_path = _background_task_paths(kind, task_id)
+    try:
+        return abort_path.exists()
+    except Exception:
+        return False
+
+
+def _background_task_status_payload(task: dict | None) -> dict | None:
+    payload = _background_task_snapshot(task)
+    if payload is None:
+        return None
+    payload.pop('abort', None)
+    payload.pop('_tenant_id', None)
+    payload.pop('_tenant_slug', None)
+    return payload
+
+
+def _background_task_matches_tenant(task: dict, tenant_id) -> bool:
+    if not tenant_id:
+        return True
+    task_tenant = task.get('_tenant_id') or task.get('tenant_id')
+    if task_tenant in (None, '', 'None'):
+        return False
+    return str(task_tenant) == str(tenant_id)
+
+
+def _request_tenant_id():
+    user_info = getattr(request, 'current_user', {}) or {}
+    return user_info.get('tenant_id') or user_info.get('tenantId')
+
+
+def _request_is_platform_admin() -> bool:
+    user_info = getattr(request, 'current_user', {}) or {}
+    return _platform_role_for_email(user_info.get('email', '')) == 'platform_admin'
+
+
+def _background_task_access_allowed(task: dict | None) -> bool:
+    if not isinstance(task, dict):
+        return False
+    if _request_is_platform_admin():
+        return True
+    return _background_task_matches_tenant(task, _request_tenant_id())
+
+
+def _queue_entry_matches_tenant(entry: dict, tenant_id) -> bool:
+    if not tenant_id:
+        return True
+    if not isinstance(entry, dict):
+        return False
+    entry_tenant = entry.get('_tenant_id') or entry.get('tenant_id')
+    if entry_tenant in (None, '', 'None'):
+        return False
+    return str(entry_tenant) == str(tenant_id)
+
+
+def _queue_payload(entries: list[dict], tenant_id=None) -> list[dict]:
+    payload = []
+    for entry in entries:
+        if not _queue_entry_matches_tenant(entry, tenant_id):
+            continue
+        item = dict(entry)
+        item.pop('_tenant_id', None)
+        item.pop('_tenant_slug', None)
+        payload.append(item)
+    return payload
+
+
+def _background_task_list(kind: str, limit: int = 50) -> list[dict]:
+    try:
+        init_background_tasks_db()
+        conn = _background_task_db_conn()
+        try:
+            rows = conn.execute(
+                '''
+                SELECT payload_json
+                FROM background_tasks
+                WHERE kind = ?
+                ORDER BY updated_at DESC
+                LIMIT ?
+                ''',
+                (kind, max(1, int(limit or 50))),
+            ).fetchall()
+            items = []
+            for row in rows:
+                try:
+                    payload = json.loads(row['payload_json'])
+                except Exception:
+                    continue
+                if isinstance(payload, dict):
+                    items.append(payload)
+            if items:
+                return items
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+    items = []
+    base_dir = _background_task_store_dir(kind)
+    for path in base_dir.glob('*.json'):
+        try:
+            payload = json.loads(path.read_text(encoding='utf-8'))
+            if isinstance(payload, dict):
+                items.append(payload)
+        except Exception:
+            continue
+
+    def _sort_key(item: dict):
+        return (
+            item.get('updated_at')
+            or item.get('created_at')
+            or item.get('started_at')
+            or item.get('completed_at')
+            or ''
+        )
+
+    items.sort(key=_sort_key, reverse=True)
+    return items[: max(1, int(limit or 50))]
+
+
+def _background_task_recent_logs(kind: str, limit: int = 200) -> list[dict]:
+    try:
+        init_background_tasks_db()
+        conn = _background_task_db_conn()
+        try:
+            rows = conn.execute(
+                '''
+                SELECT entry_json
+                FROM background_task_logs
+                WHERE kind = ?
+                ORDER BY ts DESC
+                LIMIT ?
+                ''',
+                (kind, max(1, int(limit or 200))),
+            ).fetchall()
+            entries = []
+            for row in reversed(rows):
+                try:
+                    payload = json.loads(row['entry_json'])
+                except Exception:
+                    continue
+                if isinstance(payload, dict):
+                    entries.append(payload)
+            if entries:
+                return entries
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+    entries = []
+    base_dir = _background_task_store_dir(kind)
+    files = sorted(base_dir.glob('*.log.jsonl'), key=lambda p: p.stat().st_mtime, reverse=True)
+    for path in files:
+        try:
+            with path.open('r', encoding='utf-8') as handle:
+                lines = handle.readlines()
+        except Exception:
+            continue
+        for line in reversed(lines):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)
+            except Exception:
+                continue
+            if isinstance(payload, dict):
+                entries.append(payload)
+            if len(entries) >= limit:
+                break
+        if len(entries) >= limit:
+            break
+    entries.reverse()
+    return entries
+
+
 wave_fw_tasks: dict = {}
 wave_fw_log_queues: dict = {}
 _WAVE_FW_UPLOAD_DIR = None   # resolved lazily to avoid import-time secure_data dependency
@@ -1221,6 +1725,137 @@ def _wave_fw_upload_dir():
         _WAVE_FW_UPLOAD_DIR = ensure_secure_data_dir() / 'wave_fw_uploads'
         _WAVE_FW_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     return _WAVE_FW_UPLOAD_DIR
+
+
+_WAVE_FW_TASK_STORE_DIR = None
+
+
+def _wave_fw_task_store_dir():
+    global _WAVE_FW_TASK_STORE_DIR
+    if _WAVE_FW_TASK_STORE_DIR is None:
+        _WAVE_FW_TASK_STORE_DIR = _background_task_store_dir('wave_fw')
+    return _WAVE_FW_TASK_STORE_DIR
+
+
+def _wave_fw_persist_task(task_id: str, extra: dict = None):
+    """Write task header to disk so other workers can find it."""
+    task = dict(wave_fw_tasks.get(task_id, {}))
+    if extra:
+        task.update(extra)
+    task.pop('results', None)  # don't write huge results arrays
+    _background_task_persist('wave_fw', task_id, task)
+
+
+def _wave_fw_load_task_from_disk(task_id: str) -> dict | None:
+    """Read task header from disk (cross-worker fallback)."""
+    return _background_task_load('wave_fw', task_id)
+
+
+def _wave_fw_signal_abort(task_id: str):
+    """Write an abort signal file readable by any worker."""
+    _background_task_signal_abort('wave_fw', task_id)
+
+
+def _wave_fw_check_abort_signal(task_id: str) -> bool:
+    """Check whether an abort signal file exists for this task."""
+    return _background_task_has_abort('wave_fw', task_id)
+
+
+def _wave_fw_server_firmware_dir():
+    """Path where bundled Wave .bin files live inside the container (/opt/firmware/wave)."""
+    import pathlib as _pl
+    return _pl.Path(os.getenv('FIRMWARE_PATH', '/opt/firmware')) / 'wave'
+
+
+def _wave_fw_normalize_model(model: str) -> str:
+    """Normalize UISP model and firmware file names for family matching."""
+    import re as _re
+    return _re.sub(r'[^a-z0-9]', '', (model or '').lower())
+
+
+def _wave_fw_model_family(model: str) -> str:
+    """Return 'nano' for Wave Nano/LR/Pico, 'ap' for Wave AP/Micro/PRO."""
+    m = _wave_fw_normalize_model(model)
+    if any(k in m for k in ('wavenano', 'wavelr', 'wavelongrange', 'wavepico', 'nano', 'lr', 'wlr', 'pico')):
+        return 'nano'
+    if any(k in m for k in ('waveapmicro', 'waveappro', 'waveap', 'apmicro', 'micro', 'pro')):
+        return 'ap'
+    return 'ap'
+
+
+def _wave_fw_family_label(family: str) -> str:
+    return 'Nano/LR/Pico' if family == 'nano' else 'AP/Micro/PRO'
+
+
+def _wave_fw_version_tuple(v: str):
+    """Parse '3.4.0' → (3, 4, 0). Returns (0, 0, 0) on failure."""
+    import re as _re
+    m = _re.search(r'(\d+)\.(\d+)\.(\d+)', v or '')
+    return tuple(int(x) for x in m.groups()) if m else (0, 0, 0)
+
+
+def _wave_fw_normalize_version(v: str) -> str:
+    """Extract X.Y.Z from a version string, stripping leading 'v', build suffixes, etc.
+    '4.1.0.1234', 'v4.1.0-beta', '4.1.0+hotfix' → '4.1.0'.
+    Returns the original stripped string if no X.Y.Z match (preserves intent)."""
+    import re as _re
+    m = _re.search(r'v?(\d+\.\d+\.\d+)', v or '')
+    return m.group(1) if m else (v or '').strip()
+
+
+def _wave_fw_version_below(v: str, minimum: str) -> bool:
+    """Return True if version v is strictly below minimum.
+    Returns False if minimum is empty or if v cannot be parsed (let upgrade proceed)."""
+    if not minimum:
+        return False
+    vt = _wave_fw_version_tuple(v)
+    if vt == (0, 0, 0) and not (v or '').strip().startswith('0.0.0'):
+        return False  # Unparseable active version — don't silently block
+    return vt < _wave_fw_version_tuple(minimum)
+
+
+def _wave_fw_classify_role(device: dict) -> str:
+    """Return 'ap', 'station', 'backhaul', or 'unknown' from a UISP device dict."""
+    import re as _re
+    name = (device.get('name') or '').strip()
+    upper_name = name.upper()
+    if upper_name.startswith('BH-'):
+        return 'backhaul'
+    if upper_name.startswith('AP-'):
+        return 'ap'
+    role = _re.sub(r'[^a-z]', '', (device.get('role') or '').lower())
+    if 'station' in role:
+        return 'station'
+    if role in ('ap', 'accesspoint', 'wirelessap') or role.endswith('ap'):
+        return 'ap'
+    # Fallback: check name for station/SM patterns only when it wasn't explicitly named.
+    name = name.lower()
+    if any(k in name for k in ('station', '-sm-', '/sm/', ' sm ')):
+        return 'station'
+    return 'station' if name else 'unknown'
+
+
+def _wave_fw_select_firmware(model: str, firmware_dir) -> 'pathlib.Path | None':
+    """Pick the right server-side .bin file for a given device model."""
+    import pathlib as _pl
+    fdir = _pl.Path(firmware_dir)
+    if not fdir.exists():
+        return None
+    bin_files = sorted(fdir.glob('*.bin'))
+    if not bin_files:
+        return None
+    if len(bin_files) == 1:
+        return bin_files[0]
+    family = _wave_fw_model_family(model)
+    nano_keywords = ('wavenanolrpico', 'nanolrpico', 'wavenano', 'wavelr', 'wavelongrange', 'wavepico', 'nano', 'lr', 'pico')
+    ap_keywords = ('waveapmicropro', 'apmicropro', 'waveapmicro', 'waveappro', 'waveap', 'apmicro', 'micro', 'pro')
+    for f in bin_files:
+        name_lower = _wave_fw_normalize_model(f.name)
+        if family == 'nano' and any(k in name_lower for k in nano_keywords):
+            return f
+        if family == 'ap' and any(k in name_lower for k in ap_keywords):
+            return f
+    return bin_files[0]  # fallback
 
 
 def _purge_stale_tasks(tasks_dict, log_queues_dict):
@@ -1584,6 +2219,7 @@ def _aviat_resume_remaining_tasks(entry, callback=None):
 
 def _aviat_activate_entries(task_id, to_activate, username=None):
     aviat_tasks[task_id]['status'] = 'running'
+    _background_task_persist('aviat', task_id, aviat_tasks.get(task_id))
 
     def log_callback(message, level):
         _aviat_broadcast_log(message, level, task_id=task_id)
@@ -1674,9 +2310,11 @@ def _aviat_activate_entries(task_id, to_activate, username=None):
                     "targetVersion": res_dict.get("target_version") or _aviat_target_version(entry),
                 })
                 _aviat_save_shared_queue()
+            _background_task_persist('aviat', task_id, aviat_tasks.get(task_id))
 
     aviat_tasks[task_id]['status'] = 'completed'
     _aviat_save_shared_queue()
+    _background_task_persist('aviat', task_id, aviat_tasks.get(task_id))
     if task_id in aviat_log_queues:
         aviat_log_queues[task_id].put(None)
 
@@ -4117,6 +4755,13 @@ def unsupported_media_handler(e):
 
 @app.errorhandler(500)
 def internal_error_handler(e):
+    try:
+        print(
+            f"[FLASK][500] method={request.method} path={request.path} "
+            f"remote={request.remote_addr} error={e}"
+        )
+    except Exception:
+        pass
     return jsonify({'error': 'Internal server error'}), 500
 
 # Trust X-Forwarded-* headers from the reverse proxy so request.host_url
@@ -4275,6 +4920,9 @@ def reload_training():
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
+    _, _auth_err = _authenticate_request_context()
+    if _auth_err:
+        return _auth_err
     try:
         data = request.get_json(force=True)
         msgs = data.get('messages')
@@ -4330,6 +4978,9 @@ def chat():
 @app.route('/api/chat/history/<session_id>', methods=['GET'])
 def get_chat_history_endpoint(session_id):
     """Get chat history for a session"""
+    _, _auth_err = _authenticate_request_context()
+    if _auth_err:
+        return _auth_err
     try:
         limit = request.args.get('limit', 20, type=int)
         history = get_chat_history(session_id, limit)
@@ -4351,6 +5002,9 @@ def get_chat_history_endpoint(session_id):
 @app.route('/api/chat/context/<session_id>', methods=['GET'])
 def get_user_context_endpoint(session_id):
     """Get user context and preferences"""
+    _, _auth_err = _authenticate_request_context()
+    if _auth_err:
+        return _auth_err
     try:
         context = get_user_context(session_id)
         return jsonify({"success": True, "context": context})
@@ -4360,6 +5014,9 @@ def get_user_context_endpoint(session_id):
 @app.route('/api/chat/context/<session_id>', methods=['POST'])
 def update_user_context_endpoint(session_id):
     """Update user context and preferences"""
+    _, _auth_err = _authenticate_request_context()
+    if _auth_err:
+        return _auth_err
     try:
         data = request.get_json(force=True)
         preferred_model = data.get('preferred_model')
@@ -4373,6 +5030,9 @@ def update_user_context_endpoint(session_id):
 @app.route('/api/chat/export/<session_id>', methods=['GET'])
 def export_chat_history(session_id):
     """Export chat history as JSON"""
+    _, _auth_err = _authenticate_request_context()
+    if _auth_err:
+        return _auth_err
     try:
         history = get_chat_history(session_id, limit=1000)
         
@@ -9815,82 +10475,9 @@ def require_auth(f):
     """Decorator to require authentication"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        token = request.headers.get('Authorization')
-        if not token:
-            try:
-                token = (request.get_json(silent=True, force=False) or {}).get('token')
-            except Exception:
-                token = None
-
-        if token:
-            # Remove 'Bearer ' prefix if present
-            if token.startswith('Bearer '):
-                token = token[7:]
-
-        if not token:
-            return jsonify({'error': 'Authentication required'}), 401
-
-        # Check for API key (nck_ prefix)
-        if token.startswith('nck_'):
-            import hashlib as _hlib
-            key_hash = _hlib.sha256(token.encode()).hexdigest()
-            _db = init_users_db()
-            _conn = sqlite3.connect(str(_db))
-            _conn.row_factory = sqlite3.Row
-            _c = _conn.cursor()
-            _c.execute('''SELECT ak.*, t.slug as tenant_slug FROM api_keys ak
-                          JOIN tenants t ON t.id = ak.tenant_id
-                          WHERE ak.key_hash = ? AND ak.is_active = 1''', (key_hash,))
-            ak = _c.fetchone()
-            if ak:
-                # Check expiry
-                if ak['expires_at']:
-                    if datetime.utcnow().isoformat() > ak['expires_at']:
-                        _conn.close()
-                        return jsonify({'error': 'API key expired'}), 401
-                # Update last_used_at
-                _conn.execute('UPDATE api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE id = ?', (ak['id'],))
-                _conn.commit()
-                _conn.close()
-                # Set current_user shape matching JWT shape
-                request.current_user = {
-                    'user_id': None,
-                    'id': None,
-                    'email': f'apikey:{ak["key_prefix"]}',
-                    'tenant_id': ak['tenant_id'],
-                    'tenantId': ak['tenant_id'],
-                    'tenant_role': 'api_key',
-                    'scopes': json.loads(ak['scopes'] or '["read","write"]'),
-                    'auth_type': 'api_key',
-                    'api_key_id': ak['id'],
-                }
-                return f(*args, **kwargs)
-            _conn.close()
-            return jsonify({'error': 'Invalid or revoked API key'}), 401
-
-        user_info = verify_token(token)
-        if not user_info:
-            return jsonify({'error': 'Invalid or expired token'}), 401
-
-        # Add user info to request context
-        request.current_user = user_info
-
-        # Update online presence tracker
-        try:
-            uid = user_info.get('id') or user_info.get('user_id')
-            if uid:
-                existing = _active_sessions.get(uid, {})
-                _active_sessions[uid] = {
-                    'email': user_info.get('email', ''),
-                    'display_name': user_info.get('displayName') or user_info.get('email', '').split('@')[0],
-                    'avatar': existing.get('avatar'),   # preserved from login
-                    'tenant_name': existing.get('tenant_name', ''),
-                    'role_label': existing.get('role_label', ''),
-                    'last_seen': _time.time(),
-                }
-        except Exception:
-            pass
-
+        _, error_response = _authenticate_request_context()
+        if error_response:
+            return error_response
         return f(*args, **kwargs)
     return decorated_function
 
@@ -11461,9 +12048,24 @@ Return the corrected configuration with proper network calculations and formatti
 def _ssh_fetch_update_task(task_id: str, **fields) -> None:
     with ssh_fetch_tasks_lock:
         task = ssh_fetch_tasks.get(task_id)
-        if not task:
-            return
-        task.update(fields)
+        if task is None:
+            # Task may have been lost from memory (server restart / cross-worker).
+            # Recover from shared store so the update is not silently dropped.
+            stored = _background_task_load('ssh_fetch', task_id)
+            if stored:
+                ssh_fetch_tasks[task_id] = stored
+                task = ssh_fetch_tasks[task_id]
+        if task:
+            task.update(fields)
+            _background_task_persist('ssh_fetch', task_id, task)
+
+
+def _ssh_fetch_should_abort(task_id: str) -> bool:
+    with ssh_fetch_tasks_lock:
+        task = ssh_fetch_tasks.get(task_id)
+        if task and task.get('abort') is True:
+            return True
+    return _background_task_has_abort('ssh_fetch', task_id)
 
 
 def _run_mikrotik_ssh_fetch(
@@ -11659,23 +12261,12 @@ def _run_mikrotik_ssh_fetch(
     }
 
 @app.route('/api/fetch-config-ssh', methods=['POST'])
+@require_auth
 def fetch_config_ssh():
     """
     SSH into MikroTik device and fetch configuration via export command.
     Credentials can be provided in the request body, or via environment variables.
     """
-    # Auth guard — equivalent to @require_auth (decorator defined later in file)
-    _auth_token = request.headers.get('Authorization', '')
-    if _auth_token.startswith('Bearer '):
-        _auth_token = _auth_token[7:]
-    if not _auth_token:
-        _auth_token = (request.get_json(silent=True) or {}).get('token', '')
-    if not _auth_token:
-        return jsonify({'error': 'Authentication required'}), 401
-    _auth_user = verify_token(_auth_token)
-    if not _auth_user:
-        return jsonify({'error': 'Invalid or expired token'}), 401
-
     try:
         data = request.get_json(force=True)
         host = data.get('host', '').strip()
@@ -11787,12 +12378,13 @@ def fetch_config_ssh():
                     'started_at': get_utc_timestamp(),
                     'completed_at': None,
                 }
+                _background_task_persist('ssh_fetch', task_id, ssh_fetch_tasks[task_id])
 
             def _worker():
                 _ssh_fetch_update_task(task_id, status='running', message='Starting SSH fetch')
 
                 def _should_abort():
-                    return ssh_fetch_tasks.get(task_id, {}).get('abort') is True
+                    return _ssh_fetch_should_abort(task_id)
 
                 def _progress(message, **extra):
                     payload = {'message': message}
@@ -11875,20 +12467,21 @@ def fetch_config_ssh():
 @app.route('/api/fetch-config-ssh/status/<task_id>', methods=['GET'])
 @require_auth
 def fetch_config_ssh_status(task_id):
-    task = ssh_fetch_tasks.get(task_id)
+    task = ssh_fetch_tasks.get(task_id) or _background_task_load('ssh_fetch', task_id)
     if not task:
         return jsonify({'error': 'Task not found'}), 404
-    return jsonify(task)
+    return jsonify(_background_task_status_payload(task))
 
 
 @app.route('/api/fetch-config-ssh/abort/<task_id>', methods=['POST'])
 @require_auth
 def fetch_config_ssh_abort(task_id):
-    task = ssh_fetch_tasks.get(task_id)
+    task = ssh_fetch_tasks.get(task_id) or _background_task_load('ssh_fetch', task_id)
     if not task:
         return jsonify({'error': 'Task not found'}), 404
     if task.get('status') in {'completed', 'failed', 'aborted'}:
         return jsonify({'status': task.get('status')}), 200
+    _background_task_signal_abort('ssh_fetch', task_id)
     _ssh_fetch_update_task(task_id, abort=True, status='aborting', message='Abort requested')
     return jsonify({'status': 'aborting'})
 
@@ -11928,6 +12521,7 @@ def nokia7250_defaults():
 
 
 @app.route('/api/nokia-configurator-defaults', methods=['GET'])
+@require_auth
 def nokia_configurator_defaults():
     return nokia7250_defaults()
 
@@ -14374,18 +14968,9 @@ def health():
     Backend is considered 'online' if this endpoint responds.
     The backend will handle AI provider availability and fallbacks internally.
     """
-    checks = _collect_health_checks(force=request.args.get('refresh') == '1')
-    degraded = any(not check.get('ok') for check in checks)
-    return jsonify({
-        'status': 'online',
-        'degraded': degraded,
-        'app': get_app_version_meta(),
-        'ai_provider': AI_PROVIDER,
-        'api_key_configured': bool(OPENAI_API_KEY) if AI_PROVIDER == 'openai' else None,
-        'timestamp': get_cst_timestamp(),
-        'message': 'Unified backend (api_server.py) is online and ready',
-        'checks': checks,
-    })
+    refresh = request.args.get('refresh') == '1'
+    include_dependencies = request.args.get('full') == '1' or request.args.get('include_dependencies') == '1'
+    return jsonify(build_health_payload(include_dependencies=include_dependencies, force=refresh))
 
 
 @app.route('/api/version', methods=['GET'])
@@ -16914,11 +17499,76 @@ def _get_request_token():
         token = token[7:]
     if token:
         return token
+    token = request.args.get('token', '')
+    if token.startswith('Bearer '):
+        token = token[7:]
+    if token:
+        return token
     data = request.get_json(silent=True) or {}
     token = data.get('token', '')
     if token.startswith('Bearer '):
         token = token[7:]
     return token
+
+
+def _authenticate_request_context():
+    token = _get_request_token()
+    if not token:
+        return None, (jsonify({'error': 'Authentication required'}), 401)
+
+    if token.startswith('nck_'):
+        import hashlib as _hlib
+        key_hash = _hlib.sha256(token.encode()).hexdigest()
+        _db = init_users_db()
+        _conn = sqlite3.connect(str(_db))
+        _conn.row_factory = sqlite3.Row
+        _c = _conn.cursor()
+        _c.execute('''SELECT ak.*, t.slug as tenant_slug FROM api_keys ak
+                      JOIN tenants t ON t.id = ak.tenant_id
+                      WHERE ak.key_hash = ? AND ak.is_active = 1''', (key_hash,))
+        ak = _c.fetchone()
+        if ak:
+            if ak['expires_at'] and datetime.utcnow().isoformat() > ak['expires_at']:
+                _conn.close()
+                return None, (jsonify({'error': 'API key expired'}), 401)
+            _conn.execute('UPDATE api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE id = ?', (ak['id'],))
+            _conn.commit()
+            _conn.close()
+            request.current_user = {
+                'user_id': None,
+                'id': None,
+                'email': f'apikey:{ak["key_prefix"]}',
+                'tenant_id': ak['tenant_id'],
+                'tenantId': ak['tenant_id'],
+                'tenant_role': 'api_key',
+                'scopes': json.loads(ak['scopes'] or '["read","write"]'),
+                'auth_type': 'api_key',
+                'api_key_id': ak['id'],
+            }
+            return request.current_user, None
+        _conn.close()
+        return None, (jsonify({'error': 'Invalid or revoked API key'}), 401)
+
+    user_info = verify_token(token)
+    if not user_info:
+        return None, (jsonify({'error': 'Invalid or expired token'}), 401)
+
+    request.current_user = user_info
+    try:
+        uid = user_info.get('id') or user_info.get('user_id')
+        if uid:
+            existing = _active_sessions.get(uid, {})
+            _active_sessions[uid] = {
+                'email': user_info.get('email', ''),
+                'display_name': user_info.get('displayName') or user_info.get('email', '').split('@')[0],
+                'avatar': existing.get('avatar'),
+                'tenant_name': existing.get('tenant_name', ''),
+                'role_label': existing.get('role_label', ''),
+                'last_seen': _time.time(),
+            }
+    except Exception:
+        pass
+    return user_info, None
 
 
 def _get_default_tenant_context():
@@ -18999,6 +19649,8 @@ def _aviat_broadcast_log(message, level="info", task_id=None):
         "ts": datetime.utcnow().isoformat() + "Z",
     }
     aviat_global_log_history.append(entry)
+    if task_id:
+        _background_task_append_log('aviat', task_id, entry)
     for q in list(aviat_global_log_queues):
         try:
             q.put(entry)
@@ -19013,6 +19665,7 @@ def _aviat_background_task(task_id, ips, task_types, maintenance_params=None, us
             aviat_tasks[task_id]['status'] = 'failed'
             aviat_tasks[task_id]['completed_at'] = datetime.utcnow().isoformat() + 'Z'
             aviat_tasks[task_id].setdefault('results', [])
+            _background_task_persist('aviat', task_id, aviat_tasks.get(task_id))
             _aviat_broadcast_log(f"[task:{task_id}] Unhandled crash: {_exc}", "error", task_id=task_id)
         except Exception:
             pass
@@ -19025,6 +19678,7 @@ def _aviat_background_task(task_id, ips, task_types, maintenance_params=None, us
 
 def _aviat_background_task_inner(task_id, ips, task_types, maintenance_params=None, username=None):
     aviat_tasks[task_id]['status'] = 'running'
+    _background_task_persist('aviat', task_id, aviat_tasks.get(task_id))
     maintenance_params = maintenance_params or {}
     activation_mode = maintenance_params.get('activation_mode')
     target_version = _aviat_target_version({"maintenance_params": maintenance_params})
@@ -19037,7 +19691,7 @@ def _aviat_background_task_inner(task_id, ips, task_types, maintenance_params=No
     results = []
 
     def should_abort():
-        return aviat_tasks.get(task_id, {}).get('abort') is True
+        return aviat_tasks.get(task_id, {}).get('abort') is True or _background_task_has_abort('aviat', task_id)
 
     if activation_mode == "scheduled":
         result_list = aviat_process_radios_parallel(
@@ -19166,6 +19820,7 @@ def _aviat_background_task_inner(task_id, ips, task_types, maintenance_params=No
     _aviat_save_reboot_queue()
 
     aviat_tasks[task_id]['results'] = results
+    _background_task_persist('aviat', task_id, aviat_tasks.get(task_id))
     _task_tenant_id = aviat_tasks[task_id].get('_tenant_id')
     _task_tenant_slug = aviat_tasks[task_id].get('_tenant_slug', '')
     for res in results:
@@ -19227,6 +19882,7 @@ def aviat_run_tasks():
         '_tenant_id': _aviat_run_tenant_id,
         '_tenant_slug': _aviat_run_tenant_slug,
     }
+    _background_task_persist('aviat', task_id, aviat_tasks.get(task_id))
     aviat_log_queues[task_id] = queue.Queue()
 
     thread = threading.Thread(
@@ -19238,6 +19894,7 @@ def aviat_run_tasks():
 
 
 @app.route('/api/aviat/activate-scheduled', methods=['POST'])
+@require_auth
 def aviat_activate_scheduled():
     if not HAS_AVIAT:
         return jsonify({'error': 'Aviat backend not available'}), 503
@@ -19318,6 +19975,7 @@ def aviat_activate_scheduled():
         '_tenant_id': _aviat_act_tenant_id,
         '_tenant_slug': _aviat_act_tenant_slug,
     }
+    _background_task_persist('aviat', task_id, aviat_tasks.get(task_id))
     aviat_log_queues[task_id] = queue.Queue()
 
     def activation_task():
@@ -19360,33 +20018,39 @@ def aviat_activate_scheduled():
 
 
 @app.route('/api/aviat/scheduled', methods=['GET'])
+@require_auth
 def aviat_get_scheduled():
     if not HAS_AVIAT:
         return jsonify({'error': 'Aviat backend not available'}), 503
+    tenant_id = _request_tenant_id()
     return jsonify({
-        "scheduled": [item.get("ip") for item in aviat_scheduled_queue]
+        "scheduled": [item.get("ip") for item in aviat_scheduled_queue if _queue_entry_matches_tenant(item, tenant_id)]
     })
 
 
 @app.route('/api/aviat/loading', methods=['GET'])
+@require_auth
 def aviat_get_loading():
     if not HAS_AVIAT:
         return jsonify({'error': 'Aviat backend not available'}), 503
+    tenant_id = _request_tenant_id()
     return jsonify({
-        "loading": [item.get("ip") for item in aviat_loading_queue]
+        "loading": [item.get("ip") for item in aviat_loading_queue if _queue_entry_matches_tenant(item, tenant_id)]
     })
 
 
 @app.route('/api/aviat/reboot-required', methods=['GET'])
+@require_auth
 def aviat_get_reboot_required():
     if not HAS_AVIAT:
         return jsonify({'error': 'Aviat backend not available'}), 503
     return jsonify({
-        "reboot_required": aviat_reboot_queue
+        "reboot_required": _queue_payload(aviat_reboot_queue, tenant_id=_request_tenant_id())
     })
 
 
 @app.route('/api/aviat/reboot-required/run', methods=['POST'])
+@require_auth
 def aviat_run_reboot_required():
     if not HAS_AVIAT:
         return jsonify({'error': 'Aviat backend not available'}), 503
@@ -19490,6 +20154,7 @@ def aviat_run_reboot_required():
 
 
 @app.route('/api/aviat/scheduled/sync', methods=['POST'])
+@require_auth
 def aviat_sync_scheduled():
     if not HAS_AVIAT:
         return jsonify({'error': 'Aviat backend not available'}), 503
@@ -19516,11 +20181,15 @@ def aviat_sync_scheduled():
     return jsonify({"scheduled": [item.get("ip") for item in aviat_scheduled_queue]})
 
 @app.route('/api/aviat/queue', methods=['GET', 'POST'])
+@require_auth
 def aviat_queue_state():
     if not HAS_AVIAT:
         return jsonify({'error': 'Aviat backend not available'}), 503
+    tenant_ctx = _get_request_tenant_context()
+    tenant_id = tenant_ctx['tenant'].get('id') if tenant_ctx.get('tenant') else None
+    tenant_slug = tenant_ctx['tenant'].get('slug', '') if tenant_ctx.get('tenant') else ''
     if request.method == 'GET':
-        return jsonify({"radios": aviat_shared_queue})
+        return jsonify({"radios": _queue_payload(aviat_shared_queue, tenant_id=tenant_id)})
 
     data = request.json or {}
     mode = (data.get("mode") or "replace").lower()
@@ -19528,27 +20197,33 @@ def aviat_queue_state():
     username = data.get("username") or "aviat-tool"
 
     if mode == "replace":
-        aviat_shared_queue.clear()
+        aviat_shared_queue[:] = [entry for entry in aviat_shared_queue if not _queue_entry_matches_tenant(entry, tenant_id)]
     if mode in ("replace", "add"):
         for radio in radios:
             ip = radio.get("ip") if isinstance(radio, dict) else str(radio)
             if not ip:
                 continue
-            updates = radio if isinstance(radio, dict) else {}
+            updates = dict(radio) if isinstance(radio, dict) else {}
             updates.setdefault("status", "pending")
             updates.setdefault("username", username)
+            updates["_tenant_id"] = tenant_id
+            updates["_tenant_slug"] = tenant_slug
             _aviat_queue_upsert(ip, updates)
     if mode == "remove":
         for radio in radios:
             ip = radio.get("ip") if isinstance(radio, dict) else str(radio)
             if ip:
-                _aviat_queue_remove(ip)
+                aviat_shared_queue[:] = [
+                    entry for entry in aviat_shared_queue
+                    if not (entry.get("ip") == ip and _queue_entry_matches_tenant(entry, tenant_id))
+                ]
 
     _aviat_save_shared_queue()
-    return jsonify({"radios": aviat_shared_queue})
+    return jsonify({"radios": _queue_payload(aviat_shared_queue, tenant_id=tenant_id)})
 
 
 @app.route('/api/aviat/check-status', methods=['POST'])
+@require_auth
 def aviat_check_status():
     if not HAS_AVIAT:
         return jsonify({'error': 'Aviat backend not available'}), 503
@@ -19614,6 +20289,7 @@ def aviat_check_status():
 
 
 @app.route('/api/aviat/precheck/recheck', methods=['POST'])
+@require_auth
 def aviat_recheck_precheck():
     if not HAS_AVIAT:
         return jsonify({'error': 'Aviat backend not available'}), 503
@@ -19673,6 +20349,7 @@ def aviat_recheck_precheck():
 
 
 @app.route('/api/aviat/fix-stp', methods=['POST'])
+@require_auth
 def aviat_fix_stp():
     if not HAS_AVIAT:
         return jsonify({'error': 'Aviat backend not available'}), 503
@@ -19705,12 +20382,19 @@ def aviat_fix_stp():
 
 
 @app.route('/api/aviat/abort/<task_id>', methods=['POST'])
+@require_auth
 def aviat_abort_task(task_id):
     if not HAS_AVIAT:
         return jsonify({'error': 'Aviat backend not available'}), 503
-    if task_id not in aviat_tasks:
+    task = aviat_tasks.get(task_id) or _background_task_load('aviat', task_id)
+    if not task:
         return jsonify({'error': 'Task not found'}), 404
-    aviat_tasks[task_id]['abort'] = True
+    if not _background_task_access_allowed(task):
+        return jsonify({'error': 'Task not found'}), 404
+    _background_task_signal_abort('aviat', task_id)
+    if task_id in aviat_tasks:
+        aviat_tasks[task_id]['abort'] = True
+        _background_task_persist('aviat', task_id, aviat_tasks.get(task_id))
     return jsonify({'status': 'aborting'})
 
 
@@ -19718,8 +20402,39 @@ def aviat_abort_task(task_id):
 def aviat_stream_logs(task_id):
     if not HAS_AVIAT:
         return jsonify({'error': 'Aviat backend not available'}), 503
+    _, error_response = _authenticate_request_context()
+    if error_response:
+        return error_response
     if task_id not in aviat_log_queues:
-        return jsonify({'error': 'Task not found'}), 404
+        task = _background_task_load('aviat', task_id)
+        _, log_path, _ = _background_task_paths('aviat', task_id)
+        if not task:
+            return jsonify({'error': 'Task not found'}), 404
+        if not _background_task_access_allowed(task):
+            return jsonify({'error': 'Task not found'}), 404
+        if not log_path.exists():
+            return Response(
+                'data: {"type":"done"}\n\n',
+                mimetype='text/event-stream',
+                headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
+            )
+
+        def generate_from_disk():
+            try:
+                with log_path.open('r', encoding='utf-8') as handle:
+                    for line in handle:
+                        line = line.strip()
+                        if line:
+                            yield f'data: {line}\n\n'
+            except Exception:
+                pass
+            yield 'data: {"type":"done"}\n\n'
+
+        return Response(
+            generate_from_disk(),
+            mimetype='text/event-stream',
+            headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
+        )
 
     def generate():
         q = aviat_log_queues[task_id]
@@ -19744,12 +20459,22 @@ def aviat_stream_logs(task_id):
 def aviat_stream_global():
     if not HAS_AVIAT:
         return jsonify({'error': 'Aviat backend not available'}), 503
+    _, error_response = _authenticate_request_context()
+    if error_response:
+        return error_response
     q = queue.Queue()
     aviat_global_log_queues.add(q)
 
     def generate():
-        # Send backlog first
-        for entry in list(aviat_global_log_history)[-200:]:
+        # Send persisted backlog first so cross-worker/restart visibility still works.
+        persisted = _background_task_recent_logs('aviat', limit=200)
+        backlog = persisted or list(aviat_global_log_history)[-200:]
+        for entry in backlog:
+            backlog_task_id = entry.get('task_id')
+            if backlog_task_id:
+                task = aviat_tasks.get(backlog_task_id) or _background_task_load('aviat', backlog_task_id)
+                if task and not _background_task_access_allowed(task):
+                    continue
             yield f"data: {json.dumps(entry)}\n\n"
         while True:
             try:
@@ -19773,12 +20498,39 @@ def aviat_stream_global():
 
 
 @app.route('/api/aviat/status/<task_id>')
+@require_auth
 def aviat_get_status(task_id):
     if not HAS_AVIAT:
         return jsonify({'error': 'Aviat backend not available'}), 503
-    if task_id not in aviat_tasks:
+    task = aviat_tasks.get(task_id) or _background_task_load('aviat', task_id)
+    if not task:
         return jsonify({'error': 'Task not found'}), 404
-    return jsonify(aviat_tasks[task_id])
+    if not _background_task_access_allowed(task):
+        return jsonify({'error': 'Task not found'}), 404
+    return jsonify(_background_task_status_payload(task))
+
+
+def _aviat_firmware_dir():
+    """Path where Aviat .swpack files live inside the container (/opt/firmware/aviat)."""
+    import pathlib as _pl
+    return _pl.Path(os.getenv('FIRMWARE_PATH', '/opt/firmware')) / 'aviat'
+
+
+@app.route('/api/aviat/firmware/<filename>')
+def aviat_serve_firmware(filename):
+    """Serve an Aviat firmware .swpack file for direct radio download (no auth — device pulls directly).
+
+    Radios fetch the firmware URI as a plain HTTP GET; they cannot send auth headers.
+    The file is read-only from the container's /opt/firmware/aviat/ volume mount.
+    """
+    import pathlib as _pl
+    fw_dir = _aviat_firmware_dir()
+    safe_name = _pl.Path(filename).name  # strip any directory traversal
+    file_path = fw_dir / safe_name
+    if not file_path.exists() or not file_path.is_file():
+        return jsonify({'error': 'Firmware file not found'}), 404
+    return send_file(str(file_path), as_attachment=True, download_name=safe_name,
+                     mimetype='application/octet-stream')
 
 
 # ========================================
@@ -19843,6 +20595,8 @@ def _cambium_broadcast_log(message, level="info", task_id=None, ip=None):
         "ip": ip,
     }
     cambium_global_log_history.append(entry)
+    if task_id:
+        _background_task_append_log('cambium', task_id, entry)
     for q in list(cambium_global_log_queues):
         try:
             q.put(entry)
@@ -19892,26 +20646,66 @@ def _log_cambium_activity(result):
                 pass
 
 
-def _cambium_update_queue_from_result(result, username=None):
+def _log_wave_fw_activity(result, username=None, tenant_id=None):
+    """Log a Wave FW upgrade result to the shared activity database."""
+    conn = None
+    try:
+        if not isinstance(result, dict) or result.get('status') not in ('success', 'failed'):
+            return
+        init_activity_db()
+        secure_dir = 'secure_data'
+        db_path = os.path.join(secure_dir, 'activity_log.db')
+        conn = sqlite3.connect(db_path)
+        c = conn.cursor()
+        ts_unix = get_unix_timestamp()
+        ts_iso = get_utc_timestamp()
+        uname = _short_username(username or 'wave-fw-tool')
+        c.execute('''INSERT INTO activities
+                     (tenant_id, username, activity_type, device, site_name, routeros_version, success, timestamp, timestamp_unix)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                  (
+                      tenant_id,
+                      uname,
+                      'wave-fw-upgrade',
+                      'Wave Radio',
+                      result.get('ip') or 'Unknown',
+                      result.get('active_bank') or '',
+                      1 if result.get('status') == 'success' else 0,
+                      ts_iso,
+                      ts_unix,
+                  ))
+        conn.commit()
+    except Exception as e:
+        safe_print(f"[WAVE-FW] Failed to log activity: {e}")
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def _cambium_update_queue_from_result(result, username=None, tenant_id=None, tenant_slug=None):
     if not isinstance(result, dict):
         return
     status = result.get("status") or ("success" if result.get("success") else "error")
-    _cambium_queue_upsert(
-        result.get("ip"),
-        {
-            "status": status,
-            "firmwareStatus": status,
-            "deviceType": result.get("device_type"),
-            "targetVersion": result.get("target_version"),
-            "firmwareVersion": result.get("firmware_version_after") or result.get("firmware_version_before"),
-            "selectedImage": result.get("selected_image"),
-            "lastError": result.get("error"),
-            "backupStatus": result.get("backup_status"),
-            "verifyStatus": result.get("verify_status"),
-            "backupPath": result.get("backup_path"),
-            "username": result.get("username") or username or "cambium-tool",
-        },
-    )
+    update = {
+        "status": status,
+        "firmwareStatus": status,
+        "deviceType": result.get("device_type"),
+        "targetVersion": result.get("target_version"),
+        "firmwareVersion": result.get("firmware_version_after") or result.get("firmware_version_before"),
+        "selectedImage": result.get("selected_image"),
+        "lastError": result.get("error"),
+        "backupStatus": result.get("backup_status"),
+        "verifyStatus": result.get("verify_status"),
+        "backupPath": result.get("backup_path"),
+        "username": result.get("username") or username or "cambium-tool",
+    }
+    if tenant_id is not None:
+        update["_tenant_id"] = tenant_id
+        update["_tenant_slug"] = tenant_slug or ""
+    _cambium_queue_upsert(result.get("ip"), update)
 
 
 def _cambium_expand_tasks(task_values):
@@ -20150,6 +20944,7 @@ def _cambium_background_task(task_id, radios, username):
             cambium_tasks[task_id]['status'] = 'failed'
             cambium_tasks[task_id]['completed_at'] = get_utc_timestamp()
             cambium_tasks[task_id].setdefault('results', [])
+            _background_task_persist('cambium', task_id, cambium_tasks.get(task_id))
             _cambium_broadcast_log(f"[task:{task_id}] Unhandled crash: {_exc}", "error", task_id=task_id)
         except Exception:
             pass
@@ -20163,15 +20958,18 @@ def _cambium_background_task(task_id, radios, username):
 def _cambium_background_task_inner(task_id, radios, username):
     results = []
     cambium_tasks[task_id]["status"] = "running"
+    _background_task_persist('cambium', task_id, cambium_tasks.get(task_id))
+    _task_tenant_id = cambium_tasks[task_id].get('_tenant_id')
+    _task_tenant_slug = cambium_tasks[task_id].get('_tenant_slug', '')
     def should_abort():
-        return cambium_tasks.get(task_id, {}).get("abort") is True
+        return cambium_tasks.get(task_id, {}).get("abort") is True or _background_task_has_abort('cambium', task_id)
     max_workers = max(1, min(CAMBIUM_MAX_WORKERS, len(radios)))
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(_cambium_run_single, radio, username, should_abort): radio for radio in radios}
         for future in as_completed(futures):
             result = future.result()
             results.append(result)
-            _cambium_update_queue_from_result(result, username=username)
+            _cambium_update_queue_from_result(result, username=username, tenant_id=_task_tenant_id, tenant_slug=_task_tenant_slug)
             _log_cambium_activity(result)
             if result.get("success"):
                 _cambium_broadcast_log(
@@ -20199,6 +20997,7 @@ def _cambium_background_task_inner(task_id, radios, username):
     cambium_tasks[task_id]["status"] = "aborted" if should_abort() else "completed"
     cambium_tasks[task_id]["results"] = results
     cambium_tasks[task_id]["completed_at"] = get_utc_timestamp()
+    _background_task_persist('cambium', task_id, cambium_tasks.get(task_id))
     if task_id in cambium_log_queues:
         cambium_log_queues[task_id].put(None)
 
@@ -20235,9 +21034,13 @@ def cambium_catalog():
 
 
 @app.route('/api/cambium/device-info', methods=['POST'])
+@require_auth
 def cambium_device_info():
     if not HAS_CAMBIUM:
         return jsonify({'error': 'Cambium backend not available'}), 503
+    _ctx = _get_request_tenant_context()
+    _dev_tenant_id = _ctx['tenant'].get('id') if _ctx.get('tenant') else None
+    _dev_tenant_slug = _ctx['tenant'].get('slug', '') if _ctx.get('tenant') else ''
     data = request.get_json(force=True) or {}
     ip = str(data.get("ip") or data.get("ip_address") or "").strip()
     device_type = data.get("device_type")
@@ -20253,6 +21056,8 @@ def cambium_device_info():
             "deviceType": info["device_type"],
             "firmwareVersion": info["firmware_version"],
             "lastError": info["error"],
+            "_tenant_id": _dev_tenant_id,
+            "_tenant_slug": _dev_tenant_slug,
         })
         _cambium_save_shared_queue()
         return jsonify({"success": True, **info})
@@ -20295,11 +21100,15 @@ def cambium_check_status():
 
 
 @app.route('/api/cambium/queue', methods=['GET', 'POST'])
+@require_auth
 def cambium_queue_state():
     if not HAS_CAMBIUM:
         return jsonify({'error': 'Cambium backend not available'}), 503
+    tenant_ctx = _get_request_tenant_context()
+    tenant_id = tenant_ctx['tenant'].get('id') if tenant_ctx.get('tenant') else None
+    tenant_slug = tenant_ctx['tenant'].get('slug', '') if tenant_ctx.get('tenant') else ''
     if request.method == 'GET':
-        return jsonify({"radios": cambium_shared_queue})
+        return jsonify({"radios": _queue_payload(cambium_shared_queue, tenant_id=tenant_id)})
 
     data = request.get_json(force=True) or {}
     mode = str(data.get("mode") or "replace").strip().lower()
@@ -20312,7 +21121,7 @@ def cambium_queue_state():
     radios = _cambium_expand_radios(data)
 
     if mode == "replace":
-        cambium_shared_queue.clear()
+        cambium_shared_queue[:] = [entry for entry in cambium_shared_queue if not _queue_entry_matches_tenant(entry, tenant_id)]
         for radio in radios:
             canonical = cambium_resolve_device_type(radio.get("device_type"))
             _cambium_queue_upsert(radio["ip"], {
@@ -20321,6 +21130,8 @@ def cambium_queue_state():
                 "deviceType": canonical,
                 "targetVersion": radio.get("update_version"),
                 "username": actor_username,
+                "_tenant_id": tenant_id,
+                "_tenant_slug": tenant_slug,
             })
     elif mode == "add":
         for radio in radios:
@@ -20331,15 +21142,20 @@ def cambium_queue_state():
                 "deviceType": canonical,
                 "targetVersion": radio.get("update_version"),
                 "username": actor_username,
+                "_tenant_id": tenant_id,
+                "_tenant_slug": tenant_slug,
             })
     elif mode == "remove":
         for radio in radios:
-            _cambium_queue_remove(radio["ip"])
+            cambium_shared_queue[:] = [
+                entry for entry in cambium_shared_queue
+                if not (entry.get("ip") == radio["ip"] and _queue_entry_matches_tenant(entry, tenant_id))
+            ]
     else:
         return jsonify({'error': f'Unsupported mode: {mode}'}), 400
 
     _cambium_save_shared_queue()
-    return jsonify({"radios": cambium_shared_queue})
+    return jsonify({"radios": _queue_payload(cambium_shared_queue, tenant_id=tenant_id)})
 
 
 @app.route('/api/cambium/run', methods=['POST'])
@@ -20360,6 +21176,8 @@ def cambium_run_tasks():
         or data.get("submitted_by")
         or "cambium-tool"
     )
+    _cambium_tenant_id = _tenant_ctx['tenant'].get('id') if _tenant_ctx.get('tenant') else None
+    _cambium_tenant_slug = _tenant_ctx['tenant'].get('slug', '') if _tenant_ctx.get('tenant') else ''
     if not radios:
         return jsonify({'error': 'No radios provided'}), 400
 
@@ -20387,6 +21205,8 @@ def cambium_run_tasks():
             "deviceType": canonical,
             "targetVersion": radio.get("update_version"),
             "username": actor_username,
+            "_tenant_id": _cambium_tenant_id,
+            "_tenant_slug": _cambium_tenant_slug,
         })
     _cambium_save_shared_queue()
 
@@ -20400,7 +21220,10 @@ def cambium_run_tasks():
         "tasks": _cambium_expand_tasks(data.get("tasks")),
         "started_at": get_utc_timestamp(),
         "results": [],
+        "_tenant_id": _cambium_tenant_id,
+        "_tenant_slug": _cambium_tenant_slug,
     }
+    _background_task_persist('cambium', task_id, cambium_tasks.get(task_id))
     cambium_log_queues[task_id] = queue.Queue()
     threading.Thread(
         target=_cambium_background_task,
@@ -20414,8 +21237,40 @@ def cambium_run_tasks():
 def cambium_stream_logs(task_id):
     if not HAS_CAMBIUM:
         return jsonify({'error': 'Cambium backend not available'}), 503
+    _, error_response = _authenticate_request_context()
+    if error_response:
+        return error_response
     if task_id not in cambium_log_queues:
-        return jsonify({'error': 'Task not found'}), 404
+        task = _background_task_load('cambium', task_id)
+        _, log_path, _ = _background_task_paths('cambium', task_id)
+        if not task:
+            return jsonify({'error': 'Task not found'}), 404
+        if not _background_task_access_allowed(task):
+            return jsonify({'error': 'Task not found'}), 404
+        if not log_path.exists():
+            return Response(
+                'data: {"type":"done"}\n\n',
+                mimetype='text/event-stream',
+                headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
+            )
+
+        @stream_with_context
+        def generate_from_disk():
+            try:
+                with log_path.open('r', encoding='utf-8') as handle:
+                    for line in handle:
+                        line = line.strip()
+                        if line:
+                            yield f'data: {line}\n\n'
+            except Exception:
+                pass
+            yield 'data: {"type":"done"}\n\n'
+
+        return Response(
+            generate_from_disk(),
+            mimetype='text/event-stream',
+            headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
+        )
 
     @stream_with_context
     def generate():
@@ -20436,12 +21291,22 @@ def cambium_stream_logs(task_id):
 def cambium_stream_global():
     if not HAS_CAMBIUM:
         return jsonify({'error': 'Cambium backend not available'}), 503
+    _, error_response = _authenticate_request_context()
+    if error_response:
+        return error_response
     q = queue.Queue()
     cambium_global_log_queues.add(q)
 
     @stream_with_context
     def generate():
-        for entry in list(cambium_global_log_history)[-200:]:
+        persisted = _background_task_recent_logs('cambium', limit=200)
+        backlog = persisted or list(cambium_global_log_history)[-200:]
+        for entry in backlog:
+            backlog_task_id = entry.get('task_id')
+            if backlog_task_id:
+                task = cambium_tasks.get(backlog_task_id) or _background_task_load('cambium', backlog_task_id)
+                if task and not _background_task_access_allowed(task):
+                    continue
             yield f"data: {json.dumps(entry)}\n\n"
         try:
             while True:
@@ -20463,22 +21328,33 @@ def cambium_stream_global():
 
 
 @app.route('/api/cambium/status/<task_id>')
+@require_auth
 def cambium_get_status(task_id):
     if not HAS_CAMBIUM:
         return jsonify({'error': 'Cambium backend not available'}), 503
-    if task_id not in cambium_tasks:
+    task = cambium_tasks.get(task_id) or _background_task_load('cambium', task_id)
+    if not task:
         return jsonify({'error': 'Task not found'}), 404
-    return jsonify(cambium_tasks[task_id])
+    if not _background_task_access_allowed(task):
+        return jsonify({'error': 'Task not found'}), 404
+    return jsonify(_background_task_status_payload(task))
 
 
 @app.route('/api/cambium/abort/<task_id>', methods=['POST'])
+@require_auth
 def cambium_abort_task(task_id):
     if not HAS_CAMBIUM:
         return jsonify({'error': 'Cambium backend not available'}), 503
-    if task_id not in cambium_tasks:
+    task = cambium_tasks.get(task_id) or _background_task_load('cambium', task_id)
+    if not task:
         return jsonify({'error': 'Task not found'}), 404
-    cambium_tasks[task_id]['abort'] = True
-    cambium_tasks[task_id]['status'] = 'aborting'
+    if not _background_task_access_allowed(task):
+        return jsonify({'error': 'Task not found'}), 404
+    _background_task_signal_abort('cambium', task_id)
+    if task_id in cambium_tasks:
+        cambium_tasks[task_id]['abort'] = True
+        cambium_tasks[task_id]['status'] = 'aborting'
+        _background_task_persist('cambium', task_id, cambium_tasks.get(task_id))
     return jsonify({'status': 'aborting'})
 
 
@@ -20528,7 +21404,7 @@ def _wave_fw_scrub(msg):
 
 
 def _wave_fw_broadcast_log(message, level='info', task_id=None):
-    """Put a log entry onto the per-task queue (same shape as _aviat_broadcast_log)."""
+    """Put a log entry onto the per-task queue and persist it to disk for cross-worker reads."""
     entry = {
         'message': message,
         'level': level,
@@ -20540,72 +21416,157 @@ def _wave_fw_broadcast_log(message, level='info', task_id=None):
             wave_fw_log_queues[task_id].put(entry)
         except Exception:
             pass
+    # Always persist to disk so other workers can serve the log stream
+    if task_id:
+        try:
+            log_path = _wave_fw_task_store_dir() / f'{task_id}.log.jsonl'
+            with open(log_path, 'a') as _lf:
+                _lf.write(json.dumps(entry) + '\n')
+        except Exception:
+            pass
 
 
-def _wave_fw_uisp_discover(uisp_url, username, password, timeout=30):
-    """Query UISP and return all Wave devices with firmware information."""
+def _wave_fw_uisp_discover(uisp_url, username, password, timeout=30, retries=3, target_version=None):
+    """Query UISP and return all Wave devices with firmware information.
+
+    Retries UISP login and device query with exponential backoff (matching reference script).
+    Each device dict includes 'already_current': True when UISP reports the device is already
+    at target_version — the UI can surface these so the operator knows to deselect them.
+    """
     import urllib3 as _urllib3
     _urllib3.disable_warnings(_urllib3.exceptions.InsecureRequestWarning)
+    retries = max(1, int(retries))
     sess = requests.Session()
-    try:
-        login_resp = sess.post(
-            f'{uisp_url}/nms/api/v2.1/user/login',
-            json={'username': username, 'password': password},
-            verify=False,
-            timeout=timeout,
-        )
-        login_resp.raise_for_status()
-        token = login_resp.headers.get('x-auth-token')
-        if not token:
-            raise RuntimeError('UISP login succeeded but no x-auth-token in response headers')
-        auth_headers = {'x-auth-token': token}
-        devices_resp = sess.get(
-            f'{uisp_url}/nms/api/v2.1/devices',
-            headers=auth_headers,
-            verify=False,
-            timeout=timeout,
-        )
-        devices_resp.raise_for_status()
-        all_devices = devices_resp.json()
-        wave_devices = []
-        for dev in (all_devices if isinstance(all_devices, list) else []):
-            ident = dev.get('identification') or {}
-            model = ident.get('model') or ''
-            name = ident.get('name') or ''
-            if 'wave' not in model.lower() and 'wave' not in name.lower():
-                continue
-            overview = dev.get('overview') or {}
-            fw_version = (
-                ident.get('firmwareVersion')
-                or overview.get('firmwareVersion')
-                or ''
+    token = None
+
+    # ── Login with retry/backoff ──────────────────────────────────────────────
+    last_login_exc = None
+    for attempt in range(1, retries + 1):
+        try:
+            login_resp = sess.post(
+                f'{uisp_url}/nms/api/v2.1/user/login',
+                json={'username': username, 'password': password},
+                verify=False,
+                timeout=(10, timeout),
             )
-            ip_addr = dev.get('ipAddress') or ident.get('ip') or ''
-            wave_devices.append({
-                'id': ident.get('id') or dev.get('id') or '',
-                'name': name,
-                'ip': ip_addr,
-                'model': model,
-                'firmwareVersion': fw_version,
-                'role': ident.get('role') or '',
-            })
-        return wave_devices
-    except RuntimeError:
-        raise
-    except Exception as exc:
-        raise RuntimeError(f'UISP discovery failed: {exc}') from exc
+            if login_resp.status_code == 200:
+                token = login_resp.headers.get('x-auth-token')
+                if not token:
+                    try:
+                        token = login_resp.json().get('token')
+                    except Exception:
+                        pass
+                if token:
+                    break
+                raise RuntimeError('UISP login succeeded but no x-auth-token in response')
+            raise RuntimeError(f'UISP login HTTP {login_resp.status_code}')
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            last_login_exc = exc
+            if attempt < retries:
+                time.sleep(min(2 ** attempt, 8))
+    if not token:
+        raise RuntimeError(
+            f'UISP login failed after {retries} attempt(s): {last_login_exc}')
+
+    auth_headers = {'x-auth-token': token}
+
+    # ── Devices query with retry/backoff ──────────────────────────────────────
+    all_devices = None
+    last_dev_exc = None
+    for attempt in range(1, retries + 1):
+        try:
+            devices_resp = sess.get(
+                f'{uisp_url}/nms/api/v2.1/devices',
+                headers=auth_headers,
+                verify=False,
+                timeout=(10, timeout),
+            )
+            if not devices_resp.ok:
+                raise RuntimeError(f'UISP devices query HTTP {devices_resp.status_code}')
+            payload = devices_resp.json()
+            if isinstance(payload, list):
+                all_devices = payload
+            elif isinstance(payload, dict):
+                all_devices = payload.get('items') or payload.get('data') or []
+            else:
+                all_devices = []
+            break
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            last_dev_exc = exc
+            if attempt < retries:
+                time.sleep(min(2 ** attempt, 8))
+    if all_devices is None:
+        raise RuntimeError(
+            f'UISP device query failed after {retries} attempt(s): {last_dev_exc}')
+
+    # ── Filter and classify Wave devices ─────────────────────────────────────
+    norm_target = _wave_fw_normalize_version(target_version) if target_version else None
+    wave_devices = []
+    for dev in all_devices:
+        ident = dev.get('identification') or {}
+        overview = dev.get('overview') or {}
+        model = (ident.get('model') or dev.get('model') or dev.get('productModel') or '')
+        name = (ident.get('name') or dev.get('displayName') or dev.get('name') or '')
+        # Only include devices with 'wave' in model or name
+        if 'wave' not in model.lower() and 'wave' not in name.lower():
+            continue
+        # Collect role from multiple UISP field paths (reference checks all of these)
+        role = (ident.get('role') or dev.get('role') or overview.get('role') or
+                dev.get('deviceRole') or '')
+        # Firmware version from multiple field paths
+        fw_raw = (
+            ident.get('firmwareVersion')
+            or overview.get('firmwareVersion')
+            or dev.get('firmwareVersion')
+            or ''
+        )
+        fw_version = _wave_fw_normalize_version(fw_raw) if fw_raw else ''
+        # Strip CIDR notation from IP if present
+        ip_addr = (dev.get('ipAddress') or ident.get('ip') or dev.get('ip') or dev.get('address') or '')
+        if ip_addr and '/' in ip_addr:
+            ip_addr = ip_addr.split('/')[0]
+        # Parent AP reference — used for auto-discovery of associated stations
+        ap_dev = (overview.get('apDevice') or dev.get('apDevice') or
+                  ident.get('apDevice') or {})
+        ap_device_id = ap_dev.get('id') or ap_dev.get('apId') or '' if isinstance(ap_dev, dict) else ''
+        wave_devices.append({
+            'id': ident.get('id') or dev.get('id') or '',
+            'name': name,
+            'ip': ip_addr,
+            'model': model,
+            'firmwareVersion': fw_version,
+            'role': role,
+            'ap_device_id': ap_device_id,  # empty string for APs; filled for stations
+            # Surface to UI so operator can see which are already done
+            'already_current': bool(norm_target and fw_version and fw_version == norm_target),
+        })
+    return wave_devices
 
 
-def _wave_fw_login_device(ip, ap_pass, sm_pass, timeout=30):
-    """Try multiple credential pairs against the Wave HTTPS API. Returns (session, headers)."""
+def _wave_fw_login_device(ip, ap_pass, sm_pass, timeout=30, role='unknown'):
+    """Try credential pairs against the Wave HTTPS API.
+    Returns (session, headers, working_password).
+
+    Credential order follows the device role: APs try ap_pass first; Stations try sm_pass first.
+    Only operator-supplied passwords are used — no hardcoded ubnt/ubnt fallback."""
     import urllib3 as _urllib3
     _urllib3.disable_warnings(_urllib3.exceptions.InsecureRequestWarning)
-    credential_pairs = [
-        ('admin', ap_pass),
-        ('admin', sm_pass),
-        ('ubnt', 'ubnt'),
-        ('ubnt', ap_pass),
-    ]
+    import re as _re
+    _role = _re.sub(r'[^a-z]', '', (role or '').lower())
+    if 'station' in _role:
+        ordered_pws = [sm_pass, ap_pass]
+    else:
+        ordered_pws = [ap_pass, sm_pass]  # APs and unknowns: ap_pass first
+    seen = set()
+    credential_pairs = []
+    for pw in ordered_pws:
+        if pw and ('admin', pw) not in seen:
+            credential_pairs.append(('admin', pw))
+            seen.add(('admin', pw))
     last_exc = None
     for user, pw in credential_pairs:
         try:
@@ -20619,16 +21580,22 @@ def _wave_fw_login_device(ip, ap_pass, sm_pass, timeout=30):
             if resp.ok:
                 token = resp.headers.get('x-auth-token') or resp.json().get('token') or ''
                 headers = {'x-auth-token': token} if token else {}
-                return sess, headers
+                return sess, headers, pw  # Return the password that worked
         except Exception as exc:
             last_exc = exc
     raise RuntimeError(f'All credential pairs failed for {ip}: {last_exc}')
 
 
 def _wave_fw_enable_ssh(session, ip, headers, timeout=60):
-    """Enable SSH server on the Wave device via the compose API."""
+    """Enable SSH on the Wave device without touching any other service settings.
+
+    Protocol: GET /services (full body) → mutate only sshServer block → PUT full body back
+    via /tools/compose with rollback.onError=True. This is the only safe way to enable SSH —
+    a partial PUT body would reset all other services to defaults.
+    """
     import urllib3 as _urllib3
     _urllib3.disable_warnings(_urllib3.exceptions.InsecureRequestWarning)
+    # 1. Read the full current services config
     svc_resp = session.get(
         f'https://{ip}/api/v1.0/services',
         headers=headers,
@@ -20637,6 +21604,7 @@ def _wave_fw_enable_ssh(session, ip, headers, timeout=60):
     )
     svc_resp.raise_for_status()
     services = svc_resp.json()
+    # 2. Mutate only the SSH block — all other keys pass through unchanged
     ssh_block = services.setdefault('sshServer', {})
     ssh_block['enabled'] = True
     ssh_block['passwordAuthentication'] = True
@@ -20645,13 +21613,18 @@ def _wave_fw_enable_ssh(session, ip, headers, timeout=60):
         'requests': [{'body': services, 'method': 'PUT', 'route': '/services'}],
         'rollback': {'onError': True, 'onUnreachable': {}},
     }
-    session.post(
+    # 3. PUT the full services object back; check the response
+    compose_resp = session.post(
         f'https://{ip}/api/v1.0/tools/compose',
         json=compose_payload,
         headers=headers,
         verify=False,
         timeout=timeout,
     )
+    if not compose_resp.ok:
+        raise RuntimeError(
+            f'SSH enable compose failed for {ip}: HTTP {compose_resp.status_code}'
+        )
 
 
 _WAVE_BANK_CHECK_SCRIPT = r"""
@@ -20689,206 +21662,479 @@ rm -rf $MOUNTPOINT
 """
 
 
-def _wave_fw_check_banks_ssh(ip, username, password, timeout=60):
-    """SSH into the Wave device and run the bank-check script. Returns (active, backup) strings."""
-    import paramiko as _paramiko
-    client = _paramiko.SSHClient()
-    client.set_missing_host_key_policy(_paramiko.AutoAddPolicy())
-    client.connect(
-        ip,
-        username=username,
-        password=password,
-        timeout=15,
-        look_for_keys=False,
-        allow_agent=False,
-    )
+def _wave_fw_check_banks_ssh(ip, username, password, timeout=60, deadline_ts=None):
+    """SSH into the Wave device and run the bank-check script. Returns (active, backup) strings.
+
+    Retries the SSH connect for up to 60 seconds (or until deadline) to handle the brief delay
+    after SSH is enabled via the services API. Normalizes version strings so '4.1.0.1234'
+    compares equal to '4.1.0'."""
+    import paramiko as _paramiko, re as _re
+    connect_deadline = time.time() + 60.0
+    if deadline_ts is not None:
+        connect_deadline = min(connect_deadline, deadline_ts)
+    last_exc = None
+    client = None
+    while time.time() < connect_deadline:
+        client = _paramiko.SSHClient()
+        client.set_missing_host_key_policy(_paramiko.AutoAddPolicy())
+        _connect_timeout = max(3.0, min(15.0, connect_deadline - time.time()))
+        try:
+            client.connect(
+                ip,
+                username=username,
+                password=password,
+                timeout=_connect_timeout,
+                banner_timeout=_connect_timeout,
+                auth_timeout=_connect_timeout,
+                look_for_keys=False,
+                allow_agent=False,
+            )
+            if client.get_transport() and client.get_transport().is_active():
+                break
+        except Exception as exc:
+            last_exc = exc
+            try:
+                client.close()
+            except Exception:
+                pass
+            client = None
+            time.sleep(2)
+    if client is None or not (client.get_transport() and client.get_transport().is_active()):
+        raise RuntimeError(f'SSH connect to {ip} failed: {last_exc}')
     try:
         stdin, stdout, stderr = client.exec_command('sh -s', timeout=timeout)
         stdin.write(_WAVE_BANK_CHECK_SCRIPT)
         stdin.channel.shutdown_write()
         output = stdout.read().decode('utf-8', errors='replace')
+        err_output = stderr.read().decode('utf-8', errors='replace')
     finally:
         client.close()
-    active = ''
-    backup = ''
-    for line in output.splitlines():
-        line = line.strip()
-        if line.startswith('ACTIVE='):
-            active = line[len('ACTIVE='):]
-        elif line.startswith('BACKUP='):
-            backup = line[len('BACKUP='):]
+    # Parse and normalize version strings (strips leading v, build suffixes, etc.)
+    active_m = _re.search(r'ACTIVE=([^\s]+)', output)
+    backup_m = _re.search(r'BACKUP=([^\s]+)', output)
+    active = _wave_fw_normalize_version(active_m.group(1)) if active_m else ''
+    backup = _wave_fw_normalize_version(backup_m.group(1)) if backup_m else ''
+    # Surface SSH-side errors rather than silently returning empty banks
+    if not active and err_output.strip():
+        raise RuntimeError(f'SSH bank check script error on {ip}: {err_output.strip()[:200]}')
     return active, backup
 
 
-def _wave_fw_upgrade_single(device, file_path, target_version, log_cb, should_abort):
-    """Perform the full firmware upgrade sequence for a single Wave device."""
+class _WaveFwDeadlineExceeded(Exception):
+    """Raised inside _wave_fw_upgrade_single when the maintenance window expires mid-upgrade."""
+
+
+def _wave_fw_upgrade_single(device, file_path, target_version, log_cb, should_abort, firmware_dir=None,
+                            min_current_firmware=None, deadline_ts=None):
+    """Upgrade a single Wave device to target_version.
+
+    Runs up to WAVE_FW_MAX_PASSES (default 4) upload→reboot passes until both firmware banks
+    match target_version.  Typically 2 passes are required: pass 1 loads the inactive bank and
+    reboots into it; pass 2 loads the now-inactive bank (old version) so both banks match.
+
+    IMPORTANT — SSH re-enable after reboot:
+    Wave devices reset SSH to disabled on every reboot.  After each reboot we re-login via HTTPS
+    and re-enable SSH using the same safe GET→mutate-only-sshServer→PUT-full-body pattern as the
+    initial enable.  Sending a partial body to /services would reset all other services to
+    defaults; we never do that.
+    """
+    import pathlib as _pl, socket as _socket
     ip = device['ip']
     name = device.get('name', ip)
+    device_role = device.get('role', 'unknown')
     ap_pass = os.getenv('WAVE_AP_PASS', '')
     sm_pass = os.getenv('WAVE_SM_PASS', ap_pass)
-    started_at = datetime.utcnow().isoformat() + 'Z'
+    max_passes = int(os.getenv('WAVE_FW_MAX_PASSES', '4'))
+    # Normalize target_version once so SSH output (which is also normalized) compares cleanly
+    target_version = _wave_fw_normalize_version(target_version)
+
+    def _now():
+        return datetime.utcnow().isoformat() + 'Z'
+
+    def _early(status, error=''):
+        now = _now()
+        return {'ip': ip, 'name': name, 'status': status, 'error': error,
+                'active_bank': '', 'backup_bank': '', 'started_at': now, 'completed_at': now}
+
+    # Maintenance window deadline — device hasn't started yet, skip cleanly
+    if deadline_ts is not None and time.time() >= deadline_ts:
+        return _early('skipped', 'Maintenance window deadline exceeded')
+
+    # Resolve firmware file (uploaded or server-side auto-select)
+    model_name = device.get('model', '')
+    if file_path is None:
+        fdir = _pl.Path(firmware_dir) if firmware_dir else _wave_fw_server_firmware_dir()
+        file_path = _wave_fw_select_firmware(model_name, fdir)
+        if file_path is None:
+            return _early('failed', 'No firmware file found on server for this model')
+    selected_family = _wave_fw_model_family(model_name)
+    selected_family_label = _wave_fw_family_label(selected_family)
+
+    started_at = _now()
 
     def result(status, error='', active='', backup=''):
-        return {
-            'ip': ip, 'name': name,
-            'status': status, 'error': _wave_fw_scrub(error),
-            'active_bank': active, 'backup_bank': backup,
-            'started_at': started_at,
-            'completed_at': datetime.utcnow().isoformat() + 'Z',
-        }
+        return {'ip': ip, 'name': name, 'status': status, 'error': _wave_fw_scrub(error),
+                'active_bank': active, 'backup_bank': backup,
+                'started_at': started_at, 'completed_at': _now()}
+
+    def deadline_timeout(default_secs):
+        """Clamp a timeout so we don't exceed the maintenance window (10s buffer)."""
+        if deadline_ts is None:
+            return default_secs
+        remaining = deadline_ts - time.time() - 10.0
+        return max(5.0, min(float(default_secs), remaining))
+
+    def check_deadline(ctx=''):
+        if deadline_ts is not None and time.time() >= deadline_ts:
+            raise _WaveFwDeadlineExceeded(
+                f'Maintenance window deadline exceeded{(" " + ctx) if ctx else ""}')
+
+    # ssh_pass tracks the credential that worked for SSH.  Starts as the HTTP-login password;
+    # updated if the alternative succeeds in a subsequent bank check.
+    ssh_pass = [ap_pass]  # list so closure can rebind
+
+    def enable_ssh_and_check_banks(label=''):
+        """Enable SSH (safe full-body PUT) then check both firmware banks via SSH.
+        Called before the first pass and after every reboot."""
+        tag = f' ({label})' if label else ''
+        log_cb(f'[{name}] Enabling SSH{tag}...')
+        _wave_fw_enable_ssh(session[0], ip, headers[0])
+        log_cb(f'[{name}] Checking firmware banks{tag}...')
+        alt_pass = sm_pass if ssh_pass[0] == ap_pass else ap_pass
+        for pw in (ssh_pass[0], alt_pass):
+            if not pw:
+                continue
+            try:
+                _a, _b = _wave_fw_check_banks_ssh(ip, 'admin', pw, deadline_ts=deadline_ts)
+                ssh_pass[0] = pw  # Remember which SSH password worked
+                return _a, _b
+            except Exception:
+                pass
+        raise RuntimeError(f'SSH bank check failed for {ip} — no credential worked')
+
+    # session and headers are stored in lists so the closure can see reassignments
+    session = [None]
+    headers = [{}]
 
     try:
         if should_abort():
             return result('aborted')
 
+        log_cb(f'[{name}] Model "{model_name or "unknown"}" mapped to {selected_family_label} -> {file_path.name}')
+
+        # ── Initial login ────────────────────────────────────────────────────
         log_cb(f'[{name}] Logging in...')
-        session, headers = _wave_fw_login_device(ip, ap_pass, sm_pass)
+        _s, _h, _pw = _wave_fw_login_device(ip, ap_pass, sm_pass, role=device_role)
+        session[0], headers[0], ssh_pass[0] = _s, _h, _pw
 
         if should_abort():
             return result('aborted')
 
-        log_cb(f'[{name}] Enabling SSH...')
-        _wave_fw_enable_ssh(session, ip, headers)
-        time.sleep(1.5)  # brief delay for SSH service to start
-
-        # Determine login credential that worked (for SSH)
-        # We'll try ap_pass first, then sm_pass for SSH
-        ssh_user = 'admin'
-        ssh_pass = ap_pass
-
-        log_cb(f'[{name}] Checking firmware banks...')
-        try:
-            active, backup = _wave_fw_check_banks_ssh(ip, ssh_user, ssh_pass)
-        except Exception:
-            # Try SM password
-            try:
-                active, backup = _wave_fw_check_banks_ssh(ip, ssh_user, sm_pass)
-            except Exception as e2:
-                return result('failed', error=f'SSH bank check failed: {e2}')
-
+        # ── Enable SSH + initial bank check ──────────────────────────────────
+        active, backup = enable_ssh_and_check_banks()
         log_cb(f'[{name}] Banks: active={active or "?"} backup={backup or "?"}')
 
+        # ── Min firmware gate ─────────────────────────────────────────────────
+        if min_current_firmware and _wave_fw_version_below(active, min_current_firmware):
+            log_cb(f'[{name}] Active "{active or "unknown"}" is below minimum '
+                   f'{min_current_firmware} — skipping.', 'warning')
+            return result('skipped',
+                          error=f'Active fw {active or "unknown"} < required min {min_current_firmware}',
+                          active=active, backup=backup)
+
+        # ── Already at target on both banks? ──────────────────────────────────
         if active == target_version and backup == target_version:
-            log_cb(f'[{name}] Already at target {target_version}, skipping.')
+            log_cb(f'[{name}] Both banks already at {target_version} — skipping.')
             return result('skipped', active=active, backup=backup)
 
-        if should_abort():
-            return result('aborted', active=active, backup=backup)
-
-        log_cb(f'[{name}] Uploading firmware {file_path.name}...')
-        with open(file_path, 'rb') as fh:
-            up_resp = session.post(
-                f'https://{ip}/api/v1.0/system/upgrade/direct',
-                headers=headers,
-                files={'file': (file_path.name, fh, 'application/octet-stream')},
-                verify=False,
-                timeout=180,
-            )
-        if not up_resp.ok:
-            return result('failed', error=f'Upload failed: HTTP {up_resp.status_code}', active=active, backup=backup)
-
-        log_cb(f'[{name}] Polling upgrade status...')
-        for _ in range(120):  # up to 4 min
+        # ── Multi-pass upgrade loop ───────────────────────────────────────────
+        # Wave dual-bank scheme: pass 1 writes the inactive bank and reboots into it;
+        # pass 2 writes the remaining old bank, making both match target.
+        # Optimisation: if the backup bank already carries target_version we skip the
+        # upload and go straight to reboot — the bank-swap alone is sufficient.
+        pass_num = 0
+        while pass_num < max_passes:
             if should_abort():
                 return result('aborted', active=active, backup=backup)
-            time.sleep(2)
+            check_deadline('before starting pass')
+
+            if active == target_version and backup == target_version:
+                break  # Both banks match — done
+
+            log_cb(f'[{name}] Pass {pass_num + 1}/{max_passes}: uploading {file_path.name}...')
+            # Retry upload once on 401/403 (re-login and re-try, matching reference behavior)
+            _up_last_status = None
+            up_resp = None  # ensure always bound even if loop body raises before assignment
+            for _up_attempt in range(2):
+                if _up_attempt > 0:
+                    try:
+                        _s2, _h2, _ = _wave_fw_login_device(ip, ap_pass, sm_pass, role=device_role)
+                        session[0], headers[0] = _s2, _h2
+                    except Exception:
+                        pass
+                try:
+                    with open(file_path, 'rb') as fh:
+                        up_resp = session[0].post(
+                            f'https://{ip}/api/v1.0/system/upgrade/direct',
+                            headers=headers[0],
+                            files={'file': (file_path.name, fh, 'application/octet-stream')},
+                            verify=False,
+                            timeout=int(deadline_timeout(180)),
+                        )
+                except (OSError, IOError) as _fio_exc:
+                    return result('failed',
+                                  error=f'Pass {pass_num + 1}: firmware file unreadable: {_fio_exc}',
+                                  active=active, backup=backup)
+                _up_last_status = up_resp.status_code
+                if up_resp.status_code not in (401, 403):
+                    break
+            if up_resp is None or not up_resp.ok:
+                return result('failed',
+                              error=f'Pass {pass_num + 1} upload: HTTP {_up_last_status}',
+                              active=active, backup=backup)
+
+            # Poll upgrade status.  Only 'in_progress' continues the loop; any other status
+            # (including 'uploading' which indicates the stream is still incoming) exits and is
+            # then validated — we expect 'finished'.
+            log_cb(f'[{name}] Pass {pass_num + 1}: polling upgrade status...')
+            _poll_status = ''
+            _poll_pct_seen = set()
+            for _ in range(int(deadline_timeout(int(os.getenv('WAVE_FW_UPGRADE_TIMEOUT', '180'))) / 2)):
+                if should_abort():
+                    return result('aborted', active=active, backup=backup)
+                check_deadline('during upgrade poll')
+                time.sleep(2)
+                try:
+                    poll = session[0].get(f'https://{ip}/api/v1.0/system/upgrade',
+                                          headers=headers[0], verify=False, timeout=15)
+                    if poll.ok:
+                        poll_data = poll.json()
+                        pct = poll_data.get('progressPercent')
+                        if pct is not None and pct not in _poll_pct_seen:
+                            _poll_pct_seen.add(pct)
+                            log_cb(f'[{name}] Pass {pass_num + 1} progress: {pct}%')
+                        _poll_status = poll_data.get('status', '')
+                        if _poll_status != 'in_progress':
+                            break  # Any non-in_progress status ends the loop
+                except Exception:
+                    pass
+            if _poll_status != 'finished':
+                return result('failed',
+                              error=f'Pass {pass_num + 1} upgrade did not finish (status: {_poll_status or "unknown"})',
+                              active=active, backup=backup)
+
+            log_cb(f'[{name}] Pass {pass_num + 1}: rebooting...')
             try:
-                poll = session.get(f'https://{ip}/api/v1.0/system/upgrade', headers=headers, verify=False, timeout=15)
-                if poll.ok:
-                    status_val = poll.json().get('status', '')
-                    pct = poll.json().get('progressPercent')
-                    if pct is not None:
-                        log_cb(f'[{name}] Upgrade progress: {pct}%')
-                    if status_val == 'finished':
-                        break
-                    if status_val not in ('in_progress', 'uploading', ''):
-                        return result('failed', error=f'Upgrade status: {status_val}', active=active, backup=backup)
+                session[0].post(f'https://{ip}/api/v1.0/system/reboot', headers=headers[0],
+                                data={'timeout': 0}, verify=False, timeout=20)
             except Exception:
-                pass
+                pass  # Expected — connection drops when device reboots
 
-        log_cb(f'[{name}] Rebooting...')
-        try:
-            session.post(f'https://{ip}/api/v1.0/system/reboot', headers=headers, data={'timeout': 0}, verify=False, timeout=20)
-        except Exception:
-            pass  # Connection drop on reboot is expected
-
-        # Wait for HTTPS port to go down then come back
-        import socket as _socket
-        reboot_timeout = int(os.getenv('WAVE_FW_REBOOT_TIMEOUT', '300'))
-        log_cb(f'[{name}] Waiting for device to reboot (up to {reboot_timeout}s)...')
-        time.sleep(8)
-        deadline = time.time() + reboot_timeout
-        went_down = False
-        while time.time() < deadline:
-            try:
-                with _socket.create_connection((ip, 443), timeout=3):
-                    if went_down:
+            # Two-phase reboot wait (matches reference):
+            # Phase 1: wait for port 443 to go DOWN (up to 90s) — confirms reboot started
+            # Phase 2: wait for port 443 to come back UP (up to full reboot_timeout)
+            reboot_secs = int(deadline_timeout(int(os.getenv('WAVE_FW_REBOOT_TIMEOUT', '300'))))
+            log_cb(f'[{name}] Pass {pass_num + 1}: waiting for device to go offline...')
+            time.sleep(5)  # Brief initial delay before polling (device needs a moment to shut down)
+            phase1_until = time.time() + min(90, reboot_secs)
+            went_down = False
+            while time.time() < phase1_until:
+                if should_abort():
+                    return result('aborted', active=active, backup=backup)
+                try:
+                    with _socket.create_connection((ip, 443), timeout=3):
+                        pass  # Still up
+                except OSError:
+                    went_down = True
+                    break
+                time.sleep(2)
+            if went_down:
+                log_cb(f'[{name}] Pass {pass_num + 1}: device went offline, waiting for it to return...')
+            else:
+                log_cb(f'[{name}] Pass {pass_num + 1}: device did not visibly go offline — '
+                       f'may have rebooted quickly; waiting for login anyway.', 'warning')
+            phase2_until = time.time() + reboot_secs
+            came_back = False
+            while time.time() < phase2_until:
+                if should_abort():
+                    return result('aborted', active=active, backup=backup)
+                try:
+                    with _socket.create_connection((ip, 443), timeout=3):
+                        came_back = True
                         break
-            except OSError:
-                went_down = True
-            time.sleep(2)
+                except OSError:
+                    pass
+                time.sleep(2)
+            if not came_back:
+                return result('failed',
+                              error=f'Pass {pass_num + 1}: HTTPS did not return after {reboot_secs}s',
+                              active=active, backup=backup)
 
-        if not went_down:
-            log_cb(f'[{name}] Warning: device did not visibly go offline; continuing.')
-
-        # Re-check banks
-        log_cb(f'[{name}] Re-checking firmware banks post-reboot...')
-        try:
-            active2, backup2 = _wave_fw_check_banks_ssh(ip, ssh_user, ssh_pass)
-        except Exception:
+            # Re-login and re-enable SSH.  Wave disables SSH on every reboot; must re-enable
+            # before we can run the bank-check script again.
+            log_cb(f'[{name}] Pass {pass_num + 1}: re-logging in after reboot...')
             try:
-                active2, backup2 = _wave_fw_check_banks_ssh(ip, ssh_user, sm_pass)
-            except Exception as e3:
-                return result('failed', error=f'Post-reboot bank check failed: {e3}', active=active, backup=backup)
+                _s2, _h2, _ = _wave_fw_login_device(ip, ap_pass, sm_pass, role=device_role)
+                session[0], headers[0] = _s2, _h2
+            except Exception as re_exc:
+                return result('failed',
+                              error=f'Pass {pass_num + 1} re-login failed: {re_exc}',
+                              active=active, backup=backup)
 
-        log_cb(f'[{name}] Post-reboot banks: active={active2 or "?"} backup={backup2 or "?"}')
+            active, backup = enable_ssh_and_check_banks(f'pass {pass_num + 1} post-reboot')
+            log_cb(f'[{name}] Pass {pass_num + 1} banks: active={active or "?"} backup={backup or "?"}')
+            pass_num += 1
 
-        if active2 == target_version:
-            return result('success', active=active2, backup=backup2)
-        else:
-            return result('failed', error=f'Active bank {active2} != target {target_version}', active=active2, backup=backup2)
+        # ── Final verdict ─────────────────────────────────────────────────────
+        if active == target_version and backup == target_version:
+            return result('success', active=active, backup=backup)
+        return result('failed',
+                      error=(f'After {pass_num} pass(es): '
+                             f'active={active or "?"} backup={backup or "?"} — '
+                             f'target={target_version}'),
+                      active=active, backup=backup)
 
+    except _WaveFwDeadlineExceeded as exc:
+        return result('skipped', error=str(exc))
     except Exception as exc:
         return result('failed', error=str(exc))
 
 
-def _wave_fw_background_task_inner(task_id, file_path, devices, target_version):
+def _wave_fw_background_task_inner(task_id, file_path, devices, target_version, firmware_dir=None,
+                                   min_current_firmware=None, deadline_ts=None, role_scope='both',
+                                   uisp_creds=None):
     _purge_stale_tasks(wave_fw_tasks, wave_fw_log_queues)
-    wave_fw_tasks[task_id]['status'] = 'running'
+    if task_id in wave_fw_tasks:
+        wave_fw_tasks[task_id]['status'] = 'running'
+    _wave_fw_persist_task(task_id)
 
     def log_cb(msg, level='info'):
         _wave_fw_broadcast_log(msg, level, task_id=task_id)
 
     def should_abort():
-        return wave_fw_tasks[task_id].get('abort', False)
+        # Check both in-memory flag (same worker) and disk signal (cross-worker)
+        return wave_fw_tasks.get(task_id, {}).get('abort', False) or _wave_fw_check_abort_signal(task_id)
 
-    max_workers = max(1, min(WAVE_FW_MAX_WORKERS, len(devices)))
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {
-            executor.submit(_wave_fw_upgrade_single, device, file_path, target_version, log_cb, should_abort): device
-            for device in devices
-        }
-        for future in as_completed(futures):
-            res = future.result()
-            wave_fw_tasks[task_id]['results'].append(res)
-            level = 'success' if res.get('status') == 'success' else (
-                'warning' if res.get('status') in ('skipped', 'aborted') else 'error'
-            )
-            log_cb(f"[{res.get('name', res.get('ip'))}] {res.get('status')}: {res.get('error') or 'OK'}", level)
+    # Filter by role scope before launching upgrade threads
+    if role_scope != 'both' and role_scope != 'all':
+        role_filtered = []
+        skipped_by_role = []
+        for d in devices:
+            dev_role = _wave_fw_classify_role(d)
+            if role_scope == 'ap' and dev_role != 'ap':
+                skipped_by_role.append(d)
+            elif role_scope == 'station' and dev_role != 'station':
+                skipped_by_role.append(d)
+            elif role_scope == 'backhaul' and dev_role != 'backhaul':
+                skipped_by_role.append(d)
+            else:
+                role_filtered.append(d)
+        if skipped_by_role:
+            log_cb(f'Role filter ({role_scope}): skipping {len(skipped_by_role)} device(s) with non-matching role', 'info')
+        devices = role_filtered
+
+    if deadline_ts is not None:
+        import datetime as _dt
+        deadline_str = _dt.datetime.utcfromtimestamp(deadline_ts).strftime('%H:%M:%S UTC')
+        log_cb(f'Maintenance window deadline: {deadline_str} — devices not started by then will be skipped', 'info')
+
+    if min_current_firmware:
+        log_cb(f'Minimum firmware gate: {min_current_firmware} — devices below this version will be skipped', 'info')
+
+    def _run_batch(batch, label=None):
+        """Run a batch of devices in parallel and collect results."""
+        if not batch:
+            return
+        if label:
+            log_cb(label, 'info')
+        workers = max(1, min(WAVE_FW_MAX_WORKERS, len(batch)))
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {
+                executor.submit(
+                    _wave_fw_upgrade_single, device, file_path, target_version,
+                    log_cb, should_abort, firmware_dir, min_current_firmware, deadline_ts
+                ): device
+                for device in batch
+            }
+            for future in as_completed(futures):
+                res = future.result()
+                _task = wave_fw_tasks.get(task_id)
+                if _task is not None:
+                    _task['results'].append(res)
+                level = 'success' if res.get('status') == 'success' else (
+                    'warning' if res.get('status') in ('skipped', 'aborted') else 'error'
+                )
+                log_cb(f"[{res.get('name', res.get('ip'))}] {res.get('status')}: {res.get('error') or 'OK'}", level)
+                # Push structured result onto SSE queue so the frontend badge updates immediately
+                _result_event = {'result': res, 'timestamp': datetime.utcnow().isoformat() + 'Z'}
+                try:
+                    wave_fw_log_queues[task_id].put(_result_event)
+                except Exception:
+                    pass
+                try:
+                    _log_path = _wave_fw_task_store_dir() / f'{task_id}.log.jsonl'
+                    with open(_log_path, 'a') as _lf:
+                        _lf.write(json.dumps(_result_event) + '\n')
+                except Exception:
+                    pass
+                # Log to activity DB so dashboard firmware upgrade counter includes Wave FW
+                _task_meta = wave_fw_tasks.get(task_id, {})
+                _log_wave_fw_activity(
+                    res,
+                    username=_task_meta.get('requested_by'),
+                    tenant_id=_task_meta.get('_tenant_id'),
+                )
+
+    if role_scope == 'both':
+        # Safety ordering: upgrade stations (SMs) first so they're on the new firmware
+        # before the AP reboots.  If the AP were upgraded first, a firmware-version gap
+        # could prevent stations from re-associating until they're also upgraded.
+        stations = [d for d in devices if _wave_fw_classify_role(d) == 'station']
+        aps = [d for d in devices if _wave_fw_classify_role(d) == 'ap']
+        backhauls = [d for d in devices if _wave_fw_classify_role(d) == 'backhaul']
+        others = [d for d in devices if _wave_fw_classify_role(d) == 'unknown']
+
+        if backhauls:
+            log_cb(f'APs & Stations mode: ignoring {len(backhauls)} selected backhaul device(s)', 'info')
+
+        if stations and aps:
+            _run_batch(stations, f'Phase 1/2: upgrading {len(stations)} station(s) first...')
+            if not should_abort():
+                _run_batch(aps + others, f'Phase 2/2: upgrading {len(aps + others)} AP device(s)...')
+        else:
+            _run_batch([d for d in devices if _wave_fw_classify_role(d) != 'backhaul'])
+    elif role_scope == 'all':
+        stations = [d for d in devices if _wave_fw_classify_role(d) == 'station']
+        non_stations = [d for d in devices if _wave_fw_classify_role(d) != 'station']
+        if stations:
+            _run_batch(stations, f'Phase 1/2: upgrading {len(stations)} station(s) first...')
+            if not should_abort():
+                _run_batch(non_stations, f'Phase 2/2: upgrading {len(non_stations)} AP/backhaul device(s)...')
+        else:
+            _run_batch(devices)
+    else:
+        _run_batch(devices)
 
     wave_fw_tasks[task_id]['status'] = 'aborted' if should_abort() else 'completed'
     wave_fw_tasks[task_id]['completed_at'] = datetime.utcnow().isoformat() + 'Z'
+    _wave_fw_persist_task(task_id)
     if task_id in wave_fw_log_queues:
         wave_fw_log_queues[task_id].put(None)
 
 
-def _wave_fw_background_task(task_id, file_path, devices, target_version):
+def _wave_fw_background_task(task_id, file_path, devices, target_version, firmware_dir=None,
+                             min_current_firmware=None, deadline_ts=None, role_scope='both',
+                             uisp_creds=None):
     try:
-        _wave_fw_background_task_inner(task_id, file_path, devices, target_version)
+        _wave_fw_background_task_inner(task_id, file_path, devices, target_version,
+                                       firmware_dir=firmware_dir, min_current_firmware=min_current_firmware,
+                                       deadline_ts=deadline_ts, role_scope=role_scope,
+                                       uisp_creds=uisp_creds)
     except Exception as _exc:
         try:
             wave_fw_tasks[task_id]['status'] = 'failed'
             wave_fw_tasks[task_id]['completed_at'] = datetime.utcnow().isoformat() + 'Z'
+            _wave_fw_persist_task(task_id)
             _wave_fw_broadcast_log(f'[task:{task_id}] Unhandled crash: {_wave_fw_scrub(str(_exc))}', 'error', task_id=task_id)
         except Exception:
             pass
@@ -20955,36 +22201,54 @@ def wave_fw_upgrade_start():
     """Start a background firmware upgrade job for the given device list."""
     if not HAS_WAVE_FW:
         return jsonify({'success': False, 'error': 'Wave FW updater not configured. Set WAVE_AP_PASS in .env.'}), 503
+    import re as _re
     data = request.json or {}
     file_id = data.get('file_id', '').strip()
     device_ids = data.get('device_ids') or []
     target_version = data.get('target_version', '').strip()
+    use_server_firmware = data.get('use_server_firmware', False)
+    min_current_firmware = data.get('min_current_firmware', '').strip()
+    role_scope = data.get('role_scope', 'both')
+    if role_scope not in ('both', 'ap', 'station', 'backhaul', 'all'):
+        role_scope = 'both'
+    deadline_minutes = int(data.get('deadline_minutes') or 0)
+    deadline_ts = (time.time() + deadline_minutes * 60) if deadline_minutes > 0 else None
 
-    if not file_id:
-        return jsonify({'success': False, 'error': 'file_id is required'}), 400
     if not device_ids:
         return jsonify({'success': False, 'error': 'device_ids must be a non-empty list'}), 400
 
-    # Resolve firmware file path
-    upload_base = _wave_fw_upload_dir()
-    file_dir = upload_base / file_id
-    if not file_dir.exists():
-        return jsonify({'success': False, 'error': f'file_id not found: {file_id}'}), 404
-    bin_files = list(file_dir.glob('*.bin'))
-    if not bin_files:
-        return jsonify({'success': False, 'error': 'No .bin file found for this file_id'}), 404
-    file_path = bin_files[0]
+    file_path = None
+    firmware_dir = None
 
-    # Derive target version from filename if not provided
+    if file_id:
+        # Caller uploaded a specific file — use it for all devices
+        upload_base = _wave_fw_upload_dir()
+        file_dir = upload_base / file_id
+        if not file_dir.exists():
+            return jsonify({'success': False, 'error': f'file_id not found: {file_id}'}), 404
+        bin_files = list(file_dir.glob('*.bin'))
+        if not bin_files:
+            return jsonify({'success': False, 'error': 'No .bin file found for this file_id'}), 404
+        file_path = bin_files[0]
+        if not target_version:
+            m = _re.search(r'v?(\d+\.\d+\.\d+)', file_path.name)
+            target_version = m.group(1) if m else ''
+    else:
+        # No uploaded file — use server-side firmware with per-device auto-selection
+        firmware_dir = _wave_fw_server_firmware_dir()
+        if not firmware_dir.exists() or not list(firmware_dir.glob('*.bin')):
+            return jsonify({'success': False, 'error': 'No server firmware found. Upload a .bin file or place firmware in /opt/firmware/wave/.'}), 400
+        if not target_version:
+            # Derive from first .bin file in the server dir
+            sample = sorted(firmware_dir.glob('*.bin'))[0]
+            m = _re.search(r'v?(\d+\.\d+\.\d+)', sample.name)
+            target_version = m.group(1) if m else '3.4.0'
+
     if not target_version:
-        import re as _re
-        m = _re.search(r'v?(\d+\.\d+\.\d+)', file_path.name)
-        target_version = m.group(1) if m else ''
-    if not target_version:
-        return jsonify({'success': False, 'error': 'Cannot determine target_version from filename. Pass it explicitly.'}), 400
+        return jsonify({'success': False, 'error': 'Cannot determine target_version. Pass it explicitly.'}), 400
 
     # Build device list from UISP discovery data passed in request, or use minimal dicts
-    devices = data.get('devices') or [{'id': d, 'ip': d, 'name': d} for d in device_ids]
+    devices = data.get('devices') or [{'id': d, 'ip': d, 'name': d, 'model': ''} for d in device_ids]
 
     task_id = str(uuid.uuid4())
     user_info = getattr(request, 'current_user', {})
@@ -20993,23 +22257,65 @@ def wave_fw_upgrade_start():
         'abort': False,
         'created_at': datetime.utcnow().isoformat() + 'Z',
         'completed_at': None,
-        'file_id': file_id,
-        'filename': file_path.name,
+        'file_id': file_id or 'server',
+        'filename': file_path.name if file_path else 'auto',
         'target_version': target_version,
         'device_count': len(devices),
         'results': [],
+        'role_scope': role_scope,
+        'min_current_firmware': min_current_firmware or None,
+        'deadline_ts': deadline_ts,
         '_tenant_id': user_info.get('tenant_id') or user_info.get('tenantId'),
         '_tenant_slug': '',
+        'requested_by': data.get('requested_by') or user_info.get('email') or 'wave-fw-tool',
     }
     wave_fw_log_queues[task_id] = queue.Queue()
+
+    _wave_fw_persist_task(task_id)  # write to disk so other workers can find it
 
     t = threading.Thread(
         target=_wave_fw_background_task,
         args=(task_id, file_path, devices, target_version),
+        kwargs={
+            'firmware_dir': str(firmware_dir) if firmware_dir else None,
+            'min_current_firmware': min_current_firmware or None,
+            'deadline_ts': deadline_ts,
+            'role_scope': role_scope,
+        },
         daemon=True,
     )
     t.start()
     return jsonify({'success': True, 'task_id': task_id})
+
+
+@app.route('/api/wave-fw/firmware-list', methods=['GET'])
+@require_auth
+def wave_fw_firmware_list():
+    """List Wave firmware .bin files available on the server (/opt/firmware/wave/)."""
+    import re as _re
+    firmware_dir = _wave_fw_server_firmware_dir()
+    files = []
+    if firmware_dir.exists():
+        all_bins = sorted(firmware_dir.glob('*.bin'))
+        is_universal = len(all_bins) == 1
+        nano_kws = ('wavenanolrpico', 'nanolrpico', 'wavenano', 'wavelr', 'wavelongrange', 'wavepico', 'nano', 'lr', 'pico')
+        for f in all_bins:
+            m = _re.search(r'v?(\d+\.\d+\.\d+)', f.name)
+            version = m.group(1) if m else ''
+            if is_universal:
+                family = 'universal'
+                family_label = 'Universal — all Wave devices (AP, Micro, PRO, Nano, LR, Pico)'
+            else:
+                family = 'nano' if any(k in _wave_fw_normalize_model(f.name) for k in nano_kws) else 'ap'
+                family_label = 'Wave Nano / LR / Pico' if family == 'nano' else 'Wave AP / AP Micro / PRO'
+            files.append({
+                'name': f.name,
+                'size': f.stat().st_size,
+                'version': version,
+                'family': family,
+                'family_label': family_label,
+            })
+    return jsonify({'success': True, 'firmware': files, 'firmware_dir': str(firmware_dir)})
 
 
 @app.route('/api/wave-fw/tasks', methods=['GET'])
@@ -21018,8 +22324,19 @@ def wave_fw_list_tasks():
     """List recent Wave FW upgrade tasks (summary only, no full results array)."""
     if not HAS_WAVE_FW:
         return jsonify({'success': False, 'error': 'Wave FW updater not configured.'}), 503
-    tasks = []
+    user_info = getattr(request, 'current_user', {}) or {}
+    tenant_id = user_info.get('tenant_id') or user_info.get('tenantId')
+    merged = {}
     for tid, t in wave_fw_tasks.items():
+        if _background_task_matches_tenant(t, tenant_id):
+            merged[tid] = dict(t)
+    for task in _background_task_list('wave_fw', limit=200):
+        tid = task.get('task_id')
+        if tid and tid not in merged and _background_task_matches_tenant(task, tenant_id):
+            merged[tid] = task
+
+    tasks = []
+    for tid, t in merged.items():
         tasks.append({
             'task_id': tid,
             'status': t.get('status'),
@@ -21043,9 +22360,14 @@ def wave_fw_task_status(task_id):
     """Full task status including per-device results."""
     if not HAS_WAVE_FW:
         return jsonify({'success': False, 'error': 'Wave FW updater not configured.'}), 503
-    if task_id not in wave_fw_tasks:
+    task = wave_fw_tasks.get(task_id)
+    if task is None:
+        task = _wave_fw_load_task_from_disk(task_id)
+        if task is None:
+            return jsonify({'success': False, 'error': 'Task not found'}), 404
+    if not _background_task_access_allowed(task):
         return jsonify({'success': False, 'error': 'Task not found'}), 404
-    t = dict(wave_fw_tasks[task_id])
+    t = dict(task)
     t.pop('abort', None)  # Don't expose internal flag
     t.pop('_tenant_id', None)
     t.pop('_tenant_slug', None)
@@ -21055,13 +22377,78 @@ def wave_fw_task_status(task_id):
 @app.route('/api/wave-fw/stream/<task_id>')
 def wave_fw_stream_logs(task_id):
     """SSE real-time log stream for a Wave FW upgrade task."""
-    # Manual token check (no @require_auth — streaming response incompatible with decorator buffering)
-    token = request.args.get('token') or (request.headers.get('Authorization', '').replace('Bearer ', '') or None)
-    if not token or not verify_token(token):
-        return jsonify({'error': 'Authentication required'}), 401
+    _, error_response = _authenticate_request_context()
+    if error_response:
+        return error_response
+
+    task = wave_fw_tasks.get(task_id) or _wave_fw_load_task_from_disk(task_id)
+    if not task:
+        return jsonify({'error': 'Task not found'}), 404
+    if not _background_task_access_allowed(task):
+        return jsonify({'error': 'Task not found'}), 404
 
     if task_id not in wave_fw_log_queues:
-        return jsonify({'error': 'Task not found'}), 404
+        log_path = _wave_fw_task_store_dir() / f'{task_id}.log.jsonl'
+
+        @stream_with_context
+        def generate_from_disk():
+            """Tail the on-disk log file in real-time while the task is running.
+
+            This handles the case where the SSE request lands on a different gunicorn
+            worker than the one running the background task.  We poll the file every
+            250 ms and emit any new lines, stopping once the task reaches a terminal
+            state and all lines have been flushed.
+            """
+            import time as _time
+            pos = 0
+            # Wait up to 5 s for the log file to appear (task may not have written yet)
+            for _ in range(20):
+                if log_path.exists():
+                    break
+                yield ': keep-alive\n\n'
+                _time.sleep(0.25)
+            else:
+                yield 'data: {"type":"done"}\n\n'
+                return
+
+            terminal = {'completed', 'failed', 'aborted', 'error'}
+            _stream_deadline = _time.time() + 14400  # 4-hour hard cap — prevents infinite hang
+            while _time.time() < _stream_deadline:
+                try:
+                    with open(log_path) as _lf:
+                        _lf.seek(pos)
+                        for line in _lf:
+                            line = line.strip()
+                            if line:
+                                yield f'data: {line}\n\n'
+                        pos = _lf.tell()
+                except Exception:
+                    pass
+                # Check if task reached a terminal state in the persisted task store
+                disk_task = _wave_fw_load_task_from_disk(task_id)
+                status = (disk_task or {}).get('status', '')
+                if status in terminal:
+                    # Drain any remaining lines written after we last read
+                    try:
+                        with open(log_path) as _lf:
+                            _lf.seek(pos)
+                            for line in _lf:
+                                line = line.strip()
+                                if line:
+                                    yield f'data: {line}\n\n'
+                    except Exception:
+                        pass
+                    break
+                yield ': keep-alive\n\n'
+                _time.sleep(0.25)
+
+            yield 'data: {"type":"done"}\n\n'
+
+        return Response(
+            generate_from_disk(),
+            mimetype='text/event-stream',
+            headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
+        )
 
     q = wave_fw_log_queues[task_id]
 
@@ -21090,10 +22477,21 @@ def wave_fw_abort(task_id):
     """Cooperatively abort an in-progress Wave FW upgrade task."""
     if not HAS_WAVE_FW:
         return jsonify({'success': False, 'error': 'Wave FW updater not configured.'}), 503
-    if task_id not in wave_fw_tasks:
+    task = wave_fw_tasks.get(task_id) or _wave_fw_load_task_from_disk(task_id)
+    if not task:
         return jsonify({'success': False, 'error': 'Task not found'}), 404
-    wave_fw_tasks[task_id]['abort'] = True
-    wave_fw_tasks[task_id]['status'] = 'aborting'
+    if not _background_task_access_allowed(task):
+        return jsonify({'success': False, 'error': 'Task not found'}), 404
+    _wave_fw_signal_abort(task_id)  # write signal file for cross-worker abort
+    if task_id in wave_fw_tasks:
+        wave_fw_tasks[task_id]['abort'] = True
+        wave_fw_tasks[task_id]['status'] = 'aborting'
+        _wave_fw_persist_task(task_id)
+    else:
+        # Task is in another worker — signal via file only
+        disk_task = _wave_fw_load_task_from_disk(task_id)
+        if not disk_task:
+            return jsonify({'success': False, 'error': 'Task not found'}), 404
     return jsonify({'success': True, 'status': 'aborting'})
 
 
@@ -22159,6 +23557,7 @@ def generate_ftth_isd_fiber():
 
 
 @app.route('/api/ftth-home/mf2-package', methods=['POST'])
+@require_auth
 def generate_ftth_home_mf2_package():
     """Generate MF2 ZIP with updated gateway and primary IP in 2-ihub-startup 831.xml."""
     data = request.get_json() or {}
@@ -23327,6 +24726,7 @@ def bulk_migration_execute():
 
 # ─── SSH Push Config to Live MikroTik Devices ────────────────────────
 @app.route('/api/ssh-push-config', methods=['POST'])
+@require_auth
 def ssh_push_config():
     """
     Push .rsc config text to MikroTik devices via SFTP upload + /import.

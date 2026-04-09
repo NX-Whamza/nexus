@@ -20,7 +20,7 @@ def _load_modules():
 def test_immediate_upgrade_waits_for_baseline_before_final(monkeypatch):
     aviat_config, _ = _load_modules()
     events = []
-    version_reads = iter(["2.10.0", "2.11.11", "6.1.0", "6.1.0", "6.1.0", "6.1.0"])
+    version_reads = iter(["2.10.0", "2.11.11", "6.2.4", "6.2.4", "6.2.4", "6.2.4"])
 
     class FakeClient:
         def __init__(self, ip, username, password, port=22):
@@ -75,7 +75,7 @@ def test_immediate_upgrade_waits_for_baseline_before_final(monkeypatch):
 
     assert result.success is True
     assert result.error is None
-    assert result.firmware_version_after == "6.1.0"
+    assert result.firmware_version_after == "6.2.4"
     assert events.index("trigger_baseline") < events.index("wait") < events.index("trigger_final")
     assert events.count("wait") == 2
 
@@ -84,6 +84,13 @@ def test_check_status_uses_queue_target_version_for_downgrade(monkeypatch):
     _, api_server = _load_modules()
     client = api_server.app.test_client()
 
+    monkeypatch.setattr(
+        api_server,
+        "verify_token",
+        lambda token: {"user_id": "u1", "email": "test@example.com", "tenant_id": None, "tenantId": None}
+        if token == "test-token"
+        else None,
+    )
     monkeypatch.setattr(
         api_server,
         "aviat_check_device_status",
@@ -108,7 +115,11 @@ def test_check_status_uses_queue_target_version_for_downgrade(monkeypatch):
         {"ip": "10.0.0.20", "status": "pending", "targetVersion": "2.11.11"}
     )
 
-    response = client.post("/api/aviat/check-status", json={"ips": ["10.0.0.20"]})
+    response = client.post(
+        "/api/aviat/check-status",
+        json={"ips": ["10.0.0.20"]},
+        headers={"Authorization": "Bearer test-token"},
+    )
     assert response.status_code == 200
     updated = api_server._aviat_queue_find("10.0.0.20")
     assert updated["status"] == "success"

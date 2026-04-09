@@ -1220,6 +1220,42 @@ SSH into a MikroTik device and fetch config via `/export`.
 
 ---
 
+### `GET /api/fetch-config-ssh/status/<task_id>` 🔒 Auth
+
+Get the current status of an async SSH fetch task.
+
+**Response `200`**
+```json
+{
+  "task_id": "7cc4db42-0bf5-46be-9d76-a7ad46d0a4b8",
+  "status": "running",
+  "host": "10.33.0.95",
+  "command": "export hide-sensitive",
+  "ports": [22, 22022],
+  "current_port": 22,
+  "message": "Connected on port 22",
+  "started_at": "2026-04-07T12:00:00Z",
+  "completed_at": null
+}
+```
+
+**Notes**
+- Status is backed by the shared task registry and remains readable across worker/process boundaries.
+- Terminal states are `completed`, `failed`, and `aborted`.
+
+---
+
+### `POST /api/fetch-config-ssh/abort/<task_id>` 🔒 Auth
+
+Request cooperative abort of an async SSH fetch task.
+
+**Response `200`**
+```json
+{ "status": "aborting" }
+```
+
+---
+
 ## 11. Compliance & Policy
 
 ### `GET /api/compliance-status`
@@ -1883,7 +1919,7 @@ SSH into radio and disable STP.
 
 ---
 
-### `POST /api/aviat/abort/<task_id>`
+### `POST /api/aviat/abort/<task_id>` 🔒 Auth
 
 Abort a running background task.
 
@@ -1892,11 +1928,16 @@ Abort a running background task.
 { "status": "aborting" }
 ```
 
+**Notes**
+- Abort is persisted in the shared task registry, so it still works if the request hits a different worker than the one that started the task.
+
 ---
 
 ### `GET /api/aviat/stream/<task_id>` (SSE)
 
 Server-Sent Events stream for task logs.
+
+**Auth:** `?token=<jwt>` query parameter or `Authorization: Bearer <jwt>`
 
 **Response:** `text/event-stream` — continuous log events:
 ```
@@ -1907,15 +1948,20 @@ data: {"type": "progress", "ip": "10.1.0.1", "status": "uploading", "percent": 4
 data: {"type": "complete", "ip": "10.1.0.1", "success": true}
 ```
 
+**Notes**
+- If the live task is owned by another worker, the endpoint replays the persisted task log backlog from shared storage.
+
 ---
 
 ### `GET /api/aviat/stream/global` (SSE)
 
 Global SSE stream for all Aviat activity (with backlog replay).
 
+**Auth:** `?token=<jwt>` query parameter or `Authorization: Bearer <jwt>`
+
 ---
 
-### `GET /api/aviat/status/<task_id>`
+### `GET /api/aviat/status/<task_id>` 🔒 Auth
 
 Get task status/results.
 
@@ -1923,12 +1969,195 @@ Get task status/results.
 ```json
 {
   "status": "running",
-  "abort": false,
   "ips": ["10.1.0.1"],
   "tasks": ["firmware_upload"],
-  "results": { "10.1.0.1": { "status": "uploading", "progress": 45 } }
+  "results": [],
+  "completed_at": null
 }
 ```
+
+**Notes**
+- The task payload is returned under `task`.
+- Access is tenant-scoped; another tenant receives `404`.
+
+---
+
+### `POST /api/cambium/run` 🔒 Auth
+
+Run Cambium backup / firmware / verification tasks in the background.
+
+**Request**
+```json
+{
+  "requested_by": "user@team.nxlink.com",
+  "tasks": ["backup", "firmware", "verify"],
+  "radios": [
+    {
+      "ip": "10.247.180.66",
+      "device_type": "CNEP3K",
+      "password": "device-password",
+      "update_version": "5.10.4-13433"
+    }
+  ]
+}
+```
+
+**Response `200`**
+```json
+{
+  "success": true,
+  "task_id": "4fd6c1e6-66e0-4ea0-8ad8-d0d4ef8fa572",
+  "count": 1
+}
+```
+
+---
+
+### `GET /api/cambium/status/<task_id>`
+🔒 Auth
+
+Get the current Cambium background task state.
+
+**Response `200`**
+```json
+{
+  "status": "running",
+  "task_id": "4fd6c1e6-66e0-4ea0-8ad8-d0d4ef8fa572",
+  "username": "user@team.nxlink.com",
+  "radios": [
+    { "ip": "10.247.180.66", "device_type": "CNEP3K", "tasks": ["backup", "firmware", "verify"] }
+  ],
+  "tasks": ["backup", "firmware", "verify"],
+  "started_at": "2026-04-07T12:00:00Z",
+  "completed_at": null,
+  "results": []
+}
+```
+
+---
+
+### `POST /api/cambium/abort/<task_id>` 🔒 Auth
+
+Request cooperative abort of a Cambium task.
+
+**Response `200`**
+```json
+{ "status": "aborting" }
+```
+
+---
+
+### `GET /api/cambium/stream/<task_id>` (SSE)
+
+Per-task SSE stream for Cambium job logs.
+
+**Auth:** `?token=<jwt>` query parameter or `Authorization: Bearer <jwt>`
+
+**Response:** `text/event-stream`
+```text
+data: {"timestamp":"2026-04-07T12:00:00Z","message":"[10.247.180.66] Starting backup","level":"info","task_id":"4fd6c1e6-66e0-4ea0-8ad8-d0d4ef8fa572","ip":"10.247.180.66"}
+```
+
+**Notes**
+- If the live queue is not on the current worker, the endpoint replays persisted backlog from the shared task registry.
+
+---
+
+### `GET /api/cambium/stream/global` (SSE)
+
+Global Cambium SSE stream for tenant-visible task activity.
+
+**Auth:** `?token=<jwt>` query parameter or `Authorization: Bearer <jwt>`
+
+**Response:** `text/event-stream`
+```text
+data: {"timestamp":"2026-04-07T12:00:00Z","message":"[10.247.180.66] Starting backup","level":"info","task_id":"4fd6c1e6-66e0-4ea0-8ad8-d0d4ef8fa572","ip":"10.247.180.66"}
+```
+
+**Notes**
+- Backlog replay is filtered to tasks visible to the authenticated tenant.
+
+---
+
+### `GET /api/wave-fw/tasks` 🔒 Auth
+
+List recent Wave firmware tasks visible to the authenticated tenant.
+
+**Response `200`**
+```json
+{
+  "success": true,
+  "tasks": [
+    {
+      "task_id": "698efad0-df88-4a56-a78f-4edb1a7c8b28",
+      "status": "queued",
+      "created_at": "2026-04-07T12:00:00Z",
+      "completed_at": null,
+      "file_id": "server",
+      "filename": "wave-fw-4.1.0.bin",
+      "target_version": "4.1.0",
+      "device_count": 3,
+      "succeeded": 0,
+      "failed": 0,
+      "skipped": 0
+    }
+  ]
+}
+```
+
+**Notes**
+- Task discovery is served from the shared task registry and filtered to the authenticated tenant when tenant metadata is available.
+
+---
+
+### `GET /api/wave-fw/status/<task_id>` 🔒 Auth
+
+Get full Wave firmware task state.
+
+**Response `200`**
+```json
+{
+  "success": true,
+  "task": {
+    "status": "running",
+    "created_at": "2026-04-07T12:00:00Z",
+    "completed_at": null,
+    "file_id": "server",
+    "filename": "wave-fw-4.1.0.bin",
+    "target_version": "4.1.0",
+    "device_count": 3,
+    "results": []
+  }
+}
+```
+
+---
+
+### `POST /api/wave-fw/abort/<task_id>` 🔒 Auth
+
+Signal cooperative abort for a Wave firmware task.
+
+**Response `200`**
+```json
+{ "success": true, "status": "aborting" }
+```
+
+---
+
+### `GET /api/wave-fw/stream/<task_id>` (SSE)
+
+Server-Sent Events stream for a Wave firmware task.
+
+**Auth:** `?token=<jwt>` query parameter or `Authorization: Bearer <jwt>`
+
+**Response:** `text/event-stream`
+```text
+data: {"message":"[10.0.0.10] Logging into device","level":"info","task_id":"698efad0-df88-4a56-a78f-4edb1a7c8b28","ts":"2026-04-07T12:00:03Z"}
+```
+
+**Notes**
+- Persisted backlog is replayed when the live queue is owned by another worker.
+- Access is tenant-scoped; another tenant cannot attach to the stream.
 
 ---
 

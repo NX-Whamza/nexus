@@ -26,11 +26,19 @@ from cambium_firmware import list_firmware_catalog, resolve_firmware_image, reso
 client = TestClient(app)
 
 
-def _auth_headers():
-    admin_email = os.getenv("PLATFORM_ADMIN_EMAILS", "whamza@team.nxlink.com").split(",")[0].strip()
-    r = client.post("/api/auth/login", json={"email": admin_email, "password": api_server.DEFAULT_PASSWORD})
-    token = (r.json() or {}).get("token", "")
-    return {"Authorization": f"Bearer {token}"}
+_TEST_TOKEN = "test-token"
+_TEST_HEADERS = {"Authorization": f"Bearer {_TEST_TOKEN}"}
+
+
+def _mock_verify_token(monkeypatch):
+    """Monkeypatch verify_token so tests don't need a real user DB."""
+    monkeypatch.setattr(
+        api_server,
+        "verify_token",
+        lambda token: {"user_id": "u1", "email": "test@example.com", "tenant_id": None, "tenantId": None}
+        if token == _TEST_TOKEN
+        else None,
+    )
 
 
 def test_cambium_catalog_scans_images_and_picks_latest(monkeypatch):
@@ -61,6 +69,7 @@ def test_cambium_catalog_scans_images_and_picks_latest(monkeypatch):
 
 
 def test_cambium_device_info_updates_queue(monkeypatch):
+    _mock_verify_token(monkeypatch)
     monkeypatch.setattr(api_server, "HAS_CAMBIUM", True)
     api_server.cambium_shared_queue.clear()
 
@@ -80,18 +89,20 @@ def test_cambium_device_info_updates_queue(monkeypatch):
     r = client.post(
         "/api/cambium/device-info",
         json={"ip": "10.10.10.10", "device_type": "CNEP3K", "password": "secret"},
+        headers=_TEST_HEADERS,
     )
     assert r.status_code == 200
     body = r.json()
     assert body["success"] is True
     assert body["firmware_version"] == "5.10.4"
 
-    queue_body = client.get("/api/cambium/queue").json()
+    queue_body = client.get("/api/cambium/queue", headers=_TEST_HEADERS).json()
     assert queue_body["radios"][0]["firmwareVersion"] == "5.10.4"
     assert queue_body["radios"][0]["deviceType"] == "CNEP3K"
 
 
 def test_cambium_run_completes_and_updates_status(monkeypatch):
+    _mock_verify_token(monkeypatch)
     monkeypatch.setattr(api_server, "HAS_CAMBIUM", True)
     api_server.cambium_shared_queue.clear()
     api_server.cambium_tasks.clear()
@@ -134,7 +145,7 @@ def test_cambium_run_completes_and_updates_status(monkeypatch):
             "username": "tester",
             "requested_by": "frontend-user",
         },
-        headers=_auth_headers(),
+        headers=_TEST_HEADERS,
     )
     assert r.status_code == 200
     task_id = r.json()["task_id"]
@@ -142,7 +153,7 @@ def test_cambium_run_completes_and_updates_status(monkeypatch):
     deadline = time.time() + 3
     final_status = None
     while time.time() < deadline:
-        status_resp = client.get(f"/api/cambium/status/{task_id}")
+        status_resp = client.get(f"/api/cambium/status/{task_id}", headers=_TEST_HEADERS)
         assert status_resp.status_code == 200
         final_status = status_resp.json()
         if final_status["status"] == "completed":
@@ -156,13 +167,14 @@ def test_cambium_run_completes_and_updates_status(monkeypatch):
     assert final_status["results"][0]["selected_image"] == "ePMP-AC-v5.10.4.img"
     assert captured == {"username": "tester", "password": "secret"}
 
-    queue_body = client.get("/api/cambium/queue").json()
+    queue_body = client.get("/api/cambium/queue", headers=_TEST_HEADERS).json()
     assert queue_body["radios"][0]["status"] == "success"
     assert queue_body["radios"][0]["targetVersion"] == "5.10.4"
     assert queue_body["radios"][0]["username"] == "frontend-user"
 
 
 def test_cambium_run_requested_by_does_not_override_device_login_username(monkeypatch):
+    _mock_verify_token(monkeypatch)
     monkeypatch.setattr(api_server, "HAS_CAMBIUM", True)
     api_server.cambium_shared_queue.clear()
     api_server.cambium_tasks.clear()
@@ -196,7 +208,7 @@ def test_cambium_run_requested_by_does_not_override_device_login_username(monkey
             "password": "secret",
             "requested_by": "frontend-user",
         },
-        headers=_auth_headers(),
+        headers=_TEST_HEADERS,
     )
     assert r.status_code == 200
     task_id = r.json()["task_id"]
@@ -204,7 +216,7 @@ def test_cambium_run_requested_by_does_not_override_device_login_username(monkey
     deadline = time.time() + 3
     final_status = None
     while time.time() < deadline:
-        status_resp = client.get(f"/api/cambium/status/{task_id}")
+        status_resp = client.get(f"/api/cambium/status/{task_id}", headers=_TEST_HEADERS)
         assert status_resp.status_code == 200
         final_status = status_resp.json()
         if final_status["status"] == "completed":
@@ -218,6 +230,7 @@ def test_cambium_run_requested_by_does_not_override_device_login_username(monkey
 
 
 def test_cambium_run_backup_and_verify_update_statuses(monkeypatch):
+    _mock_verify_token(monkeypatch)
     monkeypatch.setattr(api_server, "HAS_CAMBIUM", True)
     api_server.cambium_shared_queue.clear()
     api_server.cambium_tasks.clear()
@@ -260,7 +273,7 @@ def test_cambium_run_backup_and_verify_update_statuses(monkeypatch):
             "tasks": ["backup", "verify"],
             "requested_by": "frontend-user",
         },
-        headers=_auth_headers(),
+        headers=_TEST_HEADERS,
     )
     assert r.status_code == 200
     task_id = r.json()["task_id"]
@@ -268,7 +281,7 @@ def test_cambium_run_backup_and_verify_update_statuses(monkeypatch):
     deadline = time.time() + 3
     final_status = None
     while time.time() < deadline:
-        status_resp = client.get(f"/api/cambium/status/{task_id}")
+        status_resp = client.get(f"/api/cambium/status/{task_id}", headers=_TEST_HEADERS)
         assert status_resp.status_code == 200
         final_status = status_resp.json()
         if final_status["status"] == "completed":
@@ -283,12 +296,13 @@ def test_cambium_run_backup_and_verify_update_statuses(monkeypatch):
     assert result["backup_path"].endswith(".json")
     assert called["update"] == 0
 
-    queue_body = client.get("/api/cambium/queue").json()
+    queue_body = client.get("/api/cambium/queue", headers=_TEST_HEADERS).json()
     assert queue_body["radios"][0]["backupStatus"] == "success"
     assert queue_body["radios"][0]["verifyStatus"] == "success"
 
 
 def test_cambium_abort_endpoint_marks_task_aborting(monkeypatch):
+    _mock_verify_token(monkeypatch)
     monkeypatch.setattr(api_server, "HAS_CAMBIUM", True)
     api_server.cambium_shared_queue.clear()
     api_server.cambium_tasks.clear()
@@ -345,19 +359,19 @@ def test_cambium_abort_endpoint_marks_task_aborting(monkeypatch):
             "update_version": "5.10.4",
             "requested_by": "frontend-user",
         },
-        headers=_auth_headers(),
+        headers=_TEST_HEADERS,
     )
     assert r.status_code == 200
     task_id = r.json()["task_id"]
 
-    abort_resp = client.post(f"/api/cambium/abort/{task_id}")
+    abort_resp = client.post(f"/api/cambium/abort/{task_id}", headers=_TEST_HEADERS)
     assert abort_resp.status_code == 200
     assert abort_resp.json()["status"] == "aborting"
 
     deadline = time.time() + 3
     final_status = None
     while time.time() < deadline:
-        status_resp = client.get(f"/api/cambium/status/{task_id}")
+        status_resp = client.get(f"/api/cambium/status/{task_id}", headers=_TEST_HEADERS)
         assert status_resp.status_code == 200
         final_status = status_resp.json()
         if final_status["status"] == "aborted":
@@ -387,6 +401,7 @@ def test_cambium_backup_download_by_path_and_ip(monkeypatch):
 
 
 def test_cambium_verify_accepts_matching_base_version(monkeypatch):
+    _mock_verify_token(monkeypatch)
     monkeypatch.setattr(api_server, "HAS_CAMBIUM", True)
     api_server.cambium_shared_queue.clear()
     api_server.cambium_tasks.clear()
@@ -424,7 +439,7 @@ def test_cambium_verify_accepts_matching_base_version(monkeypatch):
             "tasks": ["firmware", "verify"],
             "requested_by": "frontend-user",
         },
-        headers=_auth_headers(),
+        headers=_TEST_HEADERS,
     )
     assert r.status_code == 200
     task_id = r.json()["task_id"]
@@ -432,7 +447,7 @@ def test_cambium_verify_accepts_matching_base_version(monkeypatch):
     deadline = time.time() + 3
     final_status = None
     while time.time() < deadline:
-        status_resp = client.get(f"/api/cambium/status/{task_id}")
+        status_resp = client.get(f"/api/cambium/status/{task_id}", headers=_TEST_HEADERS)
         assert status_resp.status_code == 200
         final_status = status_resp.json()
         if final_status["status"] == "completed":
@@ -540,6 +555,7 @@ def test_cambium_check_status_rejects_empty(monkeypatch):
 
 
 def test_cambium_queue_post_replace_add_remove(monkeypatch):
+    _mock_verify_token(monkeypatch)
     monkeypatch.setattr(api_server, "HAS_CAMBIUM", True)
     monkeypatch.setattr(api_server, "cambium_resolve_device_type", lambda value: "CNEP3K")
     api_server.cambium_shared_queue.clear()
@@ -554,6 +570,7 @@ def test_cambium_queue_post_replace_add_remove(monkeypatch):
             "update_version": "5.10.4",
             "requested_by": "test-user",
         },
+        headers=_TEST_HEADERS,
     )
     assert r.status_code == 200
     body = r.json()
@@ -570,6 +587,7 @@ def test_cambium_queue_post_replace_add_remove(monkeypatch):
             "update_version": "5.10.4",
             "requested_by": "test-user",
         },
+        headers=_TEST_HEADERS,
     )
     assert r.status_code == 200
     queue_ips = {e["ip"] for e in r.json()["radios"]}
@@ -583,6 +601,7 @@ def test_cambium_queue_post_replace_add_remove(monkeypatch):
             "ips": ["10.0.0.2"],
             "device_type": "CNEP3K",
         },
+        headers=_TEST_HEADERS,
     )
     assert r.status_code == 200
     queue_ips = {e["ip"] for e in r.json()["radios"]}
@@ -592,6 +611,7 @@ def test_cambium_queue_post_replace_add_remove(monkeypatch):
 
 
 def test_cambium_run_rejects_missing_radios(monkeypatch):
+    _mock_verify_token(monkeypatch)
     monkeypatch.setattr(api_server, "HAS_CAMBIUM", True)
-    r = client.post("/api/cambium/run", json={"device_type": "CNEP3K"}, headers=_auth_headers())
+    r = client.post("/api/cambium/run", json={"device_type": "CNEP3K"}, headers=_TEST_HEADERS)
     assert r.status_code == 400

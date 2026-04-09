@@ -2578,28 +2578,39 @@
 
         /* Live Progress Tracker (Inline Horizontal) */
         .progress-tracker {
-            display: none;
-            width: 100%;
-            margin: 20px 0;
-            background: #1e1e1e;
-            border: 2px solid #4CAF50;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-            overflow: hidden;
+            display: flex;
             flex-direction: column;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 9500;
+            background: #1e1e1e;
+            border-top: 2px solid #4CAF50;
+            box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.5);
+            transform: translateY(100%);
+            visibility: hidden;
+            pointer-events: none;
+            transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                        visibility 0s linear 0.28s;
         }
 
         .progress-tracker.active {
-            display: flex;
+            transform: translateY(0);
+            visibility: visible;
+            pointer-events: auto;
+            transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                        visibility 0s linear 0s;
         }
 
         .progress-tracker.collapsed {
-            max-height: 60px;
             overflow: hidden;
         }
 
         .progress-tracker.collapsed .progress-log-content,
-        .progress-tracker.collapsed .progress-details {
+        .progress-tracker.collapsed .progress-details,
+        .progress-tracker.collapsed .progress-bar-container,
+        .progress-tracker.collapsed .progress-log-header {
             display: none;
         }
 
@@ -2734,7 +2745,7 @@
 
         .progress-log-content {
             background: #1a1a1a;
-            max-height: 200px;
+            max-height: 180px;
             overflow-y: auto;
             font-family: 'Courier New', monospace;
             font-size: 11px;
@@ -3247,6 +3258,31 @@
             margin: 6px 0 0 0;
             color: var(--text-color-secondary);
             font-size: 13px;
+        }
+
+        .device-firmware-note {
+            margin: 0 0 16px 0;
+            padding: 12px 14px;
+            border: 1px solid rgba(245, 158, 11, 0.35);
+            border-left: 4px solid #f59e0b;
+            border-radius: 10px;
+            background: rgba(245, 158, 11, 0.08);
+            color: var(--text-color);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .device-firmware-note strong {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 13px;
+            color: #fcd34d;
+        }
+
+        .device-firmware-note p {
+            margin: 0;
+            font-size: 12px;
+            line-height: 1.5;
+            color: var(--text-color-secondary);
         }
 
         /* Aviat Backhaul Firmware Updater (NOC themed) */
@@ -3908,6 +3944,10 @@
                             <span class="sb-item-icon">&#128246;</span>
                             <span class="sb-item-label">Cambium Radio</span>
                         </div>
+                        <div class="sb-item" data-sb-tab="device-firmware-updater" data-sb-subtab="wave-fw">
+                            <span class="sb-item-icon">&#128268;</span>
+                            <span class="sb-item-label">Ubiquiti Wave</span>
+                        </div>
                     </div>
                 </div>
 
@@ -4135,6 +4175,7 @@
                     <div class="dropdown-menu">
                         <a data-tab="device-firmware-updater" data-device-firmware-tab="aviat" data-feature="aviat">AVIAT BACKHAUL UPDATER</a>
                         <a data-tab="device-firmware-updater" data-device-firmware-tab="cambium" data-feature="cambium">CAMBIUM RADIO UPDATER</a>
+                        <a data-tab="device-firmware-updater" data-device-firmware-tab="wave-fw">UBIQUITI WAVE UPDATER</a>
                     </div>
                 </div>
                 <div class="nav-item dropdown" data-tab="ftth-home" data-feature="ftth"><button>FTTH CONFIGURATOR</button>
@@ -7151,6 +7192,7 @@
                                     <option value="upgrade">Upgrade</option>
                                     <option value="aviat-upgrade">Aviat Backhaul Upgrade</option>
                                     <option value="cambium-upgrade">Cambium Radio Upgrade</option>
+                                    <option value="wave-fw-upgrade">Wave Radio Upgrade</option>
                                     <option value="field-config">Device Config Studio</option>
                                     <option value="config-diff">Config Diff Viewer</option>
                                     <option value="bulk-config">Bulk Operations</option>
@@ -8875,6 +8917,11 @@
 
             <div id="device-firmware-aviat-section" class="device-firmware-section active">
 
+            <div class="device-firmware-note">
+                <strong>Upgrade Order Notice</strong>
+                <p>Start with downstream devices first, then move upstream. For backhaul work, upgrade the far-end/downstream radios before touching the upstream side so live paths are not stranded on mismatched firmware.</p>
+            </div>
+
             <div id="maintenanceBanner" class="aviat-maintenance-banner aviat-maintenance-off">
                 OUTSIDE MAINTENANCE WINDOW (2:00 AM - 6:00 AM) | Activation allowed 2:00 AM - 5:00 AM
             </div>
@@ -8983,7 +9030,7 @@
                         <div style="grid-column: span 2;">
                             <label style="display: block; font-size: 12px; margin-bottom: 6px;">Firmware Target</label>
                             <select id="firmwareTarget">
-                                <option value="final">Final (6.1.0)</option>
+                                <option value="final">Final (6.2.4)</option>
                                 <option value="baseline">Baseline (2.11.11)</option>
                             </select>
                         </div>
@@ -9013,10 +9060,140 @@
 
             </div>
 
+            <div id="device-firmware-wave-fw-section" class="device-firmware-section">
+                <div class="aviat-card device-firmware-intro">
+                    <h2>Ubiquiti Wave Firmware Updater</h2>
+                    <p>Discover Wave devices via UISP, upload a firmware image, and run parallel bank-aware upgrades with live streaming logs.</p>
+                </div>
+
+                <div class="device-firmware-note">
+                    <strong>Upgrade Order Notice</strong>
+                    <p>Work downstream first. For AP and station upgrades, upgrade the station/SM before the AP. For backhaul upgrades, start with the downstream/far-end device first, then follow with the upstream side.</p>
+                </div>
+
+                <div class="aviat-grid">
+                    <div class="aviat-card">
+                        <h2>Step 1 &mdash; Discover Devices</h2>
+                        <p style="color:var(--text-color-secondary);font-size:13px;margin-bottom:12px;">
+                            Queries UISP for all online Wave AP, station, and backhaul devices.
+                        </p>
+                        <button id="waveFwDiscoverBtn" class="aviat-btn">Discover via UISP</button>
+                    </div>
+
+                    <div class="aviat-card">
+                        <h2>Step 2 &mdash; Firmware</h2>
+                        <p style="color:var(--text-color-secondary);font-size:13px;margin-bottom:12px;">
+                            Firmware is served from the server (<code>/opt/firmware/wave/</code>). Preferred setup is two files: one for <strong>Wave AP / AP Micro / PRO</strong> and one for <strong>Wave Nano / LR / Pico</strong>. The updater reads the UISP device model and auto-selects the correct family file for each device.
+                        </p>
+                        <div id="waveFwFirmwareList" style="display:flex;flex-direction:column;gap:8px;">
+                            <span style="color:var(--text-color-secondary);font-size:13px;">Loading available firmware...</span>
+                        </div>
+                        <details style="margin-top:14px;">
+                            <summary style="font-size:13px;cursor:pointer;color:var(--text-color-secondary);">Upload custom firmware override</summary>
+                            <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                                <label class="aviat-btn secondary" style="cursor:pointer;margin:0;">
+                                    Choose File
+                                    <input type="file" id="waveFwFileInput" accept=".bin" style="display:none;">
+                                </label>
+                                <button id="waveFwUploadBtn" class="aviat-btn secondary">Upload</button>
+                                <span id="waveFwFileBadge" class="aviat-pill" style="display:none;"></span>
+                            </div>
+                        </details>
+                    </div>
+                </div>
+
+                <div id="waveFwDeviceListCard" style="margin-top:16px;display:none;">
+                    <div class="aviat-card">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+                            <div>
+                                <h2 style="margin:0 0 2px;">Step 3 &mdash; Select &amp; Run</h2>
+                                <span id="waveFwDeviceCount" style="font-size:13px;color:var(--text-color-secondary);"></span>
+                            </div>
+                            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                                <button id="waveFwShowSelectedBtn" class="aviat-btn secondary">Show Selected</button>
+                                <button id="waveFwSelectAllBtn" class="aviat-btn secondary">Select All</button>
+                                <button id="waveFwDeselectAllBtn" class="aviat-btn secondary">Deselect All</button>
+                                <button id="waveFwAbortBtn" class="aviat-btn danger" disabled>Abort</button>
+                                <button id="waveFwRunBtn" class="aviat-btn success">Run Upgrade</button>
+                            </div>
+                        </div>
+
+                        <details id="waveFwOptionsDetails" style="margin-bottom:14px;">
+                            <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--text-color-secondary);">&#9881; Upgrade Options</summary>
+                            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-top:12px;padding:12px;background:var(--bg-secondary,rgba(0,0,0,.15));border-radius:6px;">
+                                <div>
+                                    <label for="waveFwRoleScope" style="font-size:12px;color:var(--text-color-secondary);display:block;margin-bottom:4px;">Device Role</label>
+                                    <select id="waveFwRoleScope" style="width:100%;background:var(--input-bg,#1e293b);color:var(--text-color,#e2e8f0);border:1px solid var(--border-color,#334155);border-radius:4px;padding:6px 8px;font-size:13px;">
+                                        <option value="both">APs &amp; Stations</option>
+                                        <option value="ap">APs only</option>
+                                        <option value="station">Stations only</option>
+                                        <option value="backhaul">Backhauls only</option>
+                                        <option value="all">All devices</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="waveFwMinFirmware" style="font-size:12px;color:var(--text-color-secondary);display:block;margin-bottom:4px;">Min Current Firmware <span style="opacity:0.6;">(skip devices below)</span></label>
+                                    <input type="text" id="waveFwMinFirmware" placeholder="e.g. 3.0.0  (blank = no minimum)"
+                                        style="width:100%;box-sizing:border-box;background:var(--input-bg,#1e293b);color:var(--text-color,#e2e8f0);border:1px solid var(--border-color,#334155);border-radius:4px;padding:6px 8px;font-size:13px;">
+                                </div>
+                                <div>
+                                    <label for="waveFwDeadlineMinutes" style="font-size:12px;color:var(--text-color-secondary);display:block;margin-bottom:4px;">Max Runtime <span style="opacity:0.6;">(maintenance window)</span></label>
+                                    <div style="display:flex;align-items:center;gap:6px;">
+                                        <input type="number" id="waveFwDeadlineMinutes" min="0" placeholder="0 = unlimited"
+                                            style="flex:1;min-width:0;background:var(--input-bg,#1e293b);color:var(--text-color,#e2e8f0);border:1px solid var(--border-color,#334155);border-radius:4px;padding:6px 8px;font-size:13px;"
+                                            oninput="waveFwUpdateDeadlineHint(this.value)">
+                                        <span style="font-size:12px;color:var(--text-color-secondary);white-space:nowrap;">min</span>
+                                    </div>
+                                    <div id="waveFwDeadlineHint" style="font-size:11px;color:var(--text-color-secondary);margin-top:3px;opacity:0.7;">2am–6am window = 240 min</div>
+                                </div>
+                            </div>
+                        </details>
+
+                        <div id="waveFwStatsBar" class="aviat-stat-row" style="margin-bottom:12px;display:none;">
+                            <div>Total: <span id="waveFwStatTotal">0</span></div>
+                            <div>Pending: <span id="waveFwStatPending">0</span></div>
+                            <div>Running: <span id="waveFwStatProcessing">0</span></div>
+                            <div>Done: <span id="waveFwStatSuccess">0</span></div>
+                            <div>Skipped: <span id="waveFwStatSkipped">0</span></div>
+                            <div>Failed: <span id="waveFwStatError">0</span></div>
+                        </div>
+
+                        <div style="display:flex;gap:8px;margin-bottom:10px;">
+                            <input id="waveFwSearch" type="text"
+                                placeholder="Filter by name, IP, model, or firmware version..."
+                                style="flex:1;box-sizing:border-box;">
+                            <select id="waveFwRoleFilter" style="width:140px;box-sizing:border-box;">
+                                <option value="all">All devices</option>
+                                <option value="ap">APs only</option>
+                                <option value="station">Stations only</option>
+                                <option value="backhaul">Backhauls only</option>
+                            </select>
+                        </div>
+
+                        <div id="waveFwDeviceList" class="aviat-queue" style="max-height:480px;overflow-y:auto;"></div>
+                    </div>
+                </div>
+
+                <div class="aviat-card" style="margin-top:16px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+                        <h2 style="margin:0;">Activity Log</h2>
+                        <button id="waveFwClearLogBtn" class="aviat-btn secondary">Clear</button>
+                    </div>
+                    <div id="waveFwLogBox" class="aviat-log" style="margin-top:10px;">
+                        <div class="aviat-log-entry"><span class="aviat-log-time">[--:--:--]</span> Ready. Discover devices and upload a firmware file to begin.</div>
+                    </div>
+                </div>
+            </div>
+
             <div id="device-firmware-cambium-section" class="device-firmware-section">
                 <div class="aviat-card device-firmware-intro">
                     <h2>Cambium Radio Updater</h2>
                     <p>Queue ePMP and cnWave radios, select a firmware profile, and run upgrade and verification flows from the same workspace.</p>
+                </div>
+
+                <div class="device-firmware-note">
+                    <strong>Upgrade Order Notice</strong>
+                    <p>Work downstream first. Upgrade subscriber/downstream radios before upstream or aggregation radios so the path is preserved while firmware versions are changing.</p>
                 </div>
 
                 <div class="aviat-grid">
@@ -11131,6 +11308,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             'device-firmware-updater': { tabId: 'device-firmware-updater', label: 'Devices Firmware Updater', desc: 'Firmware workflows for Aviat backhaul and Cambium radios' },
             'device-firmware-updater:aviat': { tabId: 'device-firmware-updater', subtab: 'aviat', label: 'Aviat Backhaul Updater', desc: 'Firmware upgrade and maintenance workflow' },
             'device-firmware-updater:cambium': { tabId: 'device-firmware-updater', subtab: 'cambium', label: 'Cambium Radio Updater', desc: 'Cambium radio firmware staging and verification' },
+            'device-firmware-updater:wave-fw': { tabId: 'device-firmware-updater', subtab: 'wave-fw', label: 'Ubiquiti Wave Updater', desc: 'Wave device firmware upgrade via UISP discovery' },
             'aviat-backhaul': { tabId: 'device-firmware-updater', subtab: 'aviat', label: 'Aviat Backhaul Updater', desc: 'Firmware upgrade and maintenance workflow' },
             'cambium-upgrade': { tabId: 'device-firmware-updater', subtab: 'cambium', label: 'Cambium Radio Updater', desc: 'Cambium radio firmware staging and verification' },
             'ftth-home': { tabId: 'ftth-home', label: 'FTTH Configurator', desc: 'FTTH OLT and BNG workspaces' },
@@ -11282,6 +11460,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 'enterprise-feeding-outstate-config': { icon: '\u{1F3E2}', label: 'Enterprise Feeding Out-of-State' },
                 'aviat-upgrade':        { icon: '\u{2B06}', label: 'Aviat Backhaul Upgrade' },
                 'cambium-upgrade':      { icon: '\u{1F4F6}', label: 'Cambium Radio Upgrade' },
+                'wave-fw-upgrade':      { icon: '\u{1F4F6}', label: 'Wave Radio Upgrade' },
                 'ftth-bng':             { icon: '\u{1F310}', label: 'FTTH BNG Config' },
                 'ftth-fiber-customer':  { icon: '\u{1F9F5}', label: 'FTTH Fiber Customer' },
                 'ftth-fiber-site':      { icon: '\u{1F3D7}', label: 'FTTH Fiber Site' },
@@ -14777,7 +14956,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                             const failCount = allActivities.filter(e => e.success === false || e.success === 0).length;
                             const nonFirmwareActivities = allActivities.filter(entry =>
                                 entry.countsTowardMetrics !== false &&
-                                !['aviat-upgrade', 'cambium-upgrade'].includes(entry.type) &&
+                                !['aviat-upgrade', 'cambium-upgrade', 'wave-fw-upgrade'].includes(entry.type) &&
                                 !(entry.type || '').startsWith('maintenance')
                             );
                             const totalCount = nonFirmwareActivities.length;
@@ -14785,7 +14964,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                             const successRate = totalCount > 0 ?
                                 Math.round((successCountFiltered / totalCount) * 100) : 100;
                             const firmwareUpgradeCount = allActivities.filter(entry =>
-                                ['aviat-upgrade', 'cambium-upgrade'].includes(entry.type)
+                                ['aviat-upgrade', 'cambium-upgrade', 'wave-fw-upgrade'].includes(entry.type)
                             ).length;
 
                             // Update UI elements
@@ -22579,7 +22758,9 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             taskId: null,
             pollTimer: null,
             currentHost: '',
-            abortRequested: false
+            abortRequested: false,
+            abortTimeoutTimer: null,
+            notFoundRetries: 0
         };
 
         function setSshFetchButtons(isRunning, isStopping = false) {
@@ -22604,8 +22785,13 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 clearTimeout(sshFetchState.pollTimer);
                 sshFetchState.pollTimer = null;
             }
+            if (sshFetchState.abortTimeoutTimer) {
+                clearTimeout(sshFetchState.abortTimeoutTimer);
+                sshFetchState.abortTimeoutTimer = null;
+            }
             sshFetchState.taskId = null;
             sshFetchState.abortRequested = false;
+            sshFetchState.notFoundRetries = 0;
         }
 
         async function pollSshFetchStatus(taskId, deviceIP, sshStatus) {
@@ -22615,8 +22801,16 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 });
                 const data = await response.json();
                 if (!response.ok) {
+                    if (response.status === 404) {
+                        sshFetchState.notFoundRetries = (sshFetchState.notFoundRetries || 0) + 1;
+                        if (sshFetchState.notFoundRetries <= 3) {
+                            sshFetchState.pollTimer = setTimeout(() => pollSshFetchStatus(taskId, deviceIP, sshStatus), 1500);
+                            return;
+                        }
+                    }
                     throw new Error(data.error || `Status check failed (${response.status})`);
                 }
+                sshFetchState.notFoundRetries = 0;
 
                 if (data.message) {
                     updateProgressStep(data.message);
@@ -22700,6 +22894,22 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 }
                 addProgressLog('warning', 'SSH fetch stop requested');
                 updateProgressStep('Stopping SSH fetch...');
+                // Force-release the UI after a max wait — backend may take up to ~12s for SSH timeout
+                clearTimeout(sshFetchState.abortTimeoutTimer);
+                sshFetchState.abortTimeoutTimer = setTimeout(function() {
+                    if (sshFetchState.abortRequested) {
+                        clearSshFetchPolling();
+                        setSshFetchButtons(false);
+                        completeProgressTracker(false);
+                        const sshStatusEl = document.getElementById('sshStatus');
+                        if (sshStatusEl) {
+                            sshStatusEl.style.background = '#ef6c00';
+                            sshStatusEl.innerHTML = '\u26a0\ufe0f SSH fetch stopped.';
+                        }
+                        showUpgradeStatus('SSH fetch stopped.', 'error');
+                        addProgressLog('warning', 'SSH fetch stopped');
+                    }
+                }, 15000);
             } catch (error) {
                 sshFetchState.abortRequested = false;
                 setSshFetchButtons(true, false);
@@ -27138,41 +27348,21 @@ Ready for translation!`);
             }
 
             function repositionProgressTracker() {
-                const tracker = document.getElementById('progressTracker');
-                if (!tracker || !tracker.classList.contains('active')) return;
-
-                const root = resolveProgressTrackerRoot();
-                if (!root) return;
-
-                if (root.id === 'ftth-pane' || root.id === 'ftth-home-pane') {
-                    const anchor = root.querySelector('#ftth_progress_anchor');
-                    if (anchor && anchor.parentNode && anchor.nextSibling !== tracker) {
-                        anchor.parentNode.insertBefore(tracker, anchor.nextSibling);
-                        return;
-                    }
-                }
-
-                const generateBtn = root.querySelector('button[onclick*="generate"], button[onclick*="Generate"], button[id*="generate"], button[id*="Generate"]') ||
-                    Array.from(root.querySelectorAll('button')).find(btn =>
-                        btn.textContent && btn.textContent.toLowerCase().includes('generate')
-                    );
-
-                if (generateBtn && generateBtn.parentElement) {
-                    const container = generateBtn.closest('.section, div') || generateBtn.parentElement;
-                    if (container && container.parentNode && container.nextSibling !== tracker) {
-                        container.parentNode.insertBefore(tracker, container.nextSibling);
-                        return;
-                    }
-                }
-
-                if (root.firstChild) {
-                    root.insertBefore(tracker, root.firstChild);
-                } else {
-                    root.appendChild(tracker);
-                }
+                // No-op: tracker is fixed-position at bottom of viewport, no DOM insertion needed.
             }
 
             window.repositionProgressTracker = repositionProgressTracker;
+
+            function _updateBodyPaddingForTracker() {
+                const tracker = document.getElementById('progressTracker');
+                if (tracker && tracker.classList.contains('active') && !tracker.classList.contains('collapsed')) {
+                    document.body.style.paddingBottom = tracker.offsetHeight + 'px';
+                } else if (tracker && tracker.classList.contains('active') && tracker.classList.contains('collapsed')) {
+                    document.body.style.paddingBottom = (tracker.offsetHeight || 48) + 'px';
+                } else {
+                    document.body.style.paddingBottom = '';
+                }
+            }
 
             window.showProgressTracker = function (title = 'Configuration In Progress') {
                 const tracker = document.getElementById('progressTracker');
@@ -27195,8 +27385,12 @@ Ready for translation!`);
                     const collapseToggle = document.getElementById('progressCollapseToggle');
                     if (collapseToggle) collapseToggle.textContent = ' Collapse';
 
-                    // Place tracker near the active mode's Generate button.
-                    repositionProgressTracker();
+                    // Ensure tracker is a direct child of body so fixed positioning works correctly
+                    if (tracker.parentNode !== document.body) {
+                        document.body.appendChild(tracker);
+                    }
+
+                    setTimeout(_updateBodyPaddingForTracker, 50);
                 }
 
                 // Start elapsed time counter
@@ -27277,6 +27471,8 @@ Ready for translation!`);
             window.closeProgressTracker = function () {
                 const tracker = document.getElementById('progressTracker');
                 if (tracker) tracker.classList.remove('active');
+                // Clear padding after the slide-down transition finishes (280ms)
+                setTimeout(() => { document.body.style.paddingBottom = ''; }, 300);
 
                 if (progressTrackerInterval) {
                     clearInterval(progressTrackerInterval);
@@ -27299,6 +27495,7 @@ Ready for translation!`);
                     tracker.classList.add('collapsed');
                     toggle.textContent = ' Expand';
                 }
+                setTimeout(_updateBodyPaddingForTracker, 50);
             };
 
             window.toggleProgressLog = function () {
@@ -29633,7 +29830,7 @@ Ready for translation!`);
                 try {
                     const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : (window.AI_API_BASE || '/api');
                     const targetUrl = `${apiBase.replace(/\/+$/, '')}/preview-ftth-bng`;
-                    const r = await fetch(targetUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ loopback_ip: loopback, cpe_cidr: cpe, cgnat_cidr: cgnat, olt_cidr: olt }) });
+                    const r = await fetch(targetUrl, { method: 'POST', headers: getAuthHeaders('application/json'), body: JSON.stringify({ loopback_ip: loopback, cpe_cidr: cpe, cgnat_cidr: cgnat, olt_cidr: olt }) });
                     if (!r.ok) {
                         const txt = await r.text();
                         errEl.textContent = 'Preview server responded with status ' + r.status + ': ' + (txt || '');
@@ -29928,7 +30125,7 @@ Ready for translation!`);
         };
 
         function setDeviceFirmwareUpdaterSubTabState(tabKey) {
-            const resolvedTab = tabKey === 'cambium' ? 'cambium' : 'aviat';
+            const resolvedTab = tabKey === 'cambium' ? 'cambium' : tabKey === 'wave-fw' ? 'wave-fw' : 'aviat';
             const sections = document.querySelectorAll('#device-firmware-updater-pane .device-firmware-section');
             sections.forEach(section => {
                 const isActive = section.id === `device-firmware-${resolvedTab}-section`;
@@ -29937,10 +30134,18 @@ Ready for translation!`);
             });
             const titleEl = document.getElementById('deviceFirmwarePaneTitle');
             const descEl = document.getElementById('deviceFirmwarePaneDesc');
-            if (titleEl) titleEl.textContent = resolvedTab === 'cambium' ? 'Cambium Radio Updater' : 'Aviat Backhaul Firmware Updater';
-            if (descEl) descEl.textContent = resolvedTab === 'cambium'
-                ? 'Stage, verify, and activate firmware for Cambium radio devices.'
-                : 'Manage firmware upgrades and maintenance windows for Aviat backhaul radios.';
+            const titles = {
+                'cambium': 'Cambium Radio Updater',
+                'wave-fw': 'Ubiquiti Wave Firmware Updater',
+                'aviat': 'Aviat Backhaul Firmware Updater'
+            };
+            const descs = {
+                'cambium': 'Stage, verify, and activate firmware for Cambium radio devices.',
+                'wave-fw': 'Discover Wave devices via UISP, upload firmware, and run parallel bank-aware upgrades.',
+                'aviat': 'Manage firmware upgrades and maintenance windows for Aviat backhaul radios.'
+            };
+            if (titleEl) titleEl.textContent = titles[resolvedTab] || titles['aviat'];
+            if (descEl) descEl.textContent = descs[resolvedTab] || descs['aviat'];
         }
 
         window.showDeviceFirmwareUpdaterSubTab = function (tabKey) {
@@ -30368,7 +30573,7 @@ Ready for translation!`);
                 const targetUrl = `${apiBase.replace(/\/+$/, '')}/ftth-home/mf2-package`;
                 const response = await fetch(targetUrl, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getAuthHeaders('application/json'),
                     body: JSON.stringify({
                         gateway_ip: normalizedGatewayIp,
                         primary_ip: normalizedPrimaryIp,
@@ -31487,7 +31692,7 @@ Ready for translation!`);
                 let fetchDone = false;
                 const fetchPromise = fetch(targetUrl, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getAuthHeaders('application/json'),
                     body: JSON.stringify(configData)
                 }).then((res) => {
                     fetchDone = true;
@@ -31774,9 +31979,17 @@ Ready for translation!`);
                 const bases = getAviatCandidateBases();
                 const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
                 let lastError = null;
+                const authHeaders = (typeof getAuthHeaders === 'function') ? getAuthHeaders() : {};
+                const mergedOptions = {
+                    ...(options || {}),
+                    headers: {
+                        ...authHeaders,
+                        ...((options && options.headers) || {})
+                    }
+                };
                 for (const base of bases) {
                     try {
-                        const response = await fetch(`${base}${path}`, options);
+                        const response = await fetch(`${base}${path}`, mergedOptions);
                         const shouldRetry = [403, 404, 405].includes(response.status);
                         if (shouldRetry && base !== bases[bases.length - 1]) {
                             continue;
@@ -31814,6 +32027,13 @@ Ready for translation!`);
                     return 'http://localhost:5000/api/aviat';
                 }
                 return `${window.location.origin}/api/aviat`;
+            }
+
+            function getAviatStreamUrl(path) {
+                const token = (typeof getAuthToken === 'function') ? getAuthToken() : (localStorage.getItem('auth_token') || '');
+                const url = new URL(`${getAviatStreamBase()}${path}`, window.location.origin);
+                if (token) url.searchParams.set('token', token);
+                return url.toString();
             }
 
             async function aviatFetchWithTimeout(path, options, timeoutMs = 15000) {
@@ -32606,7 +32826,7 @@ Ready for translation!`);
                             return;
                         }
                         const selectedTarget = (document.getElementById('firmwareTarget') || {}).value || 'final';
-                        const expectedFirmware = radio.targetVersion || (selectedTarget === 'baseline' ? '2.11.11' : '6.1.0');
+                        const expectedFirmware = radio.targetVersion || (selectedTarget === 'baseline' ? '2.11.11' : '6.2.4');
                         const firmwareOk = res.firmware && String(res.firmware).startsWith(expectedFirmware);
                         radio.firmwareStatus = firmwareOk ? 'success' : 'pending';
                         radio.snmpStatus = res.snmp_ok ? 'success' : 'pending';
@@ -32792,7 +33012,7 @@ Ready for translation!`);
             function aviatStartGlobalLogStream() {
                 if (aviatState.globalStreamStarted) return;
                 aviatState.globalStreamStarted = true;
-                const eventSource = new EventSource(`${getAviatStreamBase()}/stream/global`);
+                const eventSource = new EventSource(getAviatStreamUrl('/stream/global'));
                 eventSource.onopen = function () {
                     aviatAddLog('Live log stream connected', 'info');
                 };
@@ -32943,6 +33163,7 @@ Ready for translation!`);
     </script>
 
     <script src="cambium-firmware-updater.js"></script>
+    <script src="wave-firmware-updater.js"></script>
 
     <!-- ═══════════════════════════════════════════════════════════════
          POWER TOOLS: Toast, Command Palette, Config Diff, Bulk Gen,

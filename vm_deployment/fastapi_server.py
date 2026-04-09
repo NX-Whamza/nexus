@@ -12,9 +12,14 @@ import socket
 import subprocess
 import threading
 import time
+import atexit
 import sqlite3
 import shutil
 import importlib
+import json
+import traceback
+import uuid
+import faulthandler
 from contextlib import asynccontextmanager
 from datetime import datetime
 from urllib.parse import urljoin
@@ -38,7 +43,12 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _THIS_DIR not in sys.path:
     sys.path.insert(0, _THIS_DIR)
 
-from api_server import app as flask_app
+try:
+    faulthandler.enable(all_threads=True)
+except Exception:
+    pass
+
+from api_server import app as flask_app, build_health_payload, _start_aviat_background_threads, _background_task_cleanup_stale
 try:
     from mt_config_gen.mt_tower import MTTowerConfig
     from mt_config_gen.mt_bng2 import MTBNG2Config
@@ -62,6 +72,131 @@ from api_v2 import (
     _maintenance_list,
     _maintenance_update,
 )
+
+_PROCESS_SINGLETONS: dict[str, Path] = {}
+_PROCESS_SINGLETONS_LOCK = threading.Lock()
+
+
+def _env_int(name: str, default: int, minimum: int = 1, maximum: int = 256) -> int:
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        print(f"[STARTUP] Invalid {name}={raw!r}; using {default}")
+        return default
+    return max(minimum, min(maximum, value))
+
+
+def _configured_uvicorn_workers() -> int:
+    if (os.getenv("NEXUS_UVICORN_WORKERS") or "").strip():
+        return _env_int("NEXUS_UVICORN_WORKERS", 1)
+    if (os.getenv("WEB_CONCURRENCY") or "").strip():
+        return _env_int("WEB_CONCURRENCY", 1)
+    return 1
+
+
+def _allow_unsafe_multiprocess() -> bool:
+    return str(os.getenv("NEXUS_ALLOW_UNSAFE_MULTIPROCESS", "false")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _validate_process_model() -> None:
+    uvicorn_workers = _configured_uvicorn_workers()
+    if uvicorn_workers <= 1:
+        return
+    message = (
+        "Unsafe backend process model: multiple uvicorn workers are configured for a backend "
+        "that still keeps task state and schedulers in process memory. Set NEXUS_UVICORN_WORKERS=1 "
+        "or explicitly override with NEXUS_ALLOW_UNSAFE_MULTIPROCESS=true."
+    )
+    if _allow_unsafe_multiprocess():
+        print(f"[STARTUP][WARNING] {message}")
+        return
+    raise RuntimeError(message)
+
+
+NEXUS_WSGI_WORKERS = _env_int("NEXUS_WSGI_WORKERS", 32)
+NEXUS_WSGI_SEND_QUEUE_SIZE = _env_int("NEXUS_WSGI_SEND_QUEUE_SIZE", 32)
+
+
+def _runtime_dir() -> Path:
+    configured = (os.getenv("NOC_RUNTIME_DIR") or "").strip()
+    if configured:
+        path = Path(configured)
+    else:
+        path = Path(__file__).resolve().parents[1] / "secure_data"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _pid_is_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if pid == os.getpid():
+        return True
+    try:
+        os.kill(pid, 0)
+    except Exception:
+        return False
+    return True
+
+
+def _release_process_singleton(name: str) -> None:
+    with _PROCESS_SINGLETONS_LOCK:
+        lock_path = _PROCESS_SINGLETONS.pop(name, None)
+    if lock_path is None:
+        return
+    try:
+        payload = json.loads(lock_path.read_text(encoding="utf-8"))
+    except Exception:
+        payload = {}
+    if int(payload.get("pid") or 0) != os.getpid():
+        return
+    try:
+        lock_path.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+def _acquire_process_singleton(name: str) -> bool:
+    with _PROCESS_SINGLETONS_LOCK:
+        if name in _PROCESS_SINGLETONS:
+            return True
+
+        lock_path = _runtime_dir() / f"{name}.lock"
+        if lock_path.exists():
+            try:
+                payload = json.loads(lock_path.read_text(encoding="utf-8"))
+            except Exception:
+                payload = {}
+            stale_pid = int(payload.get("pid") or 0)
+            if stale_pid and _pid_is_alive(stale_pid):
+                return False
+            try:
+                lock_path.unlink(missing_ok=True)
+            except Exception:
+                return False
+
+        payload = {
+            "pid": os.getpid(),
+            "acquired_at": datetime.utcnow().isoformat() + "Z",
+            "name": name,
+        }
+        try:
+            with lock_path.open("x", encoding="utf-8") as handle:
+                json.dump(payload, handle)
+        except FileExistsError:
+            return False
+
+        _PROCESS_SINGLETONS[name] = lock_path
+        atexit.register(_release_process_singleton, name)
+        return True
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -100,7 +235,13 @@ def _parse_cors_policy():
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    _schedule_startup_maintenance()
+    _validate_process_model()
+    if _acquire_process_singleton("nexus-runtime-leader"):
+        print(f"[STARTUP] Process {os.getpid()} became runtime leader")
+        _start_aviat_background_threads()
+        _schedule_startup_maintenance()
+    else:
+        print(f"[STARTUP] Process {os.getpid()} running as worker; singleton background tasks disabled")
     yield
 
 
@@ -161,6 +302,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(api_v2_router)
+
+
+@app.middleware("http")
+async def request_guard(request: Request, call_next):
+    request_id = (request.headers.get("x-request-id") or "").strip() or str(uuid.uuid4())
+    started = time.time()
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        duration_ms = round((time.time() - started) * 1000, 2)
+        print(
+            f"[FASTAPI][UNHANDLED] request_id={request_id} method={request.method} "
+            f"path={request.url.path} duration_ms={duration_ms} error={exc}"
+        )
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "Internal server error",
+                "request_id": request_id,
+            },
+            headers={"X-Request-ID": request_id},
+        )
+
+    response.headers["X-Request-ID"] = request_id
+    if response.status_code >= 500:
+        duration_ms = round((time.time() - started) * 1000, 2)
+        print(
+            f"[FASTAPI][5XX] request_id={request_id} method={request.method} "
+            f"path={request.url.path} status={response.status_code} duration_ms={duration_ms}"
+        )
+    return response
 
 
 def custom_openapi():
@@ -261,6 +434,15 @@ def swagger_ui() -> HTMLResponse:
     )
 
 
+@app.get("/api/health", include_in_schema=False)
+def legacy_health(request: Request):
+    include_dependencies = _str_to_bool(request.query_params.get("full", "")) or _str_to_bool(
+        request.query_params.get("include_dependencies", "")
+    )
+    force = _str_to_bool(request.query_params.get("refresh", ""))
+    return JSONResponse(content=build_health_payload(include_dependencies=include_dependencies, force=force))
+
+
 def _str_to_bool(value: str) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "y", "on"}
 
@@ -343,6 +525,7 @@ def _run_startup_maintenance() -> None:
     delay_seconds = _startup_maintenance_delay_seconds()
     if delay_seconds > 0:
         time.sleep(delay_seconds)
+    _background_task_cleanup_stale()
     _maybe_purge_bad_aviat_logs_on_startup()
 
 
@@ -366,6 +549,10 @@ def runtime_info():
             "runtime": "fastapi",
             "mounted_backend": "flask",
             "note": "Incremental migration mode",
+            "uvicorn_workers_configured": _configured_uvicorn_workers(),
+            "unsafe_multiprocess_override": _allow_unsafe_multiprocess(),
+            "wsgi_workers": NEXUS_WSGI_WORKERS,
+            "wsgi_send_queue_size": NEXUS_WSGI_SEND_QUEUE_SIZE,
         }
     )
 
@@ -980,4 +1167,4 @@ def command_vault_catalog(payload: Dict[str, Any] = Body(default_factory=dict)):
 
 
 # Mount all existing Flask routes at root
-app.mount("/", WSGIMiddleware(flask_app))
+app.mount("/", WSGIMiddleware(flask_app, workers=NEXUS_WSGI_WORKERS, send_queue_size=NEXUS_WSGI_SEND_QUEUE_SIZE))

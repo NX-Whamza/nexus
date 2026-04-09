@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -35,6 +36,7 @@ class _FakeResponse:
 def test_ido_capabilities_reports_inprocess_backend():
     resp = client.get("/api/ido/capabilities")
     assert resp.status_code == 200
+    assert resp.headers["x-request-id"]
     body = resp.json()
     assert body["configured"] is True
     assert body["backend_url"] == "inprocess://ido-local"
@@ -116,3 +118,34 @@ def test_ido_proxy_rejects_configure_when_backend_missing(monkeypatch):
     resp = client.post("/api/ido/proxy/api/ap/configure", json={"device_type": "CNEP3K"})
     assert resp.status_code == 503
     assert "Embedded fallback supports only /api/ping and /api/generic/device_info" in resp.json()["detail"]
+
+
+def test_process_singleton_reclaims_stale_lock():
+    fastapi_server_module._PROCESS_SINGLETONS.clear()
+    old_runtime_dir = os.environ.get("NOC_RUNTIME_DIR")
+    runtime_dir = repo_root / "tests_artifacts" / "singleton_lock_test"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    os.environ["NOC_RUNTIME_DIR"] = str(runtime_dir)
+    try:
+        lock_path = runtime_dir / "nexus-runtime-leader.lock"
+        lock_path.write_text(json.dumps({"pid": 999999, "name": "nexus-runtime-leader"}), encoding="utf-8")
+        assert fastapi_server_module._acquire_process_singleton("nexus-runtime-leader") is True
+        payload = json.loads(lock_path.read_text(encoding="utf-8"))
+        assert payload["pid"] == os.getpid()
+    finally:
+        fastapi_server_module._release_process_singleton("nexus-runtime-leader")
+        lock_path.unlink(missing_ok=True)
+        if old_runtime_dir is None:
+            os.environ.pop("NOC_RUNTIME_DIR", None)
+        else:
+            os.environ["NOC_RUNTIME_DIR"] = old_runtime_dir
+
+
+def test_runtime_endpoint_reports_single_process_bridge_settings():
+    resp = client.get("/api/runtime")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["runtime"] == "fastapi"
+    assert body["mounted_backend"] == "flask"
+    assert body["uvicorn_workers_configured"] >= 1
+    assert body["wsgi_workers"] >= 1
