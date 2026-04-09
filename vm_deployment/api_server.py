@@ -18211,9 +18211,7 @@ def verify_auth():
         bootstrap = _load_session_bootstrap_for_user(user_info['user_id'])
         if not bootstrap:
             return jsonify({'success': False, 'authenticated': False}), 404
-        if int(user['is_active'] or 0) != 1:
-            return jsonify({'success': False, 'authenticated': False}), 403
-        
+
         return jsonify({
             'success': True,
             'authenticated': True,
