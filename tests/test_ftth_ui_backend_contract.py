@@ -137,6 +137,27 @@ def test_ftth_outstate_allows_missing_ftth_pool_fields():
     assert "name=vpls1000-bng1" in config
 
 
+def test_ftth_outstate_allows_200g_only_olt_network():
+    payload = _ui_payload("outstate")
+    payload["olt_network"] = ""
+    payload["olt_network_secondary"] = ""
+    payload["olt_network_100g"] = "10.249.181.0/29"
+    payload["olt_name_primary"] = ""
+    payload["olt_name_secondary"] = ""
+    payload["olt_name_100g"] = "NE-WESTERN-MF2-100G"
+    payload["olt_ports"] = [
+        {"port": "sfp28-5", "speed": "auto", "comment": "NOKIA OLT 200G", "group": "100g"},
+        {"port": "sfp28-6", "speed": "auto", "comment": "NOKIA OLT 200G", "group": "100g"},
+    ]
+
+    response = client.post("/api/generate-ftth-bng", json=payload, headers=_auth_headers())
+    assert response.status_code == 200
+    data = response.json()
+    assert data.get("success") is True
+    config = data.get("config", "")
+    assert "10.249.181." in config
+
+
 def test_ftth_outstate_state_profile_ia_maps_ospf_and_vpls_ids():
     payload = _ui_payload("outstate")
     payload["state_code"] = "IA"

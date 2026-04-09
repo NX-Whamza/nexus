@@ -31526,6 +31526,10 @@ Ready for translation!`);
 
             // Validation
             const errors = [];
+            const lag1Ports = Array.from(document.querySelectorAll(`#ftth_olt_ports_${suffix} [data-olt-group="1"]`));
+            const lag2Ports = Array.from(document.querySelectorAll(`#ftth_olt_ports_${suffix} [data-olt-group="2"]`));
+            const lag100gPorts = Array.from(document.querySelectorAll(`#ftth_olt_ports_${suffix} [data-olt-group="100g"]`));
+            const use100g = !!oltLag100g || lag100gPorts.length > 0;
 
             if (!identity) errors.push('Router Identity is required');
             if (!routerosVersion) errors.push('RouterOS Version is required');
@@ -31544,8 +31548,8 @@ Ready for translation!`);
             if (!isOutstate && !unauth) errors.push('UNAUTH Network is required');
             else if (unauth && !validateCIDR(unauth, 22)) errors.push('UNAUTH Network must be a /22 (e.g., 10.130.100.0/22)');
 
-            if (!oltNetwork) errors.push('OLT Network is required');
-            else if (!validateCIDR(oltNetwork, 29)) errors.push('OLT Network must be a /29 (e.g., 10.246.46.88/29)');
+            if (!use100g && !oltNetwork) errors.push('OLT Network is required');
+            else if (oltNetwork && !validateCIDR(oltNetwork, 29)) errors.push('OLT Network must be a /29 (e.g., 10.246.46.88/29)');
 
             if (oltNetwork2 && !validateCIDR(oltNetwork2, 29)) errors.push('OLT Network 2 must be a /29 (e.g., 10.25.251.24/29)');
             if (oltLag2 && !oltNetwork2) errors.push('OLT Network 2 is required when OLT LAG Name 2 is provided');
@@ -31563,10 +31567,6 @@ Ready for translation!`);
             }
 
             // Check if OLT ports are configured
-            const lag1Ports = Array.from(document.querySelectorAll(`#ftth_olt_ports_${suffix} [data-olt-group="1"]`));
-            const lag2Ports = Array.from(document.querySelectorAll(`#ftth_olt_ports_${suffix} [data-olt-group="2"]`));
-            const lag100gPorts = Array.from(document.querySelectorAll(`#ftth_olt_ports_${suffix} [data-olt-group="100g"]`));
-            const use100g = !!oltLag100g || lag100gPorts.length > 0;
 
             if (use100g) {
                 if (!oltLag100g) errors.push('OLT LAG Name (200G) is required when 200G ports are added');
