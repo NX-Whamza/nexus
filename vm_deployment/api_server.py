@@ -60,7 +60,7 @@ from functools import wraps
 import threading
 import queue
 import uuid
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 from pathlib import Path
 from ftth_renderer import render_ftth_config
 from typing import Optional
@@ -12347,8 +12347,7 @@ def _warehouse_sm_scan_commands_for_profile(profile: str, selected_port: str) ->
             [
                 "show mac-addr-table",
                 "show network",
-                "show ip brief",
-                "show ip route",
+                "show arp",
             ]
         )
         return _warehouse_sm_unique(commands)
@@ -12367,10 +12366,9 @@ def _warehouse_sm_scan_commands_for_profile(profile: str, selected_port: str) ->
             "show mac-addr-table",
             "show mac-address-table",
             "show mac address-table",
-            "show ip brief",
-            "show ip route",
             "show ip arp",
             "show arp",
+            "show network",
         ]
     )
     return _warehouse_sm_unique(commands)
@@ -12561,20 +12559,20 @@ def _warehouse_sm_switch_run_interactive(
                 allow_agent=False,
             )
             channel = client.invoke_shell()
-            output = _read_for(channel, max(0.8, settle_seconds))
+            output = _read_for(channel, max(0.35, settle_seconds))
 
             if enter_enable:
                 channel.send("enable\n")
-                enable_out = _read_for(channel, max(0.8, settle_seconds))
+                enable_out = _read_for(channel, max(0.35, settle_seconds))
                 output += enable_out
                 if "password" in enable_out.lower():
                     channel.send(f"{(enable_password or switch_password or '').strip()}\n")
-                    output += _read_for(channel, max(0.8, settle_seconds))
+                    output += _read_for(channel, max(0.35, settle_seconds))
 
             command_outputs = []
             for cmd in commands:
                 channel.send(str(cmd) + "\n")
-                cmd_out = _read_for(channel, max(0.8, settle_seconds))
+                cmd_out = _read_for(channel, max(0.35, settle_seconds))
                 command_outputs.append({"command": cmd, "output": cmd_out[:12000]})
                 output += cmd_out
 
@@ -12625,35 +12623,24 @@ def _warehouse_sm_switch_probe(
     ssh_ports: list[int],
     switch_profile: str | None = None,
 ) -> dict:
-    first_pass = _warehouse_sm_switch_run_interactive(
-        switch_ip=switch_ip,
-        switch_username=switch_username,
-        switch_password=switch_password,
-        ssh_ports=ssh_ports,
-        commands=["show version"],
-        enter_enable=False,
-    )
-    if not first_pass.get("success"):
-        return first_pass
-
-    version_text = str(first_pass.get("output") or "")
-    detected_profile = str(switch_profile or "").strip().lower() or _warehouse_sm_detect_switch_profile(version_text)
-    cmd_list = _warehouse_sm_scan_commands_for_profile(detected_profile, selected_port)
-
+    requested_profile = str(switch_profile or "").strip().lower() or "generic"
+    cmd_list = _warehouse_sm_scan_commands_for_profile(requested_profile, selected_port)
     full_probe = _warehouse_sm_switch_run_interactive(
         switch_ip=switch_ip,
         switch_username=switch_username,
         switch_password=switch_password,
-        ssh_ports=[int(first_pass.get("switch_ssh_port") or ssh_ports[0])],
+        ssh_ports=ssh_ports,
         commands=cmd_list,
         enter_enable=False,
         fail_on_cli_error=False,
+        settle_seconds=0.30,
     )
     if not full_probe.get("success"):
         return full_probe
 
     outputs = full_probe.get("commands") or []
     all_text = "\n".join((x.get("output") or "") for x in outputs)
+    detected_profile = str(switch_profile or "").strip().lower() or _warehouse_sm_detect_switch_profile(all_text)
     iface_candidates = _warehouse_sm_interface_candidates(selected_port)
     port_text = "\n".join(
         (x.get("output") or "")
@@ -13601,7 +13588,34 @@ def warehouse_sm_scan():
             ipaddress.IPv4Address(switch_ip)
         except Exception:
             return jsonify({'success': False, 'error': 'Invalid switch_ip format'}), 400
-        discovery_result = _warehouse_sm_discover(data)
+        scan_timeout_seconds = int(os.getenv("WAREHOUSE_SM_SCAN_TIMEOUT_SECONDS") or 20)
+        scan_timeout_seconds = min(max(scan_timeout_seconds, 5), 60)
+        with ThreadPoolExecutor(max_workers=1) as scan_executor:
+            scan_future = scan_executor.submit(_warehouse_sm_discover, data)
+            try:
+                discovery_result = scan_future.result(timeout=scan_timeout_seconds)
+            except FuturesTimeoutError:
+                ip_candidates = []
+                ip_candidates.extend([str(x).strip() for x in (data.get('ip_candidates') or []) if str(x).strip()])
+                ip_candidates.append(str(data.get("target_ip") or "").strip())
+                ip_candidates.extend(_WAREHOUSE_SM_DEFAULT_IPS)
+                ip_candidates = _warehouse_sm_unique([ip for ip in ip_candidates if ip])
+                fallback_target_ip = _warehouse_sm_pick_default_target_ip(ip_candidates)
+                return jsonify({
+                    "success": False,
+                    "error": f"Warehouse SM scan timed out after {scan_timeout_seconds}s.",
+                    "scan": {
+                        "selected_port": selected_port,
+                        "switch_profile": "unknown",
+                        "switch_ssh_port": None,
+                        "ip_candidates": ip_candidates,
+                        "probed": [],
+                        "active_scan": {},
+                        "switch_probe_error": "scan-timeout",
+                        "fallback_target_ip": fallback_target_ip,
+                    },
+                    "fallback_target_ip": fallback_target_ip,
+                }), 200
         if not discovery_result.get("success"):
             return jsonify({
                 "success": False,
