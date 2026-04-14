@@ -10,10 +10,10 @@ import pathlib
 DEVICE_WAIT_TIMEOUT = 5
 
 DEFAULT_UPDATE_FILE = {
-    "EP3K": os.getenv("FIRMWARE_PATH") + "/Cambium/EP3K/ePMP-AC-v5.10.1.img",
-    "EP3KL": os.getenv("FIRMWARE_PATH") + "/Cambium/EP3K/ePMP-AC-v5.10.1.img",
-    "4600": os.getenv("FIRMWARE_PATH") + "/Cambium/4600/ePMP-AX-v5.10.1.img",
-    "F4600C": os.getenv("FIRMWARE_PATH") + "/Cambium/F4600C/ePMP-AX-v5.10.1.img",
+    "EP3K": os.getenv("FIRMWARE_PATH") + "/Cambium/EP3K/ePMP-AC-v5.10.4-13433.img",
+    "EP3KL": os.getenv("FIRMWARE_PATH") + "/Cambium/EP3K/ePMP-AC-v5.10.4-13433.img",
+    "4600": os.getenv("FIRMWARE_PATH") + "/Cambium/4600/ePMP-AX-v5.10.4-13433.img",
+    "F4600C": os.getenv("FIRMWARE_PATH") + "/Cambium/4600/ePMP-AX-v5.10.4-13433.img",
     "F300-13": os.getenv("FIRMWARE_PATH") + "/Cambium/F300/ePMP-AC-v5.10.1.img",
     "F300-16": os.getenv("FIRMWARE_PATH") + "/Cambium/F300/ePMP-AC-v5.10.1.img",
     "F300-25": os.getenv("FIRMWARE_PATH") + "/Cambium/F300/ePMP-AC-v5.10.1.img",
@@ -24,7 +24,7 @@ UPDATE_FILE_PATH = {
     "EP3K": os.getenv("FIRMWARE_PATH") + "/Cambium/EP3K/",
     "EP3KL": os.getenv("FIRMWARE_PATH") + "/Cambium/EP3K/",
     "4600": os.getenv("FIRMWARE_PATH") + "/Cambium/4600/",
-    "F4600C": os.getenv("FIRMWARE_PATH") + "/Cambium/F4600C/",
+    "F4600C": os.getenv("FIRMWARE_PATH") + "/Cambium/4600/",
     "F300-13": os.getenv("FIRMWARE_PATH") + "/Cambium/F300/",
     "F300-16": os.getenv("FIRMWARE_PATH") + "/Cambium/F300/",
     "F300-25": os.getenv("FIRMWARE_PATH") + "/Cambium/F300/",

@@ -88,9 +88,13 @@ PRE_CHECK_ATTRIBUTES = {
         ("cambiumHWInfo", "Device SKU", ["43", "44"]),
     ],
     "4600": [
-        ("cambiumCurrentSWInfo", "Firmware Version", r"5.10.1"),
+        ("cambiumCurrentSWInfo", "Firmware Version", r"5\.10\.4"),
         ("cambiumEffectiveDeviceName", "Device Name", None),
         ("cambiumHWInfo", "Device SKU", ["53264"]),
+    ],
+    "F4600C": [
+        ("cambiumCurrentSWInfo", "Firmware Version", r"5\.10\.4"),
+        ("cambiumEffectiveDeviceName", "Device Name", None),
     ],
 }
 

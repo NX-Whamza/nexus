@@ -1077,6 +1077,36 @@
             font-size: 13px;
         }
 
+        .warehouse-sm-layout {
+            margin-top: 12px;
+            display: grid;
+            grid-template-columns: 1fr 1.2fr;
+            gap: 12px;
+        }
+
+        .warehouse-sm-port-grid {
+            margin-top: 10px;
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .warehouse-sm-port-btn {
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            border-radius: 8px;
+            padding: 8px 10px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .warehouse-sm-port-btn.active {
+            background: var(--button-primary);
+            border-color: var(--button-primary);
+            color: #fff;
+        }
+
         .nokia7250-output-toolbar {
             display: flex;
             align-items: center;
@@ -3628,6 +3658,14 @@
                 gap: 6px;
             }
 
+            .warehouse-sm-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .warehouse-sm-port-grid {
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+            }
+
             .content-pane [style*="grid-template-columns"] {
                 grid-template-columns: 1fr !important;
             }
@@ -3914,6 +3952,10 @@
                         <span class="sb-item-arrow">&#9654;</span>
                     </div>
                     <div class="sb-group-children">
+                        <div class="sb-item" data-sb-tab="warehouse-sm">
+                            <span class="sb-item-icon">&#128736;</span>
+                            <span class="sb-item-label">Warehouse SM</span>
+                        </div>
                         <div class="sb-item" data-sb-tab="field-config-studio">
                             <span class="sb-item-icon">&#128187;</span>
                             <span class="sb-item-label">Device Config Studio</span>
@@ -4166,6 +4208,7 @@
                 </div>
                 <div class="nav-item dropdown" data-default-tab="field-config-studio" data-feature="nokia"><button>FIELD CONFIG STUDIO</button>
                     <div class="dropdown-menu">
+                        <a data-tab="warehouse-sm">WAREHOUSE SM PROVISIONING</a>
                         <a data-tab="field-config-studio">DEVICE CONFIG STUDIO</a>
                         <a data-tab="nokia7250-maker" data-feature="nokia">Nokia Configurator</a>
                         <a data-tab="mikrotik-to-nokia" data-feature="nokia">NOKIA MIGRATION</a>
@@ -5823,7 +5866,6 @@
 
                         <div class="field-config-subtabs" id="fieldConfigSubtabs">
                             <button type="button" class="field-config-subtab active" data-tool="ap">AP</button>
-                            <button type="button" class="field-config-subtab" data-tool="sm">SM</button>
                             <button type="button" class="field-config-subtab" data-tool="switch">Switch</button>
                             <button type="button" class="field-config-subtab" data-tool="smartsys-ups">SmartSys UPS</button>
                             <button type="button" class="field-config-subtab" data-tool="ict-rpc">ICT RPC</button>
@@ -5862,6 +5904,70 @@
                             <button type="button" id="fieldCfgOpenNokiaMigrationBtn" class="btn-secondary">Open Nokia Migration</button>
                         </div>
                         <textarea id="fieldConfigOutput" class="ido-tools-output" readonly placeholder="Field Config Studio output will appear here..."></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- WAREHOUSE SM PROVISIONING TAB -->
+            <div class="content-pane" id="warehouse-sm-pane">
+                <div class="container">
+                    <h1>Warehouse SM Provisioning</h1>
+                    <p style="color: var(--text-color-secondary); margin-bottom: 14px;">
+                        Dedicated staging workspace for new F4600C devices: select a switch port, discover SM details, apply baseline SOP staging, then hand off installer-only values as follow-up steps.
+                    </p>
+                    <div class="warehouse-sm-layout">
+                        <div class="ido-tools-card">
+                            <div class="ido-tools-header">
+                                <div style="font-weight:700;">Switch Staging</div>
+                            </div>
+                            <div class="ido-tools-input-grid" style="grid-template-columns: 1fr 1fr;">
+                                <input type="text" id="warehouseSmSwitchIp" value="10.46.220.11" placeholder="Switch IP">
+                                <input type="text" id="warehouseSmSwitchUser" value="ubnt" placeholder="Switch Username">
+                                <input type="password" id="warehouseSmSwitchPass" value="xGA9KDm9o9" placeholder="Switch Password">
+                                <input type="password" id="warehouseSmSwitchEnablePass" placeholder="Switch Enable Password (optional)">
+                                <input type="text" id="warehouseSmDiscoveryCidrs" placeholder="Discovery CIDRs (optional, comma-separated)">
+                                <input type="text" id="warehouseSmUplinkPort" placeholder="Uplink Port (optional)">
+                                <input type="text" id="warehouseSmTargetIp" placeholder="Discovered SM IP" readonly style="background: var(--output-bg);">
+                                <input type="password" id="warehouseSmDevicePass" placeholder="SM password override (optional)">
+                            </div>
+                            <div class="field-config-helper">Pick the physical port where the installer plugged the SM.</div>
+                            <div id="warehouseSmPortGrid" class="warehouse-sm-port-grid"></div>
+                        </div>
+
+                        <div class="ido-tools-card">
+                            <div class="ido-tools-header">
+                                <div style="font-weight:700;">SM Configuration Inputs</div>
+                            </div>
+                            <div class="ido-tools-input-grid" style="grid-template-columns: 1fr 1fr;">
+                                <input type="text" id="warehouseSmUserNumber" placeholder="Billmax User Number (required)">
+                                <input type="text" id="warehouseSmMacAddress" placeholder="Wireless MAC (auto from scan when available)">
+                                <input type="text" id="warehouseSmLatitude" placeholder="Latitude (optional at warehouse stage)">
+                                <input type="text" id="warehouseSmLongitude" placeholder="Longitude (optional at warehouse stage)">
+                                <input type="text" id="warehouseSmHeight" placeholder="Height in meters (optional at warehouse stage)">
+                                <input type="text" id="warehouseSmTilt" placeholder="Tilt (+ down / - up) (optional at warehouse stage)">
+                                <select id="warehouseSmRegion">
+                                    <option value="">Region (required)</option>
+                                    <option value="https://cnm.nxlink.com">US (cnm.nxlink.com)</option>
+                                    <option value="https://cnm4.nxlink.com">Midwest (cnm4.nxlink.com)</option>
+                                </select>
+                                <input type="text" id="warehouseSmEncryptionKey" placeholder="Encryption Key (optional here; required before install)">
+                                <input type="text" id="warehouseSmFirmware" value="5.10.4" placeholder="Required firmware">
+                            </div>
+                            <div class="field-config-helper">Power note: Force 4600C requires 48V PoE and will not boot on 24V 15W injectors.</div>
+                            <div class="ido-tools-actions">
+                                <button type="button" id="warehouseSmScanBtn" class="btn-secondary">Scan Selected Port</button>
+                                <button type="button" id="warehouseSmRunBtn" class="btn-secondary">Run Provisioning</button>
+                                <button type="button" id="warehouseSmStatusBtn" class="btn-secondary">Refresh Task Status</button>
+                                <button type="button" id="warehouseSmGateBtn" class="btn-secondary">Closeout Gate Check</button>
+                                <button type="button" id="warehouseSmDraftBtn" class="btn-secondary">Draft Workflow Payload</button>
+                                <button type="button" id="warehouseSmClearBtn" class="btn-secondary">Clear Output</button>
+                            </div>
+                            <div class="ido-tools-input-grid" style="grid-template-columns: 1fr;">
+                                <input type="text" id="warehouseSmTaskId" placeholder="Last provisioning task ID" readonly style="background: var(--output-bg);">
+                            </div>
+                            <div id="warehouseSmStatus" class="field-config-helper"></div>
+                            <textarea id="warehouseSmOutput" class="ido-tools-output" readonly placeholder="Warehouse SM workflow payload and execution checklist will appear here..."></textarea>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -7193,6 +7299,7 @@
                                     <option value="aviat-upgrade">Aviat Backhaul Upgrade</option>
                                     <option value="cambium-upgrade">Cambium Radio Upgrade</option>
                                     <option value="wave-fw-upgrade">Wave Radio Upgrade</option>
+                                    <option value="warehouse-sm">Warehouse SM Provisioning</option>
                                     <option value="field-config">Device Config Studio</option>
                                     <option value="config-diff">Config Diff Viewer</option>
                                     <option value="bulk-config">Bulk Operations</option>
@@ -11302,7 +11409,8 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             'enterprise-feeding': { tabId: 'enterprise-feeding', label: 'Enterprise Feeding', desc: 'Commercial uplink provisioning' },
             'ccr2004': { tabId: 'ccr2004', label: '6GHz Switch Port', desc: '6 GHz switch port templates' },
             'switch-maker': { tabId: 'switch-maker', label: 'MikroTik Switch Maker', desc: 'Switch config builder' },
-            'field-config-studio': { tabId: 'field-config-studio', label: 'Device Config Studio', desc: 'Field device configuration workspace' },
+            'warehouse-sm': { tabId: 'warehouse-sm', label: 'Warehouse SM Provisioning', desc: 'Port-driven F4600C warehouse staging workflow' },
+            'field-config-studio': { tabId: 'field-config-studio', label: 'Device Config Studio', desc: 'AP/Switch/UPS/RPC/Wave device configuration workspace' },
             'nokia7250-maker': { tabId: 'nokia7250-maker', label: 'Nokia Configurator', desc: 'Unified Nokia configuration workspace' },
             'mikrotik-to-nokia': { tabId: 'mikrotik-to-nokia', label: 'Nokia Migration', desc: 'MikroTik to Nokia conversion' },
             'device-firmware-updater': { tabId: 'device-firmware-updater', label: 'Devices Firmware Updater', desc: 'Firmware workflows for Aviat backhaul and Cambium radios' },
@@ -11370,6 +11478,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             'enterprise-feeding-outstate-config': TOOL_ROUTE_DEFINITIONS['enterprise-feeding'],
             'aviat-upgrade': TOOL_ROUTE_DEFINITIONS['device-firmware-updater:aviat'],
             'cambium-upgrade': TOOL_ROUTE_DEFINITIONS['device-firmware-updater:cambium'],
+            'warehouse-sm': TOOL_ROUTE_DEFINITIONS['warehouse-sm'],
             'field-config': TOOL_ROUTE_DEFINITIONS['field-config-studio'],
             'config-diff': TOOL_ROUTE_DEFINITIONS['config-diff'],
             'bulk-config': TOOL_ROUTE_DEFINITIONS['bulk-config'],
@@ -11461,6 +11570,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 'aviat-upgrade':        { icon: '\u{2B06}', label: 'Aviat Backhaul Upgrade' },
                 'cambium-upgrade':      { icon: '\u{1F4F6}', label: 'Cambium Radio Upgrade' },
                 'wave-fw-upgrade':      { icon: '\u{1F4F6}', label: 'Wave Radio Upgrade' },
+                'warehouse-sm':         { icon: '\u{1F6E0}', label: 'Warehouse SM Provisioning' },
                 'ftth-bng':             { icon: '\u{1F310}', label: 'FTTH BNG Config' },
                 'ftth-fiber-customer':  { icon: '\u{1F9F5}', label: 'FTTH Fiber Customer' },
                 'ftth-fiber-site':      { icon: '\u{1F3D7}', label: 'FTTH Fiber Site' },
@@ -17401,18 +17511,6 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                         generate: { method: 'POST', path: 'api/ap/configure', needsIp: true, needsDeviceType: true, payloadMode: 'deviceFields' },
                     }
                 },
-                'sm': {
-                    label: 'SM',
-                    desc: 'SM preview and live configure using the shared device-access backend.',
-                    deviceTypes: ['F4600C', 'F4525', 'F300-13', 'F300-16', 'F300-25', 'F300-CSM', 'TYN302'],
-                    primaryActionLabel: 'Configure',
-                    actions: {
-                        device_info: { method: 'GET', path: 'api/ap/device_info', needsIp: true, needsDeviceType: true, query: ({ ip, deviceType, runTests, password }) => ({ ip_address: ip, device_type: deviceType, run_tests: runTests, ...(password ? { password } : {}) }) },
-                        running: { method: 'GET', path: 'api/ap/running_config', needsIp: true, needsDeviceType: true, query: ({ ip, deviceType, password }) => ({ ip_address: ip, device_type: deviceType, ...(password ? { password } : {}) }) },
-                        standard: { method: 'GET', path: 'api/ap/standard_config', needsIp: true, needsDeviceType: true, query: ({ ip, deviceType, password }) => ({ ip_address: ip, device_type: deviceType, ...(password ? { password } : {}) }) },
-                        generate: { method: 'POST', path: 'api/ap/configure', needsIp: true, needsDeviceType: true, payloadMode: 'deviceFields' },
-                    }
-                },
                 'switch': {
                     label: 'Switch',
                     desc: 'Switch inventory and live configure for Netonix, CNMatrix, and Tachyon switch families.',
@@ -17507,17 +17605,6 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                         { name: 'azimuth', label: 'Azimuth', type: 'text', placeholder: '0-359', requiredFor: ['standard', 'generate'] },
                         { name: 'device_number', label: 'Device Number', type: 'text', defaultValue: '1', requiredFor: ['standard', 'generate'] },
                         ...(profile.frequencyOptions?.length ? [{ name: 'frequency', label: 'Frequency', type: 'select', options: profile.frequencyOptions.map((value) => ({ value, label: value })), requiredFor: ['standard', 'generate'] }] : []),
-                        ...(profile.antennaOptions?.length ? [{ name: 'antenna', label: 'Antenna', type: 'select', options: profile.antennaOptions, requiredFor: ['standard', 'generate'] }] : []),
-                        ...(profile.requiresRegion ? [{ name: 'cnm_url', label: 'Region', type: 'select', options: FIELD_CONFIG_REGION_OPTIONS, requiredFor: ['standard', 'generate'] }] : []),
-                        { name: 'latitude', label: 'Latitude', type: 'text', placeholder: 'XX.XXXXXX', requiredFor: ['standard', 'generate'] },
-                        { name: 'longitude', label: 'Longitude', type: 'text', placeholder: '-XX.XXXXXX', requiredFor: ['standard', 'generate'] },
-                        ...(profile.supportsHeight ? [{ name: 'height', label: 'Height (m)', type: 'text', placeholder: 'Optional' }] : []),
-                    ];
-                }
-                if (toolKey === 'sm') {
-                    return [
-                        { name: 'user_number', label: 'User Number', type: 'text', placeholder: 'Subscriber number', requiredFor: ['standard', 'generate'] },
-                        { name: 'mac_address', label: 'Wireless MAC Address', type: 'text', placeholder: 'XX:XX:XX:XX:XX:XX', requiredFor: ['standard', 'generate'] },
                         ...(profile.antennaOptions?.length ? [{ name: 'antenna', label: 'Antenna', type: 'select', options: profile.antennaOptions, requiredFor: ['standard', 'generate'] }] : []),
                         ...(profile.requiresRegion ? [{ name: 'cnm_url', label: 'Region', type: 'select', options: FIELD_CONFIG_REGION_OPTIONS, requiredFor: ['standard', 'generate'] }] : []),
                         { name: 'latitude', label: 'Latitude', type: 'text', placeholder: 'XX.XXXXXX', requiredFor: ['standard', 'generate'] },
@@ -17835,6 +17922,458 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 }
             }
 
+            const WAREHOUSE_SM_PORT_COUNT = 24;
+            let warehouseSmSelectedPort = 3;
+            let warehouseSmLastScan = null;
+            let warehouseSmLastTaskId = '';
+
+            function setWarehouseSmStatus(text, isError = false) {
+                const el = document.getElementById('warehouseSmStatus');
+                if (!el) return;
+                el.textContent = text || '';
+                el.style.color = isError ? '#ef5350' : 'var(--text-color-secondary)';
+            }
+
+            function writeWarehouseSmOutput(text) {
+                const out = document.getElementById('warehouseSmOutput');
+                if (!out) return;
+                out.value = String(text || '');
+                out.scrollTop = out.scrollHeight;
+            }
+
+            function renderWarehouseSmPortGrid() {
+                const host = document.getElementById('warehouseSmPortGrid');
+                if (!host) return;
+                host.innerHTML = '';
+                for (let port = 1; port <= WAREHOUSE_SM_PORT_COUNT; port += 1) {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = `warehouse-sm-port-btn${port === warehouseSmSelectedPort ? ' active' : ''}`;
+                    btn.dataset.port = String(port);
+                    btn.textContent = `Port ${port}`;
+                    btn.addEventListener('click', () => {
+                        warehouseSmSelectedPort = port;
+                        renderWarehouseSmPortGrid();
+                        setWarehouseSmStatus(`Selected switch port ${port}.`);
+                    });
+                    host.appendChild(btn);
+                }
+            }
+
+            function collectWarehouseSmInputs() {
+                return {
+                    switch_ip: (document.getElementById('warehouseSmSwitchIp')?.value || '').trim(),
+                    switch_username: (document.getElementById('warehouseSmSwitchUser')?.value || '').trim(),
+                    switch_password: (document.getElementById('warehouseSmSwitchPass')?.value || '').trim(),
+                    switch_enable_password: (document.getElementById('warehouseSmSwitchEnablePass')?.value || '').trim(),
+                    discovery_cidrs: (document.getElementById('warehouseSmDiscoveryCidrs')?.value || '').trim(),
+                    uplink_port: (document.getElementById('warehouseSmUplinkPort')?.value || '').trim(),
+                    target_ip: (document.getElementById('warehouseSmTargetIp')?.value || '').trim(),
+                    device_password: (document.getElementById('warehouseSmDevicePass')?.value || '').trim(),
+                    selected_port: warehouseSmSelectedPort,
+                    user_number: (document.getElementById('warehouseSmUserNumber')?.value || '').trim(),
+                    mac_address: (document.getElementById('warehouseSmMacAddress')?.value || '').trim(),
+                    latitude: (document.getElementById('warehouseSmLatitude')?.value || '').trim(),
+                    longitude: (document.getElementById('warehouseSmLongitude')?.value || '').trim(),
+                    height_m: (document.getElementById('warehouseSmHeight')?.value || '').trim(),
+                    tilt: (document.getElementById('warehouseSmTilt')?.value || '').trim(),
+                    cnm_url: (document.getElementById('warehouseSmRegion')?.value || '').trim(),
+                    encryption_key: (document.getElementById('warehouseSmEncryptionKey')?.value || '').trim(),
+                    required_firmware: (document.getElementById('warehouseSmFirmware')?.value || '').trim(),
+                };
+            }
+
+            function validateWarehouseSmInputs(input) {
+                const required = [
+                    ['switch_ip', 'Switch IP'],
+                    ['switch_username', 'Switch Username'],
+                    ['switch_password', 'Switch Password'],
+                    ['user_number', 'Billmax User Number'],
+                    ['cnm_url', 'Region'],
+                    ['required_firmware', 'Required Firmware'],
+                ];
+                const missing = required
+                    .filter(([key]) => !String(input[key] || '').trim())
+                    .map(([, label]) => label);
+                if (missing.length) {
+                    throw new Error(`Missing required fields: ${missing.join(', ')}`);
+                }
+            }
+
+            function buildWarehouseSmDraft(input) {
+                return {
+                    workflow: 'warehouse-sm-provisioning',
+                    version: 1,
+                    generated_at: new Date().toISOString(),
+                    switch: {
+                        ip_address: input.switch_ip,
+                        username: input.switch_username,
+                        password: input.switch_password,
+                        discovery_cidrs: input.discovery_cidrs || null,
+                        selected_port: input.selected_port,
+                        uplink_port: input.uplink_port || null,
+                        staging_profile: 'untagged-provisioning',
+                        verify_profile: 'tagged-vlan-verify',
+                    },
+                    sm: {
+                        device_type: 'F4600C',
+                        target_ip: input.target_ip || null,
+                        user_number: input.user_number,
+                        mac_address: input.mac_address || null,
+                        latitude: input.latitude || null,
+                        longitude: input.longitude || null,
+                        height: input.height_m || null,
+                        tilt: input.tilt || null,
+                        cnm_url: input.cnm_url,
+                        required_firmware: input.required_firmware,
+                    },
+                    discovery: warehouseSmLastScan || null,
+                    baseline_profile: {
+                        radio: {
+                            transmitter_output_power: 11,
+                            driver_mode: 'TDD WLR',
+                            antenna_gain: 25,
+                            scan_channel_bandwidth_enable: ['80MHz', '160MHz'],
+                            scan_list_enable: ['20MHz', '40MHz', '80MHz', '160MHz'],
+                        },
+                        proxy: {
+                            enabled: true,
+                            servers: [
+                                { ip: '132.147.147.21', port: 3128 },
+                                { ip: '132.147.147.52', port: 3128 },
+                            ],
+                        },
+                        system: {
+                            ntp_mode: 'static',
+                            preferred_ntp: 'ntp-pool.nxlink.com',
+                            timezone: '(UTC-06) CST',
+                            naming_format: 'NX-[USER#]',
+                        },
+                        snmp: {
+                            remote_access: true,
+                            read_write_community: 'FBZ1yYdphf',
+                        },
+                        network: {
+                            management_vlan: { enabled: true, id: 4000, priority: 1 },
+                            data_vlan: { enabled: true, id: 1000, priority: 1 },
+                            spanning_tree_protocol: 'DISABLED',
+                        },
+                        tools: {
+                            reset_via_power_sequence: 'disabled',
+                        },
+                        cnmaestro_remote_management: 'Enabled',
+                    },
+                    installer_handoff: {
+                        required_before_closeout: [
+                            'Latitude (SoLocator)',
+                            'Longitude (SoLocator)',
+                            'Height meters AGL',
+                            'True North Azimuth',
+                            'Tilt (+ down / - up)',
+                            'SSID',
+                            'Encryption key',
+                            'Preferred AP',
+                        ],
+                        captured_in_warehouse: {
+                            latitude: input.latitude || null,
+                            longitude: input.longitude || null,
+                            height_m: input.height_m || null,
+                            tilt: input.tilt || null,
+                            encryption_key: input.encryption_key || null,
+                        },
+                    },
+                    execution_plan: [
+                        'Verify 48V PoE source (4600C will not boot on 24V 15W).',
+                        'Set selected switch port to untagged provisioning profile.',
+                        'Scan selected switch port and discover SM IP/MAC/firmware details.',
+                        'Login to SM and apply baseline config (radio/system/network/proxy/SNMP/cnMaestro).',
+                        'Validate firmware; upgrade/reboot until required firmware is present.',
+                        'Switch port to tagged verification profile and verify VLAN behavior.',
+                        'Re-login, run checklist verification, record final report.',
+                        'Return switch port to untagged provisioning profile for next device.',
+                        'Installer follow-up: capture SoLocator GPS/azimuth, tilt, SSID, encryption key, and preferred AP.',
+                    ],
+                    note: 'Draft payload for dedicated warehouse backend execution.',
+                };
+            }
+
+            function setWarehouseSmInputValue(id, value, overwrite = true) {
+                const el = document.getElementById(id);
+                if (!el) return;
+                const next = String(value || '').trim();
+                if (!next) return;
+                if (!overwrite && String(el.value || '').trim()) return;
+                el.value = next;
+            }
+
+            function applyWarehouseSmAutofill(autofill) {
+                if (!autofill || typeof autofill !== 'object') return;
+                setWarehouseSmInputValue('warehouseSmTargetIp', autofill.target_ip);
+                setWarehouseSmInputValue('warehouseSmUserNumber', autofill.user_number);
+                setWarehouseSmInputValue('warehouseSmMacAddress', autofill.mac_address);
+                setWarehouseSmInputValue('warehouseSmLatitude', autofill.latitude);
+                setWarehouseSmInputValue('warehouseSmLongitude', autofill.longitude);
+                setWarehouseSmInputValue('warehouseSmHeight', autofill.height);
+                setWarehouseSmInputValue('warehouseSmFirmware', autofill.firmware);
+            }
+
+            function setWarehouseSmTaskId(taskId) {
+                warehouseSmLastTaskId = String(taskId || '').trim();
+                const el = document.getElementById('warehouseSmTaskId');
+                if (!el) return;
+                el.value = warehouseSmLastTaskId;
+            }
+
+            async function scanWarehouseSmPort() {
+                const input = collectWarehouseSmInputs();
+                if (!input.switch_ip || !input.switch_username || !input.switch_password) {
+                    throw new Error('Switch IP, username, and password are required before scanning.');
+                }
+
+                const payload = {
+                    switch_ip: input.switch_ip,
+                    switch_username: input.switch_username,
+                    switch_password: input.switch_password,
+                    switch_enable_password: input.switch_enable_password || undefined,
+                    discovery_cidrs: input.discovery_cidrs || undefined,
+                    selected_port: input.selected_port,
+                    uplink_port: input.uplink_port || undefined,
+                    device_password: input.device_password || undefined,
+                    required_firmware: input.required_firmware || undefined,
+                    ip_candidates: input.target_ip ? [input.target_ip] : [],
+                };
+
+                setWarehouseSmStatus(`Scanning switch ${input.switch_ip} port ${input.selected_port}...`);
+                writeWarehouseSmOutput('Running port scan...');
+                const apiBase = (typeof resolveApiBase === 'function' ? resolveApiBase() : ((typeof AI_API_BASE !== 'undefined' ? AI_API_BASE : window.AI_API_BASE) || '/api'));
+                const resp = await fetch(`${apiBase}/warehouse-sm/scan`, {
+                    method: 'POST',
+                    headers: getAuthHeaders('application/json'),
+                    body: JSON.stringify(payload),
+                });
+                const text = await resp.text();
+                let body = {};
+                try {
+                    body = JSON.parse(text);
+                } catch (_) {
+                    body = { error: text || `HTTP ${resp.status}` };
+                }
+                if (!resp.ok) {
+                    throw new Error(body.error || `Scan failed (HTTP ${resp.status})`);
+                }
+
+                warehouseSmLastScan = body;
+                writeWarehouseSmOutput(JSON.stringify(body, null, 2));
+                if (body?.discovery?.autofill) {
+                    applyWarehouseSmAutofill(body.discovery.autofill);
+                }
+
+                const discoveredIp = body?.discovery?.ip_address || body?.discovery?.autofill?.target_ip || '';
+                const discoveredMac = body?.discovery?.wireless_mac || body?.discovery?.autofill?.mac_address || '';
+                const fwMatch = body?.discovery?.firmware_match;
+                const fwSuffix = fwMatch === false ? ' Firmware mismatch against required target.' : '';
+                setWarehouseSmStatus(
+                    discoveredIp
+                        ? `Scan completed. Discovered SM at ${discoveredIp}${discoveredMac ? ` (${discoveredMac})` : ''}.${fwSuffix}`
+                        : 'Scan completed. No SM discovery details returned.'
+                );
+            }
+
+            async function runWarehouseSmProvision() {
+                const input = collectWarehouseSmInputs();
+                validateWarehouseSmInputs(input);
+                const payload = {
+                    switch_ip: input.switch_ip,
+                    switch_username: input.switch_username,
+                    switch_password: input.switch_password,
+                    switch_enable_password: input.switch_enable_password || undefined,
+                    discovery_cidrs: input.discovery_cidrs || undefined,
+                    selected_port: input.selected_port,
+                    switch_ssh_ports: [22, 2222],
+                    uplink_port: input.uplink_port || undefined,
+                    target_ip: input.target_ip || undefined,
+                    device_password: input.device_password || undefined,
+                    user_number: input.user_number,
+                    mac_address: input.mac_address || undefined,
+                    latitude: input.latitude || undefined,
+                    longitude: input.longitude || undefined,
+                    height_m: input.height_m || undefined,
+                    tilt: input.tilt || undefined,
+                    cnm_url: input.cnm_url,
+                    encryption_key: input.encryption_key || undefined,
+                    required_firmware: input.required_firmware || '5.10.4',
+                    closeout_requested: false,
+                };
+                const apiBase = (typeof resolveApiBase === 'function' ? resolveApiBase() : ((typeof AI_API_BASE !== 'undefined' ? AI_API_BASE : window.AI_API_BASE) || '/api'));
+                setWarehouseSmStatus('Starting provisioning task...');
+                writeWarehouseSmOutput('Submitting provisioning task...');
+                const resp = await fetch(`${apiBase}/warehouse-sm/provision`, {
+                    method: 'POST',
+                    headers: getAuthHeaders('application/json'),
+                    body: JSON.stringify(payload),
+                });
+                const text = await resp.text();
+                let body = {};
+                try {
+                    body = JSON.parse(text);
+                } catch (_) {
+                    body = { error: text || `HTTP ${resp.status}` };
+                }
+                if (!resp.ok) {
+                    throw new Error(body.error || `Provisioning request failed (HTTP ${resp.status})`);
+                }
+                setWarehouseSmTaskId(body.task_id || '');
+                writeWarehouseSmOutput(JSON.stringify(body, null, 2));
+                setWarehouseSmStatus(`Provisioning task queued: ${body.task_id || 'unknown task id'}.`);
+            }
+
+            async function refreshWarehouseSmTaskStatus() {
+                const taskId = (document.getElementById('warehouseSmTaskId')?.value || warehouseSmLastTaskId || '').trim();
+                if (!taskId) {
+                    throw new Error('No warehouse provisioning task id found. Start a task first.');
+                }
+                const apiBase = (typeof resolveApiBase === 'function' ? resolveApiBase() : ((typeof AI_API_BASE !== 'undefined' ? AI_API_BASE : window.AI_API_BASE) || '/api'));
+                setWarehouseSmStatus(`Loading task status for ${taskId}...`);
+                const resp = await fetch(`${apiBase}/warehouse-sm/status/${encodeURIComponent(taskId)}`, {
+                    method: 'GET',
+                    headers: getAuthHeaders(),
+                });
+                const text = await resp.text();
+                let body = {};
+                try {
+                    body = JSON.parse(text);
+                } catch (_) {
+                    body = { error: text || `HTTP ${resp.status}` };
+                }
+                if (!resp.ok) {
+                    throw new Error(body.error || `Status request failed (HTTP ${resp.status})`);
+                }
+                writeWarehouseSmOutput(JSON.stringify(body, null, 2));
+                const taskStatus = body?.task?.status || 'unknown';
+                setWarehouseSmStatus(`Task ${taskId} status: ${taskStatus}.`);
+            }
+
+            async function checkWarehouseSmCloseoutGate() {
+                const input = collectWarehouseSmInputs();
+                const payload = {
+                    latitude: input.latitude || '',
+                    longitude: input.longitude || '',
+                    height_m: input.height_m || '',
+                    azimuth_true_north: '',
+                    tilt: input.tilt || '',
+                    ssid: '',
+                    encryption_key: input.encryption_key || '',
+                    preferred_ap: '',
+                };
+                const apiBase = (typeof resolveApiBase === 'function' ? resolveApiBase() : ((typeof AI_API_BASE !== 'undefined' ? AI_API_BASE : window.AI_API_BASE) || '/api'));
+                const resp = await fetch(`${apiBase}/warehouse-sm/closeout-check`, {
+                    method: 'POST',
+                    headers: getAuthHeaders('application/json'),
+                    body: JSON.stringify(payload),
+                });
+                const text = await resp.text();
+                let body = {};
+                try {
+                    body = JSON.parse(text);
+                } catch (_) {
+                    body = { error: text || `HTTP ${resp.status}` };
+                }
+                if (!resp.ok) {
+                    throw new Error(body.error || `Closeout gate check failed (HTTP ${resp.status})`);
+                }
+                writeWarehouseSmOutput(JSON.stringify(body, null, 2));
+                const ready = !!body?.closeout_gate?.ready;
+                setWarehouseSmStatus(ready ? 'Closeout gate passed.' : 'Closeout gate blocked: missing installer-required fields.', !ready);
+            }
+
+            function draftWarehouseSmWorkflow() {
+                try {
+                    const input = collectWarehouseSmInputs();
+                    validateWarehouseSmInputs(input);
+                    const draft = buildWarehouseSmDraft(input);
+                    writeWarehouseSmOutput(JSON.stringify(draft, null, 2));
+                    setWarehouseSmStatus('Workflow payload drafted. Ready for backend execution wiring.');
+                    if (typeof window.sendActivityToBackend === 'function') {
+                        window.sendActivityToBackend({
+                            type: 'warehouse-sm',
+                            siteName: `Warehouse SM Port ${input.selected_port}`,
+                            device: input.switch_ip,
+                            success: true,
+                        });
+                    }
+                } catch (err) {
+                    writeWarehouseSmOutput(err?.message || String(err));
+                    setWarehouseSmStatus('Draft failed. Fix required fields and retry.', true);
+                }
+            }
+
+            function setupWarehouseSmWorkspace() {
+                renderWarehouseSmPortGrid();
+                const scanBtn = document.getElementById('warehouseSmScanBtn');
+                if (scanBtn && !scanBtn.dataset.bound) {
+                    scanBtn.addEventListener('click', async () => {
+                        try {
+                            await scanWarehouseSmPort();
+                        } catch (err) {
+                            writeWarehouseSmOutput(err?.message || String(err));
+                            setWarehouseSmStatus('Scan failed. Check switch/device details and retry.', true);
+                        }
+                    });
+                    scanBtn.dataset.bound = '1';
+                }
+                const runBtn = document.getElementById('warehouseSmRunBtn');
+                if (runBtn && !runBtn.dataset.bound) {
+                    runBtn.addEventListener('click', async () => {
+                        try {
+                            await runWarehouseSmProvision();
+                        } catch (err) {
+                            writeWarehouseSmOutput(err?.message || String(err));
+                            setWarehouseSmStatus('Provisioning start failed. Review inputs and retry.', true);
+                        }
+                    });
+                    runBtn.dataset.bound = '1';
+                }
+                const statusBtn = document.getElementById('warehouseSmStatusBtn');
+                if (statusBtn && !statusBtn.dataset.bound) {
+                    statusBtn.addEventListener('click', async () => {
+                        try {
+                            await refreshWarehouseSmTaskStatus();
+                        } catch (err) {
+                            writeWarehouseSmOutput(err?.message || String(err));
+                            setWarehouseSmStatus('Status refresh failed.', true);
+                        }
+                    });
+                    statusBtn.dataset.bound = '1';
+                }
+                const gateBtn = document.getElementById('warehouseSmGateBtn');
+                if (gateBtn && !gateBtn.dataset.bound) {
+                    gateBtn.addEventListener('click', async () => {
+                        try {
+                            await checkWarehouseSmCloseoutGate();
+                        } catch (err) {
+                            writeWarehouseSmOutput(err?.message || String(err));
+                            setWarehouseSmStatus('Closeout gate check failed.', true);
+                        }
+                    });
+                    gateBtn.dataset.bound = '1';
+                }
+                const draftBtn = document.getElementById('warehouseSmDraftBtn');
+                if (draftBtn && !draftBtn.dataset.bound) {
+                    draftBtn.addEventListener('click', draftWarehouseSmWorkflow);
+                    draftBtn.dataset.bound = '1';
+                }
+                const clearBtn = document.getElementById('warehouseSmClearBtn');
+                if (clearBtn && !clearBtn.dataset.bound) {
+                    clearBtn.addEventListener('click', () => {
+                        warehouseSmLastScan = null;
+                        setWarehouseSmTaskId('');
+                        writeWarehouseSmOutput('');
+                        setWarehouseSmStatus('');
+                    });
+                    clearBtn.dataset.bound = '1';
+                }
+            }
+
             function parseCidrNetwork(cidr) {
                 const [ip, pfxRaw] = String(cidr || '').split('/');
                 const pfx = Number(pfxRaw);
@@ -18104,6 +18643,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 syncMtRouterIdentity();
                 refreshIdoCapabilities();
                 renderFieldConfigToolState();
+                setupWarehouseSmWorkspace();
                 switchMode('new');
             }
 
@@ -33200,7 +33740,8 @@ Ready for translation!`);
             { cat: 'Navigate', icon: '', label: 'Enterprise Feeding', desc: 'Commercial uplink provisioning', action: () => window.navigateToTab('enterprise-feeding') },
             { cat: 'Navigate', icon: '', label: '6GHz Switch Port', desc: 'VLAN 3000/4000 config', action: () => window.navigateToTab('ccr2004') },
             { cat: 'Navigate', icon: '', label: 'MikroTik Switch Maker', desc: 'Switch config (309/326/2004)', action: () => window.navigateToTab('switch-maker') },
-            { cat: 'Navigate', icon: '', label: 'Device Config Studio', desc: 'AP/SM/Switch/UPS/RPC/Aviat/Wave/7250', action: () => window.navigateToTab('field-config-studio') },
+            { cat: 'Navigate', icon: '', label: 'Warehouse SM Provisioning', desc: 'Port-driven warehouse workflow for F4600C SMs', action: () => window.navigateToTab('warehouse-sm') },
+            { cat: 'Navigate', icon: '', label: 'Device Config Studio', desc: 'AP/Switch/UPS/RPC/Aviat/Wave/7250', action: () => window.navigateToTab('field-config-studio') },
             { cat: 'Navigate', icon: '', label: 'Nokia Configurator', desc: 'Unified Nokia configuration workspace', action: () => window.navigateToTab('nokia7250-maker') },
             { cat: 'Navigate', icon: '', label: 'Nokia Migration', desc: 'MikroTik → Nokia conversion', action: () => window.navigateToTab('mikrotik-to-nokia') },
             { cat: 'Navigate', icon: '', label: 'Devices Firmware Updater', desc: 'Firmware workspace for Aviat and Cambium', action: () => window.navigateToTab('device-firmware-updater') },

@@ -12182,6 +12182,1467 @@ def _run_mikrotik_ssh_fetch(
         'status_code': 502,
     }
 
+
+_WAREHOUSE_SM_DEFAULT_IPS = [
+    "169.254.1.1",
+    "169.254.1.2",
+    "192.168.0.1",
+    "192.168.1.1",
+    "192.168.1.20",
+    "10.0.0.1",
+]
+_WAREHOUSE_SM_DEVICE_TYPES = ["F4600C", "F4525", "F300-13", "F300-16", "F300-25", "F300-CSM", "CN4600"]
+_WAREHOUSE_SM_MAC_RE = re.compile(r'(?i)\b(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}\b')
+_WAREHOUSE_SM_MAC_DOT_RE = re.compile(r'(?i)\b[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4}\b')
+_WAREHOUSE_SM_IP_RE = re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b')
+_WAREHOUSE_SM_TASK_KIND = "warehouse_sm"
+_WAREHOUSE_SM_CLOSEOUT_REQUIRED = [
+    ("latitude", "Latitude"),
+    ("longitude", "Longitude"),
+    ("height_m", "Height (m)"),
+    ("azimuth_true_north", "True North Azimuth"),
+    ("tilt", "Tilt"),
+    ("ssid", "SSID"),
+    ("encryption_key", "Encryption Key"),
+    ("preferred_ap", "Preferred AP"),
+]
+warehouse_sm_tasks = {}
+
+
+def _warehouse_sm_unique(values):
+    seen = set()
+    result = []
+    for value in values:
+        key = str(value or "").strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        result.append(key)
+    return result
+
+
+def _warehouse_sm_normalize_mac(raw_value: str) -> str:
+    value = str(raw_value or "").strip().lower()
+    if not value:
+        return ""
+    if "." in value:
+        value = value.replace(".", "")
+        if len(value) != 12:
+            return ""
+        return ":".join(value[i:i + 2] for i in range(0, 12, 2))
+    value = value.replace("-", ":")
+    parts = [p for p in value.split(":") if p]
+    if len(parts) != 6:
+        return ""
+    try:
+        return ":".join(f"{int(p, 16):02x}" for p in parts)
+    except Exception:
+        return ""
+
+
+def _warehouse_sm_extract_macs(text: str) -> list[str]:
+    macs = []
+    for mac in _WAREHOUSE_SM_MAC_RE.findall(text or ""):
+        n = _warehouse_sm_normalize_mac(mac)
+        if n:
+            macs.append(n)
+    for mac in _WAREHOUSE_SM_MAC_DOT_RE.findall(text or ""):
+        n = _warehouse_sm_normalize_mac(mac)
+        if n:
+            macs.append(n)
+    return _warehouse_sm_unique(macs)
+
+
+def _warehouse_sm_extract_ips(text: str) -> list[str]:
+    ips = []
+    for token in _WAREHOUSE_SM_IP_RE.findall(text or ""):
+        try:
+            ips.append(str(ipaddress.IPv4Address(token)))
+        except Exception:
+            continue
+    return _warehouse_sm_unique(ips)
+
+
+def _warehouse_sm_extract_arp_pairs(text: str) -> list[dict]:
+    entries = []
+    for line in str(text or "").splitlines():
+        line_ips = _warehouse_sm_extract_ips(line)
+        line_macs = _warehouse_sm_extract_macs(line)
+        if not line_ips or not line_macs:
+            continue
+        for ip_val in line_ips:
+            entries.append({"ip": ip_val, "mac": line_macs[0]})
+    # Keep latest mapping per IP.
+    by_ip = {}
+    for entry in entries:
+        by_ip[entry["ip"]] = entry["mac"]
+    return [{"ip": ip_val, "mac": mac_val} for ip_val, mac_val in by_ip.items()]
+
+
+def _warehouse_sm_parse_ports(value, defaults=None):
+    defaults = defaults or [22, 2222]
+    parsed = []
+    if value is None:
+        value = []
+    if isinstance(value, (list, tuple)):
+        tokens = value
+    elif isinstance(value, str):
+        tokens = re.split(r"[\s,]+", value.strip())
+    else:
+        tokens = [value]
+    for token in tokens:
+        try:
+            port = int(str(token).strip())
+        except Exception:
+            continue
+        if 1 <= port <= 65535 and port not in parsed:
+            parsed.append(port)
+    for default_port in defaults:
+        if default_port not in parsed:
+            parsed.append(default_port)
+    return parsed or list(defaults)
+
+
+def _warehouse_sm_interface_candidates(port_value: str) -> list[str]:
+    raw = str(port_value or "").strip()
+    candidates = []
+    if raw:
+        candidates.extend([raw, f"0/{raw}", f"1/{raw}", f"eth{raw}", f"port{raw}"])
+    return _warehouse_sm_unique(candidates)
+
+
+def _warehouse_sm_detect_switch_profile(text: str) -> str:
+    value = str(text or "").lower()
+    if "edgeswitch" in value or "es-" in value:
+        return "edgeswitch"
+    if "netonix" in value:
+        return "netonix"
+    if "cnmatrix" in value or ("cambium" in value and "switch" in value):
+        return "cambium-switch"
+    if "hyconext" in value or "hycon" in value:
+        return "hyconext"
+    return "generic"
+
+
+def _warehouse_sm_scan_commands_for_profile(profile: str, selected_port: str) -> list[str]:
+    iface_candidates = _warehouse_sm_interface_candidates(selected_port)
+    commands = ["show version"]
+    if profile == "edgeswitch":
+        for iface in iface_candidates:
+            commands.append(f"show mac-addr-table interface {iface}")
+        commands.extend(
+            [
+                "show mac-addr-table",
+                "show network",
+                "show ip brief",
+                "show ip route",
+            ]
+        )
+        return _warehouse_sm_unique(commands)
+
+    # Generic mixed-vendor read-only probe fallback.
+    for iface in iface_candidates:
+        commands.extend(
+            [
+                f"show mac-addr-table interface {iface}",
+                f"show mac-address-table interface {iface}",
+                f"show mac address-table interface {iface}",
+            ]
+        )
+    commands.extend(
+        [
+            "show mac-addr-table",
+            "show mac-address-table",
+            "show mac address-table",
+            "show ip brief",
+            "show ip route",
+            "show ip arp",
+            "show arp",
+        ]
+    )
+    return _warehouse_sm_unique(commands)
+
+
+def _warehouse_sm_parse_cidr_list(value) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        tokens = value
+    elif isinstance(value, str):
+        tokens = re.split(r"[\s,;]+", value.strip())
+    else:
+        tokens = [value]
+    cidrs = []
+    for token in tokens:
+        text = str(token or "").strip()
+        if not text:
+            continue
+        try:
+            net = ipaddress.ip_network(text, strict=False)
+            if isinstance(net, ipaddress.IPv4Network):
+                cidrs.append(str(net))
+        except Exception:
+            continue
+    return _warehouse_sm_unique(cidrs)
+
+
+def _warehouse_sm_extract_switch_mgmt_cidrs(outputs: list[dict], switch_ip: str) -> list[str]:
+    text = "\n".join(str(item.get("output") or "") for item in (outputs or []))
+    ip_match = re.search(r"IP Address[.\s:]+(\d+\.\d+\.\d+\.\d+)", text, flags=re.IGNORECASE)
+    mask_match = re.search(r"Subnet Mask[.\s:]+(\d+\.\d+\.\d+\.\d+)", text, flags=re.IGNORECASE)
+    if not (ip_match and mask_match):
+        return []
+    try:
+        iface = ipaddress.IPv4Interface(f"{ip_match.group(1)}/{mask_match.group(1)}")
+        cidr = str(iface.network)
+        if switch_ip and ipaddress.IPv4Address(switch_ip) in iface.network:
+            return [cidr]
+    except Exception:
+        return []
+    return []
+
+
+def _warehouse_sm_probe_tcp(ip_addr: str, port: int, timeout: float = 0.65) -> bool:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(timeout)
+    try:
+        sock.connect((ip_addr, int(port)))
+        return True
+    except Exception:
+        return False
+    finally:
+        try:
+            sock.close()
+        except Exception:
+            pass
+
+
+def _warehouse_sm_expand_cidrs(cidrs: list[str], max_hosts: int = 768) -> list[str]:
+    hosts = []
+    for cidr in cidrs:
+        try:
+            net = ipaddress.ip_network(str(cidr), strict=False)
+            if not isinstance(net, ipaddress.IPv4Network):
+                continue
+            for host_ip in net.hosts():
+                hosts.append(str(host_ip))
+                if len(hosts) >= max_hosts:
+                    return _warehouse_sm_unique(hosts)
+        except Exception:
+            continue
+    return _warehouse_sm_unique(hosts)
+
+
+def _warehouse_sm_active_discovery(
+    cidrs: list[str],
+    device_password: str,
+    port_mac_candidates: list[str] | None = None,
+    max_hosts_scan: int = 768,
+    max_probe_ips: int = 64,
+) -> dict:
+    port_macs_norm = {_warehouse_sm_normalize_mac(mac) for mac in (port_mac_candidates or [])}
+    port_macs_norm = {m for m in port_macs_norm if m}
+    host_pool = _warehouse_sm_expand_cidrs(cidrs, max_hosts=max_hosts_scan)
+    if not host_pool:
+        return {"success": False, "error": "No hosts available from discovery CIDRs", "cidrs": cidrs}
+
+    responsive_ips = []
+    with ThreadPoolExecutor(max_workers=48) as executor:
+        futures = {executor.submit(_warehouse_sm_probe_tcp, ip_value, 80, 0.5): ip_value for ip_value in host_pool}
+        for future in as_completed(futures):
+            ip_value = futures[future]
+            try:
+                http_open = bool(future.result())
+            except Exception:
+                http_open = False
+            https_open = _warehouse_sm_probe_tcp(ip_value, 443, 0.5) if not http_open else False
+            if http_open or https_open:
+                responsive_ips.append(ip_value)
+            if len(responsive_ips) >= max_probe_ips:
+                break
+
+    responsive_ips = _warehouse_sm_unique(responsive_ips)[:max_probe_ips]
+    probed = []
+    matched = None
+    first_success = None
+    for ip_value in responsive_ips:
+        probe = _warehouse_sm_probe_ip(ip_value, password=device_password)
+        info = probe.get("info") if probe.get("success") else {}
+        wireless_mac = _warehouse_sm_normalize_mac(str((info or {}).get("wireless_mac") or ""))
+        record = {
+            "ip": ip_value,
+            "success": bool(probe.get("success")),
+            "device_type": probe.get("device_type"),
+            "wireless_mac": wireless_mac,
+            "mac_match": bool(wireless_mac and wireless_mac in port_macs_norm),
+        }
+        probed.append(record)
+        if probe.get("success") and not first_success:
+            first_success = {"probe": probe, "ip": ip_value, "record": record}
+        if probe.get("success") and record["mac_match"]:
+            matched = {"probe": probe, "ip": ip_value, "record": record}
+            break
+
+    chosen = matched or first_success
+    return {
+        "success": bool(chosen),
+        "discovery_method": "active-cidr-scan",
+        "cidrs": cidrs,
+        "host_pool_size": len(host_pool),
+        "responsive_ips": responsive_ips,
+        "probed": probed,
+        "chosen": chosen,
+    }
+
+
+def _warehouse_sm_switch_profile_validated_for_config(profile: str) -> bool:
+    # We have live-read validation for EdgeSwitch commands in this warehouse.
+    return profile == "edgeswitch"
+
+
+def _warehouse_sm_switch_run_interactive(
+    switch_ip: str,
+    switch_username: str,
+    switch_password: str,
+    ssh_ports: list[int],
+    commands: list[str],
+    enter_enable: bool = False,
+    enable_password: str | None = None,
+    fail_on_cli_error: bool = True,
+    settle_seconds: float = 0.45,
+) -> dict:
+    try:
+        import paramiko
+    except Exception:
+        return {"success": False, "error": "paramiko not installed on server", "status_code": 500}
+
+    def _read_for(channel, seconds: float) -> str:
+        end_time = time.time() + seconds
+        output = ""
+        while time.time() < end_time:
+            try:
+                if channel.recv_ready():
+                    output += channel.recv(65535).decode("utf-8", errors="replace")
+                else:
+                    time.sleep(0.05)
+            except Exception:
+                break
+        return output
+
+    errors = []
+    for ssh_port in ssh_ports:
+        client = None
+        channel = None
+        try:
+            client = paramiko.SSHClient()
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            client.connect(
+                hostname=switch_ip,
+                port=ssh_port,
+                username=switch_username,
+                password=switch_password,
+                timeout=8,
+                banner_timeout=8,
+                auth_timeout=8,
+                look_for_keys=False,
+                allow_agent=False,
+            )
+            channel = client.invoke_shell()
+            output = _read_for(channel, max(0.8, settle_seconds))
+
+            if enter_enable:
+                channel.send("enable\n")
+                enable_out = _read_for(channel, max(0.8, settle_seconds))
+                output += enable_out
+                if "password" in enable_out.lower():
+                    channel.send(f"{(enable_password or switch_password or '').strip()}\n")
+                    output += _read_for(channel, max(0.8, settle_seconds))
+
+            command_outputs = []
+            for cmd in commands:
+                channel.send(str(cmd) + "\n")
+                cmd_out = _read_for(channel, max(0.8, settle_seconds))
+                command_outputs.append({"command": cmd, "output": cmd_out[:12000]})
+                output += cmd_out
+
+            lowered = output.lower()
+            hard_error = any(
+                token in lowered for token in ["invalid input", "unknown command", "unrecognized command", "command not found"]
+            )
+            auth_denied = "authentication denied" in lowered
+            return {
+                "success": (not auth_denied) and (not hard_error or not fail_on_cli_error),
+                "switch_ssh_port": ssh_port,
+                "commands": command_outputs,
+                "output": output[-24000:],
+                "error": (
+                    "Switch CLI rejected one or more commands"
+                    if hard_error
+                    else ("Enable/auth escalation failed" if auth_denied else "")
+                ),
+            }
+        except paramiko.AuthenticationException:
+            return {
+                "success": False,
+                "error": "Switch SSH authentication failed. Check switch credentials.",
+                "status_code": 401,
+            }
+        except Exception as exc:
+            errors.append(f"port {ssh_port}: {exc}")
+        finally:
+            try:
+                if channel:
+                    channel.close()
+            except Exception:
+                pass
+            try:
+                if client:
+                    client.close()
+            except Exception:
+                pass
+
+    return {"success": False, "error": "Failed to connect to switch over SSH", "status_code": 502, "details": errors}
+
+
+def _warehouse_sm_switch_probe(
+    switch_ip: str,
+    switch_username: str,
+    switch_password: str,
+    selected_port: str,
+    ssh_ports: list[int],
+    switch_profile: str | None = None,
+) -> dict:
+    first_pass = _warehouse_sm_switch_run_interactive(
+        switch_ip=switch_ip,
+        switch_username=switch_username,
+        switch_password=switch_password,
+        ssh_ports=ssh_ports,
+        commands=["show version"],
+        enter_enable=False,
+    )
+    if not first_pass.get("success"):
+        return first_pass
+
+    version_text = str(first_pass.get("output") or "")
+    detected_profile = str(switch_profile or "").strip().lower() or _warehouse_sm_detect_switch_profile(version_text)
+    cmd_list = _warehouse_sm_scan_commands_for_profile(detected_profile, selected_port)
+
+    full_probe = _warehouse_sm_switch_run_interactive(
+        switch_ip=switch_ip,
+        switch_username=switch_username,
+        switch_password=switch_password,
+        ssh_ports=[int(first_pass.get("switch_ssh_port") or ssh_ports[0])],
+        commands=cmd_list,
+        enter_enable=False,
+        fail_on_cli_error=False,
+    )
+    if not full_probe.get("success"):
+        return full_probe
+
+    outputs = full_probe.get("commands") or []
+    all_text = "\n".join((x.get("output") or "") for x in outputs)
+    iface_candidates = _warehouse_sm_interface_candidates(selected_port)
+    port_text = "\n".join(
+        (x.get("output") or "")
+        for x in outputs
+        if any(token in str(x.get("command") or "") for token in iface_candidates)
+    )
+    port_macs = _warehouse_sm_extract_macs(port_text)
+    all_macs = _warehouse_sm_extract_macs(all_text)
+    arp_entries = _warehouse_sm_extract_arp_pairs(all_text)
+    arp_by_mac = {}
+    for entry in arp_entries:
+        arp_by_mac.setdefault(entry["mac"], []).append(entry["ip"])
+
+    matched_ips = []
+    for mac in port_macs:
+        matched_ips.extend(arp_by_mac.get(mac, []))
+    if not matched_ips:
+        matched_ips = _warehouse_sm_extract_ips(all_text)
+
+    return {
+        "success": True,
+        "switch_profile": detected_profile,
+        "switch_ssh_port": full_probe.get("switch_ssh_port"),
+        "commands": outputs,
+        "port_mac_candidates": port_macs,
+        "all_mac_candidates": all_macs,
+        "arp_entries": arp_entries,
+        "switch_mgmt_cidrs": _warehouse_sm_extract_switch_mgmt_cidrs(outputs, switch_ip),
+        "ip_candidates": _warehouse_sm_unique(matched_ips),
+    }
+
+
+def _warehouse_sm_extract_firmware(info: dict) -> str:
+    for result in info.get("test_results", []) or []:
+        if str(result.get("name", "")).strip().lower() == "firmware version":
+            value = str(result.get("actual") or "").strip()
+            match = re.search(r"\d+\.\d+\.\d+(?:\.\d+)?", value)
+            return match.group(0) if match else value
+    return ""
+
+
+def _warehouse_sm_extract_device_props(info: dict) -> dict:
+    running = info.get("running_config")
+    if not running:
+        return {}
+    try:
+        parsed = json.loads(running) if isinstance(running, str) else running
+        if isinstance(parsed, dict):
+            return parsed.get("device_props", {}) or {}
+    except Exception:
+        return {}
+    return {}
+
+
+def _warehouse_sm_versions_match(expected: str, actual: str) -> bool:
+    expected_text = str(expected or "").strip()
+    actual_text = str(actual or "").strip()
+    if not expected_text or not actual_text:
+        return False
+    if expected_text == actual_text:
+        return True
+
+    def _base(value: str) -> str:
+        match = re.search(r"\d+(?:\.\d+)+", value)
+        return match.group(0) if match else value
+
+    return _base(expected_text) == _base(actual_text)
+
+
+def _warehouse_sm_truthy(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    text = str(value or "").strip().lower()
+    return text in {"1", "true", "yes", "enabled", "enable", "on"}
+
+
+def _warehouse_sm_falsey(value) -> bool:
+    if isinstance(value, bool):
+        return not value
+    if isinstance(value, (int, float)):
+        return value == 0
+    text = str(value or "").strip().lower()
+    return text in {"0", "false", "no", "disabled", "disable", "off"}
+
+
+def _warehouse_sm_find_prop_keys(device_props: dict, include_tokens: list[str], exclude_tokens: list[str] | None = None) -> list[str]:
+    include = [str(token).lower() for token in (include_tokens or []) if str(token).strip()]
+    exclude = [str(token).lower() for token in (exclude_tokens or []) if str(token).strip()]
+    keys = []
+    for key in (device_props or {}).keys():
+        key_text = str(key or "")
+        key_lower = key_text.lower()
+        if include and not all(token in key_lower for token in include):
+            continue
+        if exclude and any(token in key_lower for token in exclude):
+            continue
+        keys.append(key_text)
+    keys.sort(key=len)
+    return keys
+
+
+def _warehouse_sm_match_numeric(actual_value, expected_value) -> bool:
+    try:
+        return abs(float(actual_value)) == float(expected_value)
+    except Exception:
+        return str(actual_value).strip() == str(expected_value).strip()
+
+
+def _warehouse_sm_closeout_gate(data: dict) -> dict:
+    missing = []
+    for field_key, label in _WAREHOUSE_SM_CLOSEOUT_REQUIRED:
+        if not str((data or {}).get(field_key, "")).strip():
+            missing.append(label)
+    return {
+        "ready": not missing,
+        "missing_fields": missing,
+        "required_fields": [label for _, label in _WAREHOUSE_SM_CLOSEOUT_REQUIRED],
+    }
+
+
+def _warehouse_sm_build_dynamic_updates(device_props: dict, payload: dict) -> dict:
+    """
+    Build best-effort SOP config updates from currently exposed device_props keys.
+    This avoids hardcoding unknown firmware-specific key names.
+    """
+    props = device_props or {}
+    updates = {}
+    applied_targets = []
+    unresolved_targets = []
+
+    def _set_first(tokens, value, label, exclude=None, match_mode="text"):
+        keys = _warehouse_sm_find_prop_keys(props, tokens, exclude_tokens=exclude or [])
+        if not keys:
+            unresolved_targets.append(label)
+            return
+        key = keys[0]
+        if match_mode == "bool_on":
+            if isinstance(props.get(key), bool):
+                updates[key] = True
+            elif str(props.get(key, "")).strip().isdigit():
+                updates[key] = 1
+            else:
+                updates[key] = "enabled"
+        elif match_mode == "bool_off":
+            if isinstance(props.get(key), bool):
+                updates[key] = False
+            elif str(props.get(key, "")).strip().isdigit():
+                updates[key] = 0
+            else:
+                updates[key] = "disabled"
+        else:
+            updates[key] = value
+        applied_targets.append(label)
+
+    # Radio baseline.
+    _set_first(["tx", "power"], "11", "Transmitter output power")
+    _set_first(["driver", "mode"], "TDD WLR", "Driver mode")
+    _set_first(["antenna", "gain"], "25", "Antenna gain")
+
+    # Proxy baseline.
+    proxy_ip_keys = _warehouse_sm_find_prop_keys(props, ["proxy", "ip"])
+    proxy_port_keys = _warehouse_sm_find_prop_keys(props, ["proxy", "port"])
+    if len(proxy_ip_keys) >= 1:
+        updates[proxy_ip_keys[0]] = "132.147.147.21"
+        applied_targets.append("Proxy Server IP #1")
+    else:
+        unresolved_targets.append("Proxy Server IP #1")
+    if len(proxy_ip_keys) >= 2:
+        updates[proxy_ip_keys[1]] = "132.147.147.52"
+        applied_targets.append("Proxy Server IP #2")
+    else:
+        unresolved_targets.append("Proxy Server IP #2")
+    if len(proxy_port_keys) >= 1:
+        updates[proxy_port_keys[0]] = "3128"
+        applied_targets.append("Proxy Server Port #1")
+    else:
+        unresolved_targets.append("Proxy Server Port #1")
+    if len(proxy_port_keys) >= 2:
+        updates[proxy_port_keys[1]] = "3128"
+        applied_targets.append("Proxy Server Port #2")
+    else:
+        unresolved_targets.append("Proxy Server Port #2")
+    _set_first(["proxy", "enable"], "enabled", "Proxy enabled", match_mode="bool_on")
+
+    # System baseline.
+    _set_first(["ntp", "server"], "ntp-pool.nxlink.com", "Preferred NTP server")
+    _set_first(["timezone"], "CST6", "Timezone")
+    _set_first(["snmp", "community", "read"], "FBZ1yYdphf", "SNMP read community")
+    _set_first(["snmp", "community", "write"], "FBZ1yYdphf", "SNMP write community")
+    _set_first(["snmp", "remote"], "enabled", "SNMP remote access", match_mode="bool_on")
+    _set_first(["cnm", "remote"], "enabled", "cnMaestro Remote Management", match_mode="bool_on")
+
+    # Network baseline.
+    _set_first(["management", "vlan", "enable"], "enabled", "Management VLAN enabled", match_mode="bool_on")
+    _set_first(["management", "vlan", "id"], "4000", "Management VLAN ID")
+    _set_first(["management", "vlan", "priority"], "1", "Management VLAN Priority")
+    _set_first(["data", "vlan", "enable"], "enabled", "Data VLAN enabled", match_mode="bool_on")
+    _set_first(["data", "vlan", "id"], "1000", "Data VLAN ID")
+    _set_first(["data", "vlan", "priority"], "1", "Data VLAN Priority")
+    _set_first(["spanning", "tree"], "disabled", "Spanning Tree Protocol", match_mode="bool_off")
+
+    # Tools.
+    _set_first(["reset", "power", "sequence"], "disabled", "Reset via power sequence", match_mode="bool_off")
+
+    # Explicit naming/location keys known to this codebase.
+    user_number = str(payload.get("user_number") or "").strip()
+    latitude = str(payload.get("latitude") or "0").strip()
+    longitude = str(payload.get("longitude") or "0").strip()
+    height = str(payload.get("height_m") or "").strip()
+    cnm_url = str(payload.get("cnm_url") or "").strip()
+    if user_number:
+        updates["systemConfigDeviceName"] = f"NX-{user_number}"[:31]
+        updates["snmpSystemName"] = f"NX-{user_number}"
+        updates["snmpSystemDescription"] = f"NX-{user_number}"
+        applied_targets.append("Device naming convention")
+    updates["sysLocation"] = f"{latitude}, {longitude}"
+    updates["systemDeviceLocLatitude"] = latitude
+    updates["systemDeviceLocLongitude"] = longitude
+    if height:
+        updates["systemDeviceLocHeight"] = height
+    if cnm_url:
+        updates["cambiumDeviceAgentCNSURL"] = cnm_url
+
+    return {
+        "updates": updates,
+        "applied_targets": _warehouse_sm_unique(applied_targets),
+        "unresolved_targets": _warehouse_sm_unique(unresolved_targets),
+    }
+
+
+def _warehouse_sm_build_verification(info: dict, required_firmware: str, payload: dict | None = None) -> list[dict]:
+    payload = payload or {}
+    checks = []
+    device_props = _warehouse_sm_extract_device_props(info)
+    running_text = str(info.get("running_config") or "")
+    firmware_actual = _warehouse_sm_extract_firmware(info)
+
+    def _add_check(category: str, label: str, expected, actual, passed: bool):
+        checks.append({
+            "category": category,
+            "label": label,
+            "expected": expected,
+            "actual": actual,
+            "pass": bool(passed),
+        })
+
+    _add_check(
+        "Firmware",
+        "Firmware Version",
+        required_firmware,
+        firmware_actual,
+        _warehouse_sm_versions_match(required_firmware, firmware_actual),
+    )
+
+    def _value_from_tokens(tokens: list[str], exclude=None):
+        keys = _warehouse_sm_find_prop_keys(device_props, tokens, exclude_tokens=exclude or [])
+        if not keys:
+            return None, None
+        key = keys[0]
+        return key, device_props.get(key)
+
+    key, value = _value_from_tokens(["tx", "power"])
+    _add_check("Radio", "Transmitter output power", "11", value, value is not None and _warehouse_sm_match_numeric(value, "11"))
+
+    key, value = _value_from_tokens(["driver", "mode"])
+    _add_check("Radio", "Driver mode", "TDD WLR", value, value is not None and "tdd" in str(value).lower() and "wlr" in str(value).lower())
+
+    key, value = _value_from_tokens(["antenna", "gain"])
+    _add_check("Radio", "Antenna gain", "25", value, value is not None and _warehouse_sm_match_numeric(value, "25"))
+
+    proxy_text = running_text.lower()
+    _add_check("Proxy", "Proxy Server IP #1", "132.147.147.21", "present" if "132.147.147.21" in proxy_text else "missing", "132.147.147.21" in proxy_text)
+    _add_check("Proxy", "Proxy Server IP #2", "132.147.147.52", "present" if "132.147.147.52" in proxy_text else "missing", "132.147.147.52" in proxy_text)
+    _add_check("Proxy", "Proxy Server Port", "3128", "present" if "3128" in proxy_text else "missing", "3128" in proxy_text)
+
+    _add_check(
+        "System",
+        "Preferred NTP server",
+        "ntp-pool.nxlink.com",
+        "present" if "ntp-pool.nxlink.com" in proxy_text else "missing",
+        "ntp-pool.nxlink.com" in proxy_text,
+    )
+    _add_check(
+        "System",
+        "cnMaestro URL",
+        payload.get("cnm_url") or "configured",
+        "present" if str(payload.get("cnm_url") or "").lower() in proxy_text else "missing",
+        bool(payload.get("cnm_url")) and str(payload.get("cnm_url")).lower() in proxy_text,
+    )
+    _add_check(
+        "SNMP",
+        "SNMP Community",
+        "FBZ1yYdphf",
+        "present" if "fbz1yydphf" in proxy_text else "missing",
+        "fbz1yydphf" in proxy_text,
+    )
+    _add_check(
+        "Network",
+        "Management VLAN ID",
+        "4000",
+        "present" if "4000" in proxy_text and "vlan" in proxy_text else "missing",
+        "4000" in proxy_text and "vlan" in proxy_text,
+    )
+    _add_check(
+        "Network",
+        "Data VLAN ID",
+        "1000",
+        "present" if "1000" in proxy_text and "vlan" in proxy_text else "missing",
+        "1000" in proxy_text and "vlan" in proxy_text,
+    )
+    _add_check(
+        "Network",
+        "Spanning Tree Protocol",
+        "DISABLED",
+        "present" if ("spanning" in proxy_text and "disable" in proxy_text) else "missing",
+        "spanning" in proxy_text and "disable" in proxy_text,
+    )
+
+    return checks
+
+
+def _warehouse_sm_apply_baseline(discovery: dict, payload: dict) -> dict:
+    try:
+        from ido_modules.device_io.epmp_config import EPMPConfig
+    except Exception as exc:
+        return {"success": False, "error": f"Cambium module unavailable: {exc}"}
+
+    target_ip = str(discovery.get("ip_address") or "").strip()
+    device_type = str(discovery.get("device_type") or "F4600C").strip() or "F4600C"
+    if not target_ip:
+        return {"success": False, "error": "No target SM IP for baseline apply"}
+
+    mac_address = str(payload.get("mac_address") or discovery.get("wireless_mac") or "").strip()
+    user_number = str(payload.get("user_number") or "").strip()
+    cnm_url = str(payload.get("cnm_url") or "").strip()
+    latitude = str(payload.get("latitude") or discovery.get("latitude") or "0").strip()
+    longitude = str(payload.get("longitude") or discovery.get("longitude") or "0").strip()
+    height = str(payload.get("height_m") or discovery.get("height") or "").strip()
+    password = str(
+        payload.get("device_password")
+        or os.getenv("NEXTLINK_SSH_PASSWORD")
+        or os.getenv("SM_STANDARD_PW")
+        or "admin"
+    ).strip()
+
+    if not user_number:
+        return {"success": False, "error": "user_number is required for baseline naming"}
+    if not mac_address:
+        return {"success": False, "error": "mac_address is required for baseline validation"}
+    if not cnm_url:
+        return {"success": False, "error": "cnm_url is required for baseline configuration"}
+
+    params = {
+        "ip_address": target_ip,
+        "device_type": device_type,
+        "password": password,
+        "latitude": latitude or "0",
+        "longitude": longitude or "0",
+        "height": height if height else None,
+        "cnm_url": cnm_url,
+        "mac_address": mac_address,
+        "user_number": user_number,
+    }
+    params = {k: v for k, v in params.items() if v is not None}
+
+    d = None
+    reboot_requested = False
+    try:
+        d = EPMPConfig(**params, use_default=False)
+        d.init_session()
+        d._verify_configuration_valid()
+        existing_info = EPMPConfig.get_device_info(target_ip, device_type, password=password, run_tests=True)
+        existing_props = _warehouse_sm_extract_device_props(existing_info)
+        plan = _warehouse_sm_build_dynamic_updates(existing_props, payload)
+
+        config = {"device_props": {}}
+        try:
+            loaded = d.get_standard_config()
+            if isinstance(loaded, dict):
+                config = loaded
+        except Exception:
+            config = {"device_props": {}}
+        if not isinstance(config.get("device_props"), dict):
+            config["device_props"] = {}
+
+        d._configure_device_params(config)
+        config["device_props"].update(plan["updates"])
+        d.send_configuration({"device_props": config["device_props"]})
+
+        if bool(payload.get("reboot_after_config", True)):
+            d.reboot()
+            reboot_requested = True
+            time.sleep(8)
+
+        return {
+            "success": True,
+            "target_ip": target_ip,
+            "device_type": device_type,
+            "reboot_requested": reboot_requested,
+            "applied_target_count": len(plan["applied_targets"]),
+            "applied_targets": plan["applied_targets"],
+            "unresolved_targets": plan["unresolved_targets"],
+        }
+    except Exception as exc:
+        return {"success": False, "error": str(exc), "target_ip": target_ip, "device_type": device_type}
+    finally:
+        try:
+            if d:
+                d.logout(suppress_info_log=True)
+        except Exception:
+            pass
+
+
+def _warehouse_sm_switch_run_script(
+    switch_ip: str,
+    switch_username: str,
+    switch_password: str,
+    ssh_ports: list[int],
+    commands: list[str],
+    enter_enable: bool = False,
+    enable_password: str | None = None,
+    settle_seconds: float = 0.45,
+) -> dict:
+    return _warehouse_sm_switch_run_interactive(
+        switch_ip=switch_ip,
+        switch_username=switch_username,
+        switch_password=switch_password,
+        ssh_ports=ssh_ports,
+        commands=commands,
+        enter_enable=enter_enable,
+        enable_password=enable_password,
+        settle_seconds=settle_seconds,
+    )
+
+
+def _warehouse_sm_switch_set_profile(payload: dict, profile: str) -> dict:
+    selected_port = str(payload.get("selected_port") or "").strip()
+    if not selected_port:
+        return {"success": False, "error": "selected_port is required"}
+    switch_ip = str(payload.get("switch_ip") or "").strip()
+    switch_username = str(payload.get("switch_username") or "").strip()
+    switch_password = str(payload.get("switch_password") or "").strip()
+    ssh_ports = _warehouse_sm_parse_ports(payload.get("switch_ssh_ports"))
+    if not switch_ip or not switch_username or not switch_password:
+        return {"success": False, "error": "switch_ip, switch_username, and switch_password are required"}
+
+    profile_probe = _warehouse_sm_switch_run_interactive(
+        switch_ip=switch_ip,
+        switch_username=switch_username,
+        switch_password=switch_password,
+        ssh_ports=ssh_ports,
+        commands=["show version"],
+        enter_enable=False,
+    )
+    if not profile_probe.get("success"):
+        return profile_probe
+
+    detected_profile = str(payload.get("switch_profile") or "").strip().lower() or _warehouse_sm_detect_switch_profile(
+        str(profile_probe.get("output") or "")
+    )
+    validated_profile = _warehouse_sm_switch_profile_validated_for_config(detected_profile)
+    force_unvalidated = bool(payload.get("force_unvalidated_switch_cli"))
+    if not validated_profile and not force_unvalidated:
+        return {
+            "success": False,
+            "error": f"Switch profile '{detected_profile}' is not validated for automatic port profile changes. Use manual switch step or set force_unvalidated_switch_cli=true.",
+            "switch_profile": detected_profile,
+            "selected_port": selected_port,
+        }
+
+    if profile == "tagged":
+        commands = [
+            "configure",
+            f"interface 0/{selected_port}",
+            "switchport mode trunk",
+            "switchport trunk native vlan 1",
+            "switchport trunk allowed vlan add 1000,4000",
+            "exit",
+            "exit",
+            "write memory",
+            "y",
+        ]
+    else:
+        commands = [
+            "configure",
+            f"interface 0/{selected_port}",
+            "switchport mode access",
+            "switchport access vlan 1",
+            "exit",
+            "exit",
+            "write memory",
+            "y",
+        ]
+
+    result = _warehouse_sm_switch_run_script(
+        switch_ip=switch_ip,
+        switch_username=switch_username,
+        switch_password=switch_password,
+        ssh_ports=ssh_ports,
+        commands=commands,
+        enter_enable=True,
+        enable_password=str(payload.get("switch_enable_password") or switch_password).strip(),
+    )
+    result["profile"] = profile
+    result["switch_profile"] = detected_profile
+    result["validated_profile"] = validated_profile
+    result["selected_port"] = selected_port
+    return result
+
+
+def _warehouse_sm_discover(data: dict) -> dict:
+    required_firmware = str(data.get('required_firmware') or "5.10.4").strip()
+    device_password = str(
+        data.get('device_password')
+        or os.getenv('NEXTLINK_SSH_PASSWORD')
+        or os.getenv('SM_STANDARD_PW')
+        or "admin"
+    ).strip()
+    switch_probe = _warehouse_sm_switch_probe(
+        switch_ip=str(data.get("switch_ip", "")).strip(),
+        switch_username=str(data.get("switch_username", "")).strip(),
+        switch_password=str(data.get("switch_password", "")).strip(),
+        selected_port=str(data.get("selected_port", "")).strip(),
+        ssh_ports=_warehouse_sm_parse_ports(data.get('switch_ssh_ports')),
+        switch_profile=str(data.get("switch_profile") or "").strip().lower() or None,
+    )
+    if not switch_probe.get("success"):
+        return {
+            "success": False,
+            "error": switch_probe.get('error') or 'Switch scan failed',
+            "details": switch_probe.get('details') or [],
+            "status_code": int(switch_probe.get("status_code") or 500),
+        }
+
+    probe_limit = int(data.get('max_ip_probes') or 32)
+    probe_limit = min(max(probe_limit, 1), 128)
+    max_hosts_scan = int(data.get('max_hosts_scan') or 768)
+    max_hosts_scan = min(max(max_hosts_scan, 64), 4096)
+    switch_ip = str(data.get("switch_ip", "")).strip()
+    ip_candidates = []
+    ip_candidates.extend([str(x).strip() for x in (data.get('ip_candidates') or []) if str(x).strip()])
+    ip_candidates.extend(switch_probe.get("ip_candidates", []))
+    ip_candidates.extend(_WAREHOUSE_SM_DEFAULT_IPS)
+    ip_candidates = [ip for ip in _warehouse_sm_unique(ip_candidates) if ip != switch_ip][:probe_limit]
+
+    probed = []
+    discovered = None
+    discovered_ip = ""
+    for ip_value in ip_candidates:
+        probe = _warehouse_sm_probe_ip(ip_value, password=device_password)
+        probed.append({
+            "ip": ip_value,
+            "success": bool(probe.get("success")),
+            "device_type": probe.get("device_type"),
+            "message": probe.get("message"),
+        })
+        if probe.get("success"):
+            discovered = probe
+            discovered_ip = ip_value
+            break
+
+    active_scan_result = None
+    if not discovered:
+        cidr_candidates = []
+        cidr_candidates.extend(_warehouse_sm_parse_cidr_list(data.get("discovery_cidrs")))
+        cidr_candidates.extend(_warehouse_sm_parse_cidr_list(os.getenv("WAREHOUSE_SM_DISCOVERY_CIDRS", "")))
+        cidr_candidates.extend(_warehouse_sm_parse_cidr_list(switch_probe.get("switch_mgmt_cidrs", [])))
+        cidr_candidates = _warehouse_sm_unique(cidr_candidates)
+        if cidr_candidates:
+            active_scan_result = _warehouse_sm_active_discovery(
+                cidrs=cidr_candidates,
+                device_password=device_password,
+                port_mac_candidates=switch_probe.get("port_mac_candidates", []),
+                max_hosts_scan=max_hosts_scan,
+                max_probe_ips=probe_limit,
+            )
+            if active_scan_result.get("success"):
+                chosen = active_scan_result.get("chosen") or {}
+                discovered = chosen.get("probe")
+                discovered_ip = str(chosen.get("ip") or "").strip()
+                probed.extend(active_scan_result.get("probed") or [])
+
+    if not discovered:
+        return {
+            "success": False,
+            "error": "No Cambium SM discovered from selected switch port/IP candidates",
+            "scan": {
+                "selected_port": str(data.get("selected_port", "")).strip(),
+                "switch_profile": switch_probe.get("switch_profile") or "unknown",
+                "switch_ssh_port": switch_probe.get("switch_ssh_port"),
+                "switch_mgmt_cidrs": switch_probe.get("switch_mgmt_cidrs", []),
+                "port_mac_candidates": switch_probe.get("port_mac_candidates", []),
+                "ip_candidates": ip_candidates,
+                "probed": probed,
+                "active_scan": active_scan_result or {},
+            },
+            "status_code": 404,
+        }
+
+    info = discovered.get("info", {}) or {}
+    device_props = _warehouse_sm_extract_device_props(info)
+    firmware = _warehouse_sm_extract_firmware(info)
+    firmware_match = _warehouse_sm_versions_match(required_firmware, firmware)
+    discovered_name = str(device_props.get("systemConfigDeviceName") or info.get("name") or "").strip()
+    user_match = re.search(r'NX-(\d+)', discovered_name or "", flags=re.IGNORECASE)
+    user_number = user_match.group(1) if user_match else ""
+    wireless_mac = str(info.get("wireless_mac") or "").strip()
+    latitude = str(info.get("latitude") or device_props.get("systemDeviceLocLatitude") or "").strip()
+    longitude = str(info.get("longitude") or device_props.get("systemDeviceLocLongitude") or "").strip()
+    height = str(device_props.get("systemDeviceLocHeight") or "").strip()
+    autofill = {
+        "target_ip": discovered_ip,
+        "device_type": discovered.get("device_type"),
+        "mac_address": wireless_mac,
+        "firmware": firmware,
+        "firmware_match": firmware_match,
+        "user_number": user_number,
+        "latitude": latitude,
+        "longitude": longitude,
+        "height": height,
+    }
+    return {
+        "success": True,
+        "scan": {
+            "selected_port": str(data.get("selected_port", "")).strip(),
+            "switch_profile": switch_probe.get("switch_profile") or "unknown",
+            "switch_ssh_port": switch_probe.get("switch_ssh_port"),
+            "switch_mgmt_cidrs": switch_probe.get("switch_mgmt_cidrs", []),
+            "port_mac_candidates": switch_probe.get("port_mac_candidates", []),
+            "ip_candidates": ip_candidates,
+            "probed": probed,
+            "active_scan": active_scan_result or {},
+        },
+        "discovery": {
+            "ip_address": autofill["target_ip"],
+            "device_type": discovered.get("device_type"),
+            "device_name": discovered_name,
+            "wireless_mac": wireless_mac,
+            "firmware_version": firmware,
+            "required_firmware": required_firmware,
+            "firmware_match": firmware_match,
+            "autofill": autofill,
+            "latitude": latitude,
+            "longitude": longitude,
+            "height": height,
+        },
+        "device_info": info,
+        "device_password": device_password,
+    }
+
+
+def _warehouse_sm_task_log(task_id: str, message: str, level: str = "info", step: str | None = None):
+    entry = {
+        "timestamp": get_utc_timestamp(),
+        "message": str(message),
+        "level": str(level or "info"),
+    }
+    if step:
+        entry["step"] = step
+    _background_task_append_log(_WAREHOUSE_SM_TASK_KIND, task_id, entry)
+    task = warehouse_sm_tasks.get(task_id)
+    if isinstance(task, dict):
+        task.setdefault("logs", []).append(entry)
+        task["logs"] = task["logs"][-200:]
+        task["updated_at"] = get_utc_timestamp()
+        _background_task_persist(_WAREHOUSE_SM_TASK_KIND, task_id, task)
+
+
+def _warehouse_sm_background_task(task_id: str, payload: dict, username: str):
+    task = warehouse_sm_tasks.get(task_id) or {}
+    task["status"] = "running"
+    task["started_at"] = get_utc_timestamp()
+    task["updated_at"] = get_utc_timestamp()
+    warehouse_sm_tasks[task_id] = task
+    _background_task_persist(_WAREHOUSE_SM_TASK_KIND, task_id, task)
+
+    def _should_abort() -> bool:
+        return (
+            (warehouse_sm_tasks.get(task_id) or {}).get("abort") is True
+            or _background_task_has_abort(_WAREHOUSE_SM_TASK_KIND, task_id)
+        )
+
+    def _abort_if_needed():
+        if _should_abort():
+            raise RuntimeError("Task aborted by user")
+
+    try:
+        _abort_if_needed()
+        _warehouse_sm_task_log(task_id, "Starting warehouse SM provisioning workflow.", "info", "start")
+        _warehouse_sm_task_log(task_id, "Step 1/7: Set switch port to untagged provisioning profile.", "info", "switch-untagged")
+        untagged_result = _warehouse_sm_switch_set_profile(payload, "untagged")
+        if not untagged_result.get("success"):
+            _warehouse_sm_task_log(task_id, f"Untagged profile warning: {untagged_result.get('error') or 'switch command was not accepted'}", "warning", "switch-untagged")
+
+        _abort_if_needed()
+        _warehouse_sm_task_log(task_id, "Step 2/7: Discover SM on selected port.", "info", "discover")
+        discovery_result = _warehouse_sm_discover(payload)
+        if not discovery_result.get("success"):
+            raise RuntimeError(discovery_result.get("error") or "SM discovery failed")
+        discovery = discovery_result.get("discovery", {})
+        payload["target_ip"] = discovery.get("ip_address")
+        payload["mac_address"] = payload.get("mac_address") or discovery.get("wireless_mac")
+        _warehouse_sm_task_log(
+            task_id,
+            f"Discovered SM {discovery.get('device_type')} at {discovery.get('ip_address')} ({discovery.get('wireless_mac') or 'MAC unknown'}).",
+            "info",
+            "discover",
+        )
+
+        _abort_if_needed()
+        _warehouse_sm_task_log(task_id, "Step 3/7: Apply baseline configuration and firmware policy.", "info", "configure")
+        baseline_result = _warehouse_sm_apply_baseline(discovery, payload)
+        if not baseline_result.get("success"):
+            raise RuntimeError(baseline_result.get("error") or "Baseline configuration failed")
+        if baseline_result.get("unresolved_targets"):
+            _warehouse_sm_task_log(
+                task_id,
+                "Some SOP fields could not be auto-mapped from current firmware keys and require key mapping review.",
+                "warning",
+                "configure",
+            )
+
+        _abort_if_needed()
+        _warehouse_sm_task_log(task_id, "Step 4/7: Verify SM configuration post-baseline.", "info", "verify-baseline")
+        verify_probe = _warehouse_sm_probe_ip(discovery.get("ip_address"), password=discovery_result.get("device_password"))
+        if not verify_probe.get("success"):
+            raise RuntimeError("Post-config verification probe failed")
+        verify_info = verify_probe.get("info") or {}
+        verification_checks = _warehouse_sm_build_verification(
+            verify_info,
+            str(payload.get("required_firmware") or "5.10.4"),
+            payload=payload,
+        )
+        pass_count = sum(1 for check in verification_checks if check.get("pass"))
+        _warehouse_sm_task_log(task_id, f"Baseline verification: {pass_count}/{len(verification_checks)} checks passed.", "info", "verify-baseline")
+
+        _abort_if_needed()
+        _warehouse_sm_task_log(task_id, "Step 5/7: Set switch port to tagged verification profile.", "info", "switch-tagged")
+        tagged_result = _warehouse_sm_switch_set_profile(payload, "tagged")
+        if not tagged_result.get("success"):
+            _warehouse_sm_task_log(task_id, f"Tagged profile warning: {tagged_result.get('error') or 'switch command was not accepted'}", "warning", "switch-tagged")
+
+        _abort_if_needed()
+        _warehouse_sm_task_log(task_id, "Step 6/7: Confirm SM still reachable after VLAN profile toggle.", "info", "verify-tagged")
+        tagged_probe = _warehouse_sm_probe_ip(discovery.get("ip_address"), password=discovery_result.get("device_password"))
+        tagged_reachable = bool(tagged_probe.get("success"))
+        _warehouse_sm_task_log(task_id, f"Tagged profile reachability: {'reachable' if tagged_reachable else 'not reachable'}", "info" if tagged_reachable else "warning", "verify-tagged")
+
+        _abort_if_needed()
+        _warehouse_sm_task_log(task_id, "Step 7/7: Return switch port to untagged staging profile.", "info", "switch-reset")
+        reset_result = _warehouse_sm_switch_set_profile(payload, "untagged")
+        if not reset_result.get("success"):
+            _warehouse_sm_task_log(task_id, f"Reset profile warning: {reset_result.get('error') or 'switch command was not accepted'}", "warning", "switch-reset")
+
+        closeout_gate = _warehouse_sm_closeout_gate(payload)
+        if payload.get("closeout_requested") and not closeout_gate.get("ready"):
+            raise RuntimeError(f"Closeout gate blocked. Missing: {', '.join(closeout_gate.get('missing_fields') or [])}")
+
+        task.update({
+            "status": "completed",
+            "completed_at": get_utc_timestamp(),
+            "updated_at": get_utc_timestamp(),
+            "result": {
+                "discovery": discovery_result,
+                "baseline": baseline_result,
+                "verification_checks": verification_checks,
+                "switch_profiles": {
+                    "untagged_before": untagged_result,
+                    "tagged_verify": tagged_result,
+                    "untagged_after": reset_result,
+                },
+                "tagged_reachable": tagged_reachable,
+                "closeout_gate": closeout_gate,
+            },
+        })
+        warehouse_sm_tasks[task_id] = task
+        _background_task_persist(_WAREHOUSE_SM_TASK_KIND, task_id, task)
+        _warehouse_sm_task_log(task_id, "Warehouse SM provisioning workflow completed.", "info", "done")
+    except Exception as exc:
+        status = "aborted" if "aborted" in str(exc).lower() else "failed"
+        task.update({
+            "status": status,
+            "completed_at": get_utc_timestamp(),
+            "updated_at": get_utc_timestamp(),
+            "error": str(exc),
+        })
+        warehouse_sm_tasks[task_id] = task
+        _background_task_persist(_WAREHOUSE_SM_TASK_KIND, task_id, task)
+        _warehouse_sm_task_log(task_id, f"Provisioning failed: {exc}", "error", "failed")
+
+
+def _warehouse_sm_probe_ip(ip_address: str, password: str | None = None) -> dict:
+    try:
+        from ido_modules.device_io.epmp_config import EPMPConfig
+    except Exception as exc:
+        return {"success": False, "message": f"Cambium module unavailable: {exc}"}
+
+    for device_type in _WAREHOUSE_SM_DEVICE_TYPES:
+        try:
+            info = EPMPConfig.get_device_info(
+                ip_address,
+                device_type,
+                password=password or None,
+                run_tests=True,
+            )
+            if info.get("success"):
+                return {
+                    "success": True,
+                    "device_type": device_type,
+                    "info": info,
+                }
+        except Exception:
+            continue
+    return {"success": False, "message": "No supported Cambium SM responded at this IP"}
+
+
+@app.route('/api/warehouse-sm/scan', methods=['POST'])
+@require_auth
+def warehouse_sm_scan():
+    """
+    Scan selected warehouse switch port and discover connected Cambium SM details.
+    """
+    try:
+        data = request.get_json(force=True) or {}
+        switch_ip = str(data.get('switch_ip', '')).strip()
+        switch_username = str(data.get('switch_username', '')).strip()
+        switch_password = str(data.get('switch_password', '')).strip()
+        selected_port = str(data.get('selected_port', '')).strip()
+        if not switch_ip or not switch_username or not switch_password or not selected_port:
+            return jsonify({'success': False, 'error': 'switch_ip, switch_username, switch_password, and selected_port are required'}), 400
+
+        try:
+            ipaddress.IPv4Address(switch_ip)
+        except Exception:
+            return jsonify({'success': False, 'error': 'Invalid switch_ip format'}), 400
+        discovery_result = _warehouse_sm_discover(data)
+        if not discovery_result.get("success"):
+            return jsonify({
+                "success": False,
+                "error": discovery_result.get("error") or "Warehouse SM scan failed",
+                "scan": discovery_result.get("scan") or {},
+                "details": discovery_result.get("details") or [],
+            }), int(discovery_result.get("status_code") or 500)
+
+        return jsonify({
+            "success": True,
+            "scan": discovery_result.get("scan") or {},
+            "discovery": discovery_result.get("discovery") or {},
+        }), 200
+    except Exception as exc:
+        print(f"[WAREHOUSE-SM] scan error: {exc}")
+        return jsonify({'success': False, 'error': 'Warehouse SM scan failed'}), 500
+
+
+def _warehouse_sm_public_task(task: dict | None) -> dict | None:
+    payload = _background_task_status_payload(task)
+    if not isinstance(payload, dict):
+        return None
+    if isinstance(payload.get("request"), dict):
+        req = dict(payload.get("request") or {})
+        for secret_key in ("switch_password", "device_password", "password"):
+            if secret_key in req:
+                req[secret_key] = "***"
+        payload["request"] = req
+    if isinstance(payload.get("result"), dict) and isinstance(payload["result"].get("discovery"), dict):
+        # Avoid leaking raw device passwords from discovery internals.
+        disc = dict(payload["result"].get("discovery") or {})
+        disc.pop("device_password", None)
+        payload["result"]["discovery"] = disc
+    return payload
+
+
+@app.route('/api/warehouse-sm/closeout-check', methods=['POST'])
+@require_auth
+def warehouse_sm_closeout_check():
+    try:
+        data = request.get_json(force=True) or {}
+        gate = _warehouse_sm_closeout_gate(data)
+        return jsonify({"success": True, "closeout_gate": gate}), 200
+    except Exception as exc:
+        print(f"[WAREHOUSE-SM] closeout-check error: {exc}")
+        return jsonify({"success": False, "error": "Warehouse SM closeout gate check failed"}), 500
+
+
+@app.route('/api/warehouse-sm/provision', methods=['POST'])
+@require_auth
+def warehouse_sm_provision():
+    try:
+        _require_feature('cambium')
+        data = request.get_json(force=True) or {}
+        required_fields = ["switch_ip", "switch_username", "switch_password", "selected_port", "user_number", "cnm_url"]
+        missing = [name for name in required_fields if not str(data.get(name, "")).strip()]
+        if missing:
+            return jsonify({"success": False, "error": f"Missing required fields: {', '.join(missing)}"}), 400
+
+        switch_ip = str(data.get("switch_ip", "")).strip()
+        try:
+            ipaddress.IPv4Address(switch_ip)
+        except Exception:
+            return jsonify({"success": False, "error": "Invalid switch_ip format"}), 400
+
+        if data.get("closeout_requested"):
+            gate = _warehouse_sm_closeout_gate(data)
+            if not gate.get("ready"):
+                return jsonify({
+                    "success": False,
+                    "error": "Closeout gate blocked",
+                    "closeout_gate": gate,
+                }), 400
+
+        task_id = f"warehouse-sm-{uuid.uuid4().hex[:10]}"
+        user_info = getattr(request, "current_user", {}) or {}
+        username = user_info.get("username") or user_info.get("email") or "warehouse-sm-tool"
+        tenant_ctx = _get_request_tenant_context()
+        tenant_id = tenant_ctx["tenant"].get("id") if tenant_ctx.get("tenant") else None
+        tenant_slug = tenant_ctx["tenant"].get("slug", "") if tenant_ctx.get("tenant") else ""
+
+        request_copy = dict(data)
+        if "switch_password" in request_copy:
+            request_copy["switch_password"] = "***"
+        if "device_password" in request_copy:
+            request_copy["device_password"] = "***"
+
+        warehouse_sm_tasks[task_id] = {
+            "task_id": task_id,
+            "status": "queued",
+            "created_at": get_utc_timestamp(),
+            "updated_at": get_utc_timestamp(),
+            "username": username,
+            "request": request_copy,
+            "logs": [],
+            "_tenant_id": tenant_id,
+            "_tenant_slug": tenant_slug,
+        }
+        _background_task_persist(_WAREHOUSE_SM_TASK_KIND, task_id, warehouse_sm_tasks.get(task_id))
+
+        worker_payload = dict(data)
+        threading.Thread(
+            target=_warehouse_sm_background_task,
+            args=(task_id, worker_payload, username),
+            daemon=True,
+            name=f"warehouse_sm_{task_id[:10]}",
+        ).start()
+
+        return jsonify({
+            "success": True,
+            "task_id": task_id,
+            "status": "queued",
+            "message": "Warehouse SM provisioning task started.",
+        }), 202
+    except Exception as exc:
+        print(f"[WAREHOUSE-SM] provision error: {exc}")
+        return jsonify({"success": False, "error": "Warehouse SM provisioning failed to start"}), 500
+
+
+@app.route('/api/warehouse-sm/status/<task_id>', methods=['GET'])
+@require_auth
+def warehouse_sm_status(task_id):
+    task = warehouse_sm_tasks.get(task_id) or _background_task_load(_WAREHOUSE_SM_TASK_KIND, task_id)
+    if not task:
+        return jsonify({"success": False, "error": "Task not found"}), 404
+    if not _background_task_access_allowed(task):
+        return jsonify({"success": False, "error": "Forbidden"}), 403
+    public_task = _warehouse_sm_public_task(task)
+    return jsonify({"success": True, "task": public_task}), 200
+
+
+@app.route('/api/warehouse-sm/tasks', methods=['GET'])
+@require_auth
+def warehouse_sm_tasks_list():
+    tenant_id = _request_tenant_id()
+    tasks = _background_task_list(_WAREHOUSE_SM_TASK_KIND, limit=100)
+    visible = []
+    for task in tasks:
+        if not _background_task_matches_tenant(task, tenant_id) and not _request_is_platform_admin():
+            continue
+        public_task = _warehouse_sm_public_task(task)
+        if isinstance(public_task, dict):
+            visible.append(public_task)
+    return jsonify({"success": True, "tasks": visible}), 200
+
+
+@app.route('/api/warehouse-sm/abort/<task_id>', methods=['POST'])
+@require_auth
+def warehouse_sm_abort(task_id):
+    task = warehouse_sm_tasks.get(task_id) or _background_task_load(_WAREHOUSE_SM_TASK_KIND, task_id)
+    if not task:
+        return jsonify({"success": False, "error": "Task not found"}), 404
+    if not _background_task_access_allowed(task):
+        return jsonify({"success": False, "error": "Forbidden"}), 403
+
+    _background_task_signal_abort(_WAREHOUSE_SM_TASK_KIND, task_id)
+    if task_id in warehouse_sm_tasks:
+        warehouse_sm_tasks[task_id]["abort"] = True
+        warehouse_sm_tasks[task_id]["status"] = "aborting"
+        warehouse_sm_tasks[task_id]["updated_at"] = get_utc_timestamp()
+        _background_task_persist(_WAREHOUSE_SM_TASK_KIND, task_id, warehouse_sm_tasks.get(task_id))
+    return jsonify({"success": True, "task_id": task_id, "status": "aborting"}), 200
+
+
 @app.route('/api/fetch-config-ssh', methods=['POST'])
 @require_auth
 def fetch_config_ssh():
