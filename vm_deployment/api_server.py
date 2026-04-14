@@ -12183,14 +12183,16 @@ def _run_mikrotik_ssh_fetch(
     }
 
 
-_WAREHOUSE_SM_DEFAULT_IPS = [
+_WAREHOUSE_SM_PREFERRED_FALLBACK_IPS = [
+    "192.168.0.1",
+    "192.168.0.2",
     "169.254.1.1",
     "169.254.1.2",
-    "192.168.0.1",
     "192.168.1.1",
     "192.168.1.20",
     "10.0.0.1",
 ]
+_WAREHOUSE_SM_DEFAULT_IPS = list(_WAREHOUSE_SM_PREFERRED_FALLBACK_IPS)
 _WAREHOUSE_SM_DEVICE_TYPES = ["F4600C", "F4525", "F300-13", "F300-16", "F300-25", "F300-CSM", "CN4600"]
 _WAREHOUSE_SM_MAC_RE = re.compile(r'(?i)\b(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}\b')
 _WAREHOUSE_SM_MAC_DOT_RE = re.compile(r'(?i)\b[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4}\b')
@@ -12219,6 +12221,17 @@ def _warehouse_sm_unique(values):
         seen.add(key)
         result.append(key)
     return result
+
+
+def _warehouse_sm_pick_default_target_ip(candidates=None) -> str:
+    candidate_list = _warehouse_sm_unique(candidates or [])
+    candidate_set = {str(ip).strip() for ip in candidate_list if str(ip).strip()}
+    for default_ip in _WAREHOUSE_SM_PREFERRED_FALLBACK_IPS:
+        if default_ip in candidate_set:
+            return default_ip
+    if candidate_list:
+        return candidate_list[0]
+    return _WAREHOUSE_SM_PREFERRED_FALLBACK_IPS[0]
 
 
 def _warehouse_sm_normalize_mac(raw_value: str) -> str:
@@ -12849,8 +12862,8 @@ def _warehouse_sm_build_dynamic_updates(device_props: dict, payload: dict) -> di
 
     # Explicit naming/location keys known to this codebase.
     user_number = str(payload.get("user_number") or "").strip()
-    latitude = str(payload.get("latitude") or "0").strip()
-    longitude = str(payload.get("longitude") or "0").strip()
+    latitude = str(payload.get("latitude") or "").strip()
+    longitude = str(payload.get("longitude") or "").strip()
     height = str(payload.get("height_m") or "").strip()
     cnm_url = str(payload.get("cnm_url") or "").strip()
     if user_number:
@@ -12858,11 +12871,16 @@ def _warehouse_sm_build_dynamic_updates(device_props: dict, payload: dict) -> di
         updates["snmpSystemName"] = f"NX-{user_number}"
         updates["snmpSystemDescription"] = f"NX-{user_number}"
         applied_targets.append("Device naming convention")
-    updates["sysLocation"] = f"{latitude}, {longitude}"
-    updates["systemDeviceLocLatitude"] = latitude
-    updates["systemDeviceLocLongitude"] = longitude
+    if latitude and longitude:
+        updates["sysLocation"] = f"{latitude}, {longitude}"
+        updates["systemDeviceLocLatitude"] = latitude
+        updates["systemDeviceLocLongitude"] = longitude
+        applied_targets.append("Location coordinates")
+    elif latitude or longitude:
+        unresolved_targets.append("Location coordinates")
     if height:
         updates["systemDeviceLocHeight"] = height
+        applied_targets.append("Height (m)")
     if cnm_url:
         updates["cambiumDeviceAgentCNSURL"] = cnm_url
 
@@ -12976,11 +12994,11 @@ def _warehouse_sm_apply_baseline(discovery: dict, payload: dict) -> dict:
         return {"success": False, "error": "No target SM IP for baseline apply"}
 
     mac_address = str(payload.get("mac_address") or discovery.get("wireless_mac") or "").strip()
-    user_number = str(payload.get("user_number") or "").strip()
+    payload_user_number = str(payload.get("user_number") or "").strip()
     cnm_url = str(payload.get("cnm_url") or "").strip()
-    latitude = str(payload.get("latitude") or discovery.get("latitude") or "0").strip()
-    longitude = str(payload.get("longitude") or discovery.get("longitude") or "0").strip()
-    height = str(payload.get("height_m") or discovery.get("height") or "").strip()
+    payload_latitude = str(payload.get("latitude") or "").strip()
+    payload_longitude = str(payload.get("longitude") or "").strip()
+    payload_height = str(payload.get("height_m") or "").strip()
     password = str(
         payload.get("device_password")
         or os.getenv("NEXTLINK_SSH_PASSWORD")
@@ -12988,12 +13006,19 @@ def _warehouse_sm_apply_baseline(discovery: dict, payload: dict) -> dict:
         or "admin"
     ).strip()
 
-    if not user_number:
-        return {"success": False, "error": "user_number is required for baseline naming"}
-    if not mac_address:
-        return {"success": False, "error": "mac_address is required for baseline validation"}
     if not cnm_url:
         return {"success": False, "error": "cnm_url is required for baseline configuration"}
+
+    existing_info = EPMPConfig.get_device_info(target_ip, device_type, password=password, run_tests=True)
+    existing_props = _warehouse_sm_extract_device_props(existing_info)
+    discovery_name = str(discovery.get("device_name") or "").strip()
+    existing_name = str(existing_props.get("systemConfigDeviceName") or existing_props.get("snmpSystemName") or "").strip()
+    discovery_match = re.search(r'NX-(\d+)', discovery_name, flags=re.IGNORECASE)
+    existing_match = re.search(r'NX-(\d+)', existing_name, flags=re.IGNORECASE)
+    user_number = payload_user_number or (discovery_match.group(1) if discovery_match else "") or (existing_match.group(1) if existing_match else "") or "000000"
+    latitude = payload_latitude or str(discovery.get("latitude") or existing_props.get("systemDeviceLocLatitude") or "0").strip()
+    longitude = payload_longitude or str(discovery.get("longitude") or existing_props.get("systemDeviceLocLongitude") or "0").strip()
+    height = payload_height or str(discovery.get("height") or existing_props.get("systemDeviceLocHeight") or "").strip()
 
     params = {
         "ip_address": target_ip,
@@ -13014,8 +13039,6 @@ def _warehouse_sm_apply_baseline(discovery: dict, payload: dict) -> dict:
         d = EPMPConfig(**params, use_default=False)
         d.init_session()
         d._verify_configuration_valid()
-        existing_info = EPMPConfig.get_device_info(target_ip, device_type, password=password, run_tests=True)
-        existing_props = _warehouse_sm_extract_device_props(existing_info)
         plan = _warehouse_sm_build_dynamic_updates(existing_props, payload)
 
         config = {"device_props": {}}
@@ -13029,6 +13052,25 @@ def _warehouse_sm_apply_baseline(discovery: dict, payload: dict) -> dict:
             config["device_props"] = {}
 
         d._configure_device_params(config)
+
+        def _restore_or_drop(prop_key: str):
+            prior = str(existing_props.get(prop_key) or "").strip()
+            if prior:
+                config["device_props"][prop_key] = prior
+            else:
+                config["device_props"].pop(prop_key, None)
+
+        if not payload_user_number:
+            _restore_or_drop("systemConfigDeviceName")
+            _restore_or_drop("snmpSystemName")
+            _restore_or_drop("snmpSystemDescription")
+        if not (payload_latitude and payload_longitude):
+            _restore_or_drop("sysLocation")
+            _restore_or_drop("systemDeviceLocLatitude")
+            _restore_or_drop("systemDeviceLocLongitude")
+        if not payload_height:
+            _restore_or_drop("systemDeviceLocHeight")
+
         config["device_props"].update(plan["updates"])
         d.send_configuration({"device_props": config["device_props"]})
 
@@ -13169,13 +13211,12 @@ def _warehouse_sm_discover(data: dict) -> dict:
         ssh_ports=_warehouse_sm_parse_ports(data.get('switch_ssh_ports')),
         switch_profile=str(data.get("switch_profile") or "").strip().lower() or None,
     )
-    if not switch_probe.get("success"):
-        return {
-            "success": False,
-            "error": switch_probe.get('error') or 'Switch scan failed',
-            "details": switch_probe.get('details') or [],
-            "status_code": int(switch_probe.get("status_code") or 500),
-        }
+    switch_probe_ok = bool(switch_probe.get("success"))
+    switch_probe_error = ""
+    switch_probe_status = 500
+    if not switch_probe_ok:
+        switch_probe_error = switch_probe.get('error') or 'Switch scan failed'
+        switch_probe_status = int(switch_probe.get("status_code") or 500)
 
     probe_limit = int(data.get('max_ip_probes') or 32)
     probe_limit = min(max(probe_limit, 1), 128)
@@ -13184,7 +13225,8 @@ def _warehouse_sm_discover(data: dict) -> dict:
     switch_ip = str(data.get("switch_ip", "")).strip()
     ip_candidates = []
     ip_candidates.extend([str(x).strip() for x in (data.get('ip_candidates') or []) if str(x).strip()])
-    ip_candidates.extend(switch_probe.get("ip_candidates", []))
+    if switch_probe_ok:
+        ip_candidates.extend(switch_probe.get("ip_candidates", []))
     ip_candidates.extend(_WAREHOUSE_SM_DEFAULT_IPS)
     ip_candidates = [ip for ip in _warehouse_sm_unique(ip_candidates) if ip != switch_ip][:probe_limit]
 
@@ -13209,13 +13251,14 @@ def _warehouse_sm_discover(data: dict) -> dict:
         cidr_candidates = []
         cidr_candidates.extend(_warehouse_sm_parse_cidr_list(data.get("discovery_cidrs")))
         cidr_candidates.extend(_warehouse_sm_parse_cidr_list(os.getenv("WAREHOUSE_SM_DISCOVERY_CIDRS", "")))
-        cidr_candidates.extend(_warehouse_sm_parse_cidr_list(switch_probe.get("switch_mgmt_cidrs", [])))
+        if switch_probe_ok:
+            cidr_candidates.extend(_warehouse_sm_parse_cidr_list(switch_probe.get("switch_mgmt_cidrs", [])))
         cidr_candidates = _warehouse_sm_unique(cidr_candidates)
         if cidr_candidates:
             active_scan_result = _warehouse_sm_active_discovery(
                 cidrs=cidr_candidates,
                 device_password=device_password,
-                port_mac_candidates=switch_probe.get("port_mac_candidates", []),
+                port_mac_candidates=switch_probe.get("port_mac_candidates", []) if switch_probe_ok else [],
                 max_hosts_scan=max_hosts_scan,
                 max_probe_ips=probe_limit,
             )
@@ -13226,20 +13269,27 @@ def _warehouse_sm_discover(data: dict) -> dict:
                 probed.extend(active_scan_result.get("probed") or [])
 
     if not discovered:
+        fallback_target_ip = _warehouse_sm_pick_default_target_ip(ip_candidates)
+        base_error = "No Cambium SM discovered from selected switch port/IP candidates"
+        if switch_probe_error:
+            base_error = f"{switch_probe_error}. {base_error}"
         return {
             "success": False,
-            "error": "No Cambium SM discovered from selected switch port/IP candidates",
+            "error": base_error,
             "scan": {
                 "selected_port": str(data.get("selected_port", "")).strip(),
-                "switch_profile": switch_probe.get("switch_profile") or "unknown",
-                "switch_ssh_port": switch_probe.get("switch_ssh_port"),
-                "switch_mgmt_cidrs": switch_probe.get("switch_mgmt_cidrs", []),
-                "port_mac_candidates": switch_probe.get("port_mac_candidates", []),
+                "switch_profile": switch_probe.get("switch_profile") or ("unknown" if switch_probe_ok else "switch-probe-unavailable"),
+                "switch_ssh_port": switch_probe.get("switch_ssh_port") if switch_probe_ok else None,
+                "switch_mgmt_cidrs": switch_probe.get("switch_mgmt_cidrs", []) if switch_probe_ok else [],
+                "port_mac_candidates": switch_probe.get("port_mac_candidates", []) if switch_probe_ok else [],
                 "ip_candidates": ip_candidates,
                 "probed": probed,
                 "active_scan": active_scan_result or {},
+                "switch_probe_error": switch_probe_error or None,
+                "fallback_target_ip": fallback_target_ip,
             },
-            "status_code": 404,
+            "fallback_target_ip": fallback_target_ip,
+            "status_code": 404 if switch_probe_ok else switch_probe_status,
         }
 
     info = discovered.get("info", {}) or {}
@@ -13268,13 +13318,14 @@ def _warehouse_sm_discover(data: dict) -> dict:
         "success": True,
         "scan": {
             "selected_port": str(data.get("selected_port", "")).strip(),
-            "switch_profile": switch_probe.get("switch_profile") or "unknown",
-            "switch_ssh_port": switch_probe.get("switch_ssh_port"),
-            "switch_mgmt_cidrs": switch_probe.get("switch_mgmt_cidrs", []),
-            "port_mac_candidates": switch_probe.get("port_mac_candidates", []),
+            "switch_profile": switch_probe.get("switch_profile") or ("unknown" if switch_probe_ok else "switch-probe-unavailable"),
+            "switch_ssh_port": switch_probe.get("switch_ssh_port") if switch_probe_ok else None,
+            "switch_mgmt_cidrs": switch_probe.get("switch_mgmt_cidrs", []) if switch_probe_ok else [],
+            "port_mac_candidates": switch_probe.get("port_mac_candidates", []) if switch_probe_ok else [],
             "ip_candidates": ip_candidates,
             "probed": probed,
             "active_scan": active_scan_result or {},
+            "switch_probe_error": switch_probe_error or None,
         },
         "discovery": {
             "ip_address": autofill["target_ip"],
@@ -13485,6 +13536,7 @@ def warehouse_sm_scan():
                 "error": discovery_result.get("error") or "Warehouse SM scan failed",
                 "scan": discovery_result.get("scan") or {},
                 "details": discovery_result.get("details") or [],
+                "fallback_target_ip": discovery_result.get("fallback_target_ip") or ((discovery_result.get("scan") or {}).get("fallback_target_ip")),
             }), int(discovery_result.get("status_code") or 500)
 
         return jsonify({
@@ -13533,7 +13585,7 @@ def warehouse_sm_provision():
     try:
         _require_feature('cambium')
         data = request.get_json(force=True) or {}
-        required_fields = ["switch_ip", "switch_username", "switch_password", "selected_port", "user_number", "cnm_url"]
+        required_fields = ["switch_ip", "switch_username", "switch_password", "selected_port", "cnm_url"]
         missing = [name for name in required_fields if not str(data.get(name, "")).strip()]
         if missing:
             return jsonify({"success": False, "error": f"Missing required fields: {', '.join(missing)}"}), 400
