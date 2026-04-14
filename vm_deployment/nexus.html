@@ -5924,11 +5924,7 @@
                                 <input type="text" id="warehouseSmSwitchIp" value="10.46.220.11" placeholder="Switch IP">
                                 <input type="text" id="warehouseSmSwitchUser" value="ubnt" placeholder="Switch Username">
                                 <input type="password" id="warehouseSmSwitchPass" value="xGA9KDm9o9" placeholder="Switch Password">
-                                <input type="password" id="warehouseSmSwitchEnablePass" placeholder="Switch Enable Password (optional)">
-                                <input type="text" id="warehouseSmDiscoveryCidrs" placeholder="Discovery CIDRs (optional, comma-separated)">
-                                <input type="text" id="warehouseSmUplinkPort" placeholder="Uplink Port (optional)">
                                 <input type="text" id="warehouseSmTargetIp" placeholder="Discovered SM IP" readonly style="background: var(--output-bg);">
-                                <input type="password" id="warehouseSmDevicePass" placeholder="SM password override (optional)">
                             </div>
                             <div class="field-config-helper">Pick the physical port where the installer plugged the SM.</div>
                             <div id="warehouseSmPortGrid" class="warehouse-sm-port-grid"></div>
@@ -5939,12 +5935,6 @@
                                 <div style="font-weight:700;">SM Configuration Inputs</div>
                             </div>
                             <div class="ido-tools-input-grid" style="grid-template-columns: 1fr 1fr;">
-                                <input type="text" id="warehouseSmUserNumber" placeholder="Billmax User Number (required)">
-                                <input type="text" id="warehouseSmMacAddress" placeholder="Wireless MAC (auto from scan when available)">
-                                <input type="text" id="warehouseSmLatitude" placeholder="Latitude (optional at warehouse stage)">
-                                <input type="text" id="warehouseSmLongitude" placeholder="Longitude (optional at warehouse stage)">
-                                <input type="text" id="warehouseSmHeight" placeholder="Height in meters (optional at warehouse stage)">
-                                <input type="text" id="warehouseSmTilt" placeholder="Tilt (+ down / - up) (optional at warehouse stage)">
                                 <select id="warehouseSmRegion">
                                     <option value="">Region (required)</option>
                                     <option value="https://cnm.nxlink.com">US (cnm.nxlink.com)</option>
@@ -17965,18 +17955,8 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     switch_ip: (document.getElementById('warehouseSmSwitchIp')?.value || '').trim(),
                     switch_username: (document.getElementById('warehouseSmSwitchUser')?.value || '').trim(),
                     switch_password: (document.getElementById('warehouseSmSwitchPass')?.value || '').trim(),
-                    switch_enable_password: (document.getElementById('warehouseSmSwitchEnablePass')?.value || '').trim(),
-                    discovery_cidrs: (document.getElementById('warehouseSmDiscoveryCidrs')?.value || '').trim(),
-                    uplink_port: (document.getElementById('warehouseSmUplinkPort')?.value || '').trim(),
                     target_ip: (document.getElementById('warehouseSmTargetIp')?.value || '').trim(),
-                    device_password: (document.getElementById('warehouseSmDevicePass')?.value || '').trim(),
                     selected_port: warehouseSmSelectedPort,
-                    user_number: (document.getElementById('warehouseSmUserNumber')?.value || '').trim(),
-                    mac_address: (document.getElementById('warehouseSmMacAddress')?.value || '').trim(),
-                    latitude: (document.getElementById('warehouseSmLatitude')?.value || '').trim(),
-                    longitude: (document.getElementById('warehouseSmLongitude')?.value || '').trim(),
-                    height_m: (document.getElementById('warehouseSmHeight')?.value || '').trim(),
-                    tilt: (document.getElementById('warehouseSmTilt')?.value || '').trim(),
                     cnm_url: (document.getElementById('warehouseSmRegion')?.value || '').trim(),
                     encryption_key: (document.getElementById('warehouseSmEncryptionKey')?.value || '').trim(),
                     required_firmware: (document.getElementById('warehouseSmFirmware')?.value || '').trim(),
@@ -17988,7 +17968,6 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     ['switch_ip', 'Switch IP'],
                     ['switch_username', 'Switch Username'],
                     ['switch_password', 'Switch Password'],
-                    ['user_number', 'Billmax User Number'],
                     ['cnm_url', 'Region'],
                     ['required_firmware', 'Required Firmware'],
                 ];
@@ -18009,21 +17988,13 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                         ip_address: input.switch_ip,
                         username: input.switch_username,
                         password: input.switch_password,
-                        discovery_cidrs: input.discovery_cidrs || null,
                         selected_port: input.selected_port,
-                        uplink_port: input.uplink_port || null,
                         staging_profile: 'untagged-provisioning',
                         verify_profile: 'tagged-vlan-verify',
                     },
                     sm: {
                         device_type: 'F4600C',
                         target_ip: input.target_ip || null,
-                        user_number: input.user_number,
-                        mac_address: input.mac_address || null,
-                        latitude: input.latitude || null,
-                        longitude: input.longitude || null,
-                        height: input.height_m || null,
-                        tilt: input.tilt || null,
                         cnm_url: input.cnm_url,
                         required_firmware: input.required_firmware,
                     },
@@ -18075,10 +18046,6 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                             'Preferred AP',
                         ],
                         captured_in_warehouse: {
-                            latitude: input.latitude || null,
-                            longitude: input.longitude || null,
-                            height_m: input.height_m || null,
-                            tilt: input.tilt || null,
                             encryption_key: input.encryption_key || null,
                         },
                     },
@@ -18109,11 +18076,6 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             function applyWarehouseSmAutofill(autofill) {
                 if (!autofill || typeof autofill !== 'object') return;
                 setWarehouseSmInputValue('warehouseSmTargetIp', autofill.target_ip);
-                setWarehouseSmInputValue('warehouseSmUserNumber', autofill.user_number);
-                setWarehouseSmInputValue('warehouseSmMacAddress', autofill.mac_address);
-                setWarehouseSmInputValue('warehouseSmLatitude', autofill.latitude);
-                setWarehouseSmInputValue('warehouseSmLongitude', autofill.longitude);
-                setWarehouseSmInputValue('warehouseSmHeight', autofill.height);
                 setWarehouseSmInputValue('warehouseSmFirmware', autofill.firmware);
             }
 
@@ -18134,11 +18096,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     switch_ip: input.switch_ip,
                     switch_username: input.switch_username,
                     switch_password: input.switch_password,
-                    switch_enable_password: input.switch_enable_password || undefined,
-                    discovery_cidrs: input.discovery_cidrs || undefined,
                     selected_port: input.selected_port,
-                    uplink_port: input.uplink_port || undefined,
-                    device_password: input.device_password || undefined,
                     required_firmware: input.required_firmware || undefined,
                     ip_candidates: input.target_ip ? [input.target_ip] : [],
                 };
@@ -18146,11 +18104,37 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 setWarehouseSmStatus(`Scanning switch ${input.switch_ip} port ${input.selected_port}...`);
                 writeWarehouseSmOutput('Running port scan...');
                 const apiBase = (typeof resolveApiBase === 'function' ? resolveApiBase() : ((typeof AI_API_BASE !== 'undefined' ? AI_API_BASE : window.AI_API_BASE) || '/api'));
-                const resp = await fetch(`${apiBase}/warehouse-sm/scan`, {
-                    method: 'POST',
-                    headers: getAuthHeaders('application/json'),
-                    body: JSON.stringify(payload),
-                });
+                const fallbackOnTimeout = String(input.target_ip || '192.168.0.1').trim() || '192.168.0.1';
+                const scanTimeoutMs = 45000;
+                const controller = new AbortController();
+                const timeoutHandle = setTimeout(() => controller.abort(), scanTimeoutMs);
+                let resp;
+                try {
+                    resp = await fetch(`${apiBase}/warehouse-sm/scan`, {
+                        method: 'POST',
+                        headers: getAuthHeaders('application/json'),
+                        body: JSON.stringify(payload),
+                        signal: controller.signal,
+                    });
+                } catch (err) {
+                    clearTimeout(timeoutHandle);
+                    if (err?.name === 'AbortError') {
+                        const timeoutBody = {
+                            success: false,
+                            error: `Warehouse scan timed out after ${Math.floor(scanTimeoutMs / 1000)}s.`,
+                            hint: 'Backend may still be trying switch/SM probes. Proceeding with default Cambium target IP.',
+                            fallback_target_ip: fallbackOnTimeout,
+                        };
+                        setWarehouseSmInputValue('warehouseSmTargetIp', fallbackOnTimeout);
+                        writeWarehouseSmOutput(JSON.stringify(timeoutBody, null, 2));
+                        setWarehouseSmStatus(`Scan timeout. Using default target IP ${fallbackOnTimeout} for staging.`, true);
+                        warehouseSmLastScan = timeoutBody;
+                        return;
+                    }
+                    throw err;
+                } finally {
+                    clearTimeout(timeoutHandle);
+                }
                 const text = await resp.text();
                 let body = {};
                 try {
@@ -18159,7 +18143,25 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     body = { error: text || `HTTP ${resp.status}` };
                 }
                 if (!resp.ok) {
-                    throw new Error(body.error || `Scan failed (HTTP ${resp.status})`);
+                    writeWarehouseSmOutput(JSON.stringify(body, null, 2));
+                    const fallbackTargetIp = String(body?.fallback_target_ip || body?.scan?.fallback_target_ip || '').trim();
+                    if (fallbackTargetIp) {
+                        setWarehouseSmInputValue('warehouseSmTargetIp', fallbackTargetIp);
+                        warehouseSmLastScan = body;
+                        const switchSshPort = body?.scan?.switch_ssh_port;
+                        const switchHint = switchSshPort ? ` Switch SSH connected on port ${switchSshPort}.` : '';
+                        setWarehouseSmStatus(`Scan returned no definitive SM identity. Using default target IP ${fallbackTargetIp} for staging.${switchHint}`);
+                        return;
+                    }
+                    if (resp.status === 504) {
+                        setWarehouseSmInputValue('warehouseSmTargetIp', fallbackOnTimeout);
+                        setWarehouseSmStatus(`Scan hit gateway timeout (504). Using default target IP ${fallbackOnTimeout} for staging.`, true);
+                        warehouseSmLastScan = body;
+                        return;
+                    }
+                    const err = new Error(body.error || `Scan failed (HTTP ${resp.status})`);
+                    err.scanBody = body;
+                    throw err;
                 }
 
                 warehouseSmLastScan = body;
@@ -18172,10 +18174,16 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 const discoveredMac = body?.discovery?.wireless_mac || body?.discovery?.autofill?.mac_address || '';
                 const fwMatch = body?.discovery?.firmware_match;
                 const fwSuffix = fwMatch === false ? ' Firmware mismatch against required target.' : '';
+                const switchSshPort = body?.scan?.switch_ssh_port;
+                const switchHint = switchSshPort ? ` Switch SSH connected on port ${switchSshPort}.` : '';
                 setWarehouseSmStatus(
                     discoveredIp
-                        ? `Scan completed. Discovered SM at ${discoveredIp}${discoveredMac ? ` (${discoveredMac})` : ''}.${fwSuffix}`
-                        : 'Scan completed. No SM discovery details returned.'
+                        ? `Scan completed. Discovered SM at ${discoveredIp}${discoveredMac ? ` (${discoveredMac})` : ''}.${fwSuffix}${switchHint}`
+                        : (() => {
+                            const fallbackTargetIp = String(body?.fallback_target_ip || body?.scan?.fallback_target_ip || '192.168.0.1').trim();
+                            setWarehouseSmInputValue('warehouseSmTargetIp', fallbackTargetIp);
+                            return `Scan completed without definitive SM identity. Using default target IP ${fallbackTargetIp} for staging.${switchHint}`;
+                        })()
                 );
             }
 
@@ -18186,19 +18194,9 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     switch_ip: input.switch_ip,
                     switch_username: input.switch_username,
                     switch_password: input.switch_password,
-                    switch_enable_password: input.switch_enable_password || undefined,
-                    discovery_cidrs: input.discovery_cidrs || undefined,
                     selected_port: input.selected_port,
                     switch_ssh_ports: [22, 2222],
-                    uplink_port: input.uplink_port || undefined,
                     target_ip: input.target_ip || undefined,
-                    device_password: input.device_password || undefined,
-                    user_number: input.user_number,
-                    mac_address: input.mac_address || undefined,
-                    latitude: input.latitude || undefined,
-                    longitude: input.longitude || undefined,
-                    height_m: input.height_m || undefined,
-                    tilt: input.tilt || undefined,
                     cnm_url: input.cnm_url,
                     encryption_key: input.encryption_key || undefined,
                     required_firmware: input.required_firmware || '5.10.4',
@@ -18256,11 +18254,11 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             async function checkWarehouseSmCloseoutGate() {
                 const input = collectWarehouseSmInputs();
                 const payload = {
-                    latitude: input.latitude || '',
-                    longitude: input.longitude || '',
-                    height_m: input.height_m || '',
+                    latitude: '',
+                    longitude: '',
+                    height_m: '',
                     azimuth_true_north: '',
-                    tilt: input.tilt || '',
+                    tilt: '',
                     ssid: '',
                     encryption_key: input.encryption_key || '',
                     preferred_ap: '',
@@ -18315,7 +18313,11 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                         try {
                             await scanWarehouseSmPort();
                         } catch (err) {
-                            writeWarehouseSmOutput(err?.message || String(err));
+                            if (err?.scanBody) {
+                                writeWarehouseSmOutput(JSON.stringify(err.scanBody, null, 2));
+                            } else {
+                                writeWarehouseSmOutput(err?.message || String(err));
+                            }
                             setWarehouseSmStatus('Scan failed. Check switch/device details and retry.', true);
                         }
                     });
