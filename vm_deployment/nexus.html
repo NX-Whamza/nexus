@@ -18153,6 +18153,12 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                         setWarehouseSmStatus(`Scan returned no definitive SM identity. Using default target IP ${fallbackTargetIp} for staging.${switchHint}`);
                         return;
                     }
+                    if (resp.status === 504) {
+                        setWarehouseSmInputValue('warehouseSmTargetIp', fallbackOnTimeout);
+                        setWarehouseSmStatus(`Scan hit gateway timeout (504). Using default target IP ${fallbackOnTimeout} for staging.`, true);
+                        warehouseSmLastScan = body;
+                        return;
+                    }
                     const err = new Error(body.error || `Scan failed (HTTP ${resp.status})`);
                     err.scanBody = body;
                     throw err;

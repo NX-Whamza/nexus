@@ -13218,8 +13218,8 @@ def _warehouse_sm_discover(data: dict) -> dict:
         switch_probe_error = switch_probe.get('error') or 'Switch scan failed'
         switch_probe_status = int(switch_probe.get("status_code") or 500)
 
-    probe_limit = int(data.get('max_ip_probes') or 4)
-    probe_limit = min(max(probe_limit, 1), 12)
+    probe_limit = int(data.get('max_ip_probes') or 2)
+    probe_limit = min(max(probe_limit, 1), 6)
     max_hosts_scan = int(data.get('max_hosts_scan') or 128)
     max_hosts_scan = min(max(max_hosts_scan, 32), 512)
     switch_ip = str(data.get("switch_ip", "")).strip()
@@ -13555,8 +13555,13 @@ def _warehouse_sm_probe_ip(ip_address: str, password: str | None = None) -> dict
     except Exception as exc:
         return {"success": False, "message": f"Cambium module unavailable: {exc}"}
 
-    # Fast-path probing for warehouse staging: try likely SM models first and skip heavy pre-check tests.
-    preferred_types = ["F4600C", "CN4600", "F4525"]
+    # Fast-path probing for warehouse staging.
+    # If no HTTP/HTTPS listener is reachable, skip expensive Cambium login attempts immediately.
+    if not (_warehouse_sm_probe_tcp(ip_address, 80, 0.35) or _warehouse_sm_probe_tcp(ip_address, 443, 0.35)):
+        return {"success": False, "message": "No HTTP/HTTPS response from candidate IP"}
+
+    # Warehouse workflow is focused on new Force 4600C devices.
+    preferred_types = ["F4600C"]
     device_types = _warehouse_sm_unique(preferred_types)
     for device_type in device_types:
         try:
