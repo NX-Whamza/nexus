@@ -18104,11 +18104,37 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 setWarehouseSmStatus(`Scanning switch ${input.switch_ip} port ${input.selected_port}...`);
                 writeWarehouseSmOutput('Running port scan...');
                 const apiBase = (typeof resolveApiBase === 'function' ? resolveApiBase() : ((typeof AI_API_BASE !== 'undefined' ? AI_API_BASE : window.AI_API_BASE) || '/api'));
-                const resp = await fetch(`${apiBase}/warehouse-sm/scan`, {
-                    method: 'POST',
-                    headers: getAuthHeaders('application/json'),
-                    body: JSON.stringify(payload),
-                });
+                const fallbackOnTimeout = String(input.target_ip || '192.168.0.1').trim() || '192.168.0.1';
+                const scanTimeoutMs = 45000;
+                const controller = new AbortController();
+                const timeoutHandle = setTimeout(() => controller.abort(), scanTimeoutMs);
+                let resp;
+                try {
+                    resp = await fetch(`${apiBase}/warehouse-sm/scan`, {
+                        method: 'POST',
+                        headers: getAuthHeaders('application/json'),
+                        body: JSON.stringify(payload),
+                        signal: controller.signal,
+                    });
+                } catch (err) {
+                    clearTimeout(timeoutHandle);
+                    if (err?.name === 'AbortError') {
+                        const timeoutBody = {
+                            success: false,
+                            error: `Warehouse scan timed out after ${Math.floor(scanTimeoutMs / 1000)}s.`,
+                            hint: 'Backend may still be trying switch/SM probes. Proceeding with default Cambium target IP.',
+                            fallback_target_ip: fallbackOnTimeout,
+                        };
+                        setWarehouseSmInputValue('warehouseSmTargetIp', fallbackOnTimeout);
+                        writeWarehouseSmOutput(JSON.stringify(timeoutBody, null, 2));
+                        setWarehouseSmStatus(`Scan timeout. Using default target IP ${fallbackOnTimeout} for staging.`, true);
+                        warehouseSmLastScan = timeoutBody;
+                        return;
+                    }
+                    throw err;
+                } finally {
+                    clearTimeout(timeoutHandle);
+                }
                 const text = await resp.text();
                 let body = {};
                 try {
@@ -18122,7 +18148,9 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                     if (fallbackTargetIp) {
                         setWarehouseSmInputValue('warehouseSmTargetIp', fallbackTargetIp);
                         warehouseSmLastScan = body;
-                        setWarehouseSmStatus(`Scan returned no definitive SM identity. Using default target IP ${fallbackTargetIp} for staging.`);
+                        const switchSshPort = body?.scan?.switch_ssh_port;
+                        const switchHint = switchSshPort ? ` Switch SSH connected on port ${switchSshPort}.` : '';
+                        setWarehouseSmStatus(`Scan returned no definitive SM identity. Using default target IP ${fallbackTargetIp} for staging.${switchHint}`);
                         return;
                     }
                     const err = new Error(body.error || `Scan failed (HTTP ${resp.status})`);
@@ -18140,13 +18168,15 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 const discoveredMac = body?.discovery?.wireless_mac || body?.discovery?.autofill?.mac_address || '';
                 const fwMatch = body?.discovery?.firmware_match;
                 const fwSuffix = fwMatch === false ? ' Firmware mismatch against required target.' : '';
+                const switchSshPort = body?.scan?.switch_ssh_port;
+                const switchHint = switchSshPort ? ` Switch SSH connected on port ${switchSshPort}.` : '';
                 setWarehouseSmStatus(
                     discoveredIp
-                        ? `Scan completed. Discovered SM at ${discoveredIp}${discoveredMac ? ` (${discoveredMac})` : ''}.${fwSuffix}`
+                        ? `Scan completed. Discovered SM at ${discoveredIp}${discoveredMac ? ` (${discoveredMac})` : ''}.${fwSuffix}${switchHint}`
                         : (() => {
                             const fallbackTargetIp = String(body?.fallback_target_ip || body?.scan?.fallback_target_ip || '192.168.0.1').trim();
                             setWarehouseSmInputValue('warehouseSmTargetIp', fallbackTargetIp);
-                            return `Scan completed without definitive SM identity. Using default target IP ${fallbackTargetIp} for staging.`;
+                            return `Scan completed without definitive SM identity. Using default target IP ${fallbackTargetIp} for staging.${switchHint}`;
                         })()
                 );
             }

@@ -13218,16 +13218,41 @@ def _warehouse_sm_discover(data: dict) -> dict:
         switch_probe_error = switch_probe.get('error') or 'Switch scan failed'
         switch_probe_status = int(switch_probe.get("status_code") or 500)
 
-    probe_limit = int(data.get('max_ip_probes') or 32)
-    probe_limit = min(max(probe_limit, 1), 128)
-    max_hosts_scan = int(data.get('max_hosts_scan') or 768)
-    max_hosts_scan = min(max(max_hosts_scan, 64), 4096)
+    probe_limit = int(data.get('max_ip_probes') or 4)
+    probe_limit = min(max(probe_limit, 1), 12)
+    max_hosts_scan = int(data.get('max_hosts_scan') or 128)
+    max_hosts_scan = min(max(max_hosts_scan, 32), 512)
     switch_ip = str(data.get("switch_ip", "")).strip()
+
+    if not switch_probe_ok:
+        ip_candidates = []
+        ip_candidates.extend([str(x).strip() for x in (data.get('ip_candidates') or []) if str(x).strip()])
+        ip_candidates.extend(_WAREHOUSE_SM_DEFAULT_IPS)
+        ip_candidates = [ip for ip in _warehouse_sm_unique(ip_candidates) if ip != switch_ip][:probe_limit]
+        fallback_target_ip = _warehouse_sm_pick_default_target_ip(ip_candidates)
+        return {
+            "success": False,
+            "error": f"{switch_probe_error}. Continuing with default SM target IP fallback is recommended.",
+            "scan": {
+                "selected_port": str(data.get("selected_port", "")).strip(),
+                "switch_profile": "switch-probe-unavailable",
+                "switch_ssh_port": None,
+                "switch_mgmt_cidrs": [],
+                "port_mac_candidates": [],
+                "ip_candidates": ip_candidates,
+                "probed": [],
+                "active_scan": {},
+                "switch_probe_error": switch_probe_error or None,
+                "fallback_target_ip": fallback_target_ip,
+            },
+            "fallback_target_ip": fallback_target_ip,
+            "status_code": switch_probe_status,
+        }
+
     ip_candidates = []
     ip_candidates.extend([str(x).strip() for x in (data.get('ip_candidates') or []) if str(x).strip()])
-    if switch_probe_ok:
-        ip_candidates.extend(switch_probe.get("ip_candidates", []))
     ip_candidates.extend(_WAREHOUSE_SM_DEFAULT_IPS)
+    ip_candidates.extend(switch_probe.get("ip_candidates", []))
     ip_candidates = [ip for ip in _warehouse_sm_unique(ip_candidates) if ip != switch_ip][:probe_limit]
 
     probed = []
@@ -13247,18 +13272,18 @@ def _warehouse_sm_discover(data: dict) -> dict:
             break
 
     active_scan_result = None
-    if not discovered:
+    enable_active_scan = bool(data.get("enable_active_scan"))
+    if not discovered and enable_active_scan:
         cidr_candidates = []
         cidr_candidates.extend(_warehouse_sm_parse_cidr_list(data.get("discovery_cidrs")))
         cidr_candidates.extend(_warehouse_sm_parse_cidr_list(os.getenv("WAREHOUSE_SM_DISCOVERY_CIDRS", "")))
-        if switch_probe_ok:
-            cidr_candidates.extend(_warehouse_sm_parse_cidr_list(switch_probe.get("switch_mgmt_cidrs", [])))
+        cidr_candidates.extend(_warehouse_sm_parse_cidr_list(switch_probe.get("switch_mgmt_cidrs", [])))
         cidr_candidates = _warehouse_sm_unique(cidr_candidates)
         if cidr_candidates:
             active_scan_result = _warehouse_sm_active_discovery(
                 cidrs=cidr_candidates,
                 device_password=device_password,
-                port_mac_candidates=switch_probe.get("port_mac_candidates", []) if switch_probe_ok else [],
+                port_mac_candidates=switch_probe.get("port_mac_candidates", []),
                 max_hosts_scan=max_hosts_scan,
                 max_probe_ips=probe_limit,
             )
@@ -13392,7 +13417,46 @@ def _warehouse_sm_background_task(task_id: str, payload: dict, username: str):
         _warehouse_sm_task_log(task_id, "Step 2/7: Discover SM on selected port.", "info", "discover")
         discovery_result = _warehouse_sm_discover(payload)
         if not discovery_result.get("success"):
-            raise RuntimeError(discovery_result.get("error") or "SM discovery failed")
+            fallback_ip = str(
+                payload.get("target_ip")
+                or discovery_result.get("fallback_target_ip")
+                or (discovery_result.get("scan") or {}).get("fallback_target_ip")
+                or ""
+            ).strip()
+            if fallback_ip:
+                _warehouse_sm_task_log(
+                    task_id,
+                    f"Discovery did not return a definitive SM. Falling back to target IP {fallback_ip} for baseline staging.",
+                    "warning",
+                    "discover",
+                )
+                discovery_result = {
+                    "success": True,
+                    "scan": discovery_result.get("scan") or {},
+                    "discovery": {
+                        "ip_address": fallback_ip,
+                        "device_type": "F4600C",
+                        "wireless_mac": str(payload.get("mac_address") or "").strip(),
+                        "firmware_version": "",
+                        "required_firmware": str(payload.get("required_firmware") or "5.10.4").strip(),
+                        "firmware_match": False,
+                        "autofill": {
+                            "target_ip": fallback_ip,
+                            "device_type": "F4600C",
+                            "mac_address": str(payload.get("mac_address") or "").strip(),
+                        },
+                    },
+                    "device_info": {},
+                    "device_password": str(
+                        payload.get("device_password")
+                        or os.getenv("NEXTLINK_SSH_PASSWORD")
+                        or os.getenv("SM_STANDARD_PW")
+                        or "admin"
+                    ).strip(),
+                }
+                payload["target_ip"] = fallback_ip
+            else:
+                raise RuntimeError(discovery_result.get("error") or "SM discovery failed")
         discovery = discovery_result.get("discovery", {})
         payload["target_ip"] = discovery.get("ip_address")
         payload["mac_address"] = payload.get("mac_address") or discovery.get("wireless_mac")
@@ -13491,13 +13555,16 @@ def _warehouse_sm_probe_ip(ip_address: str, password: str | None = None) -> dict
     except Exception as exc:
         return {"success": False, "message": f"Cambium module unavailable: {exc}"}
 
-    for device_type in _WAREHOUSE_SM_DEVICE_TYPES:
+    # Fast-path probing for warehouse staging: try likely SM models first and skip heavy pre-check tests.
+    preferred_types = ["F4600C", "CN4600", "F4525"]
+    device_types = _warehouse_sm_unique(preferred_types)
+    for device_type in device_types:
         try:
             info = EPMPConfig.get_device_info(
                 ip_address,
                 device_type,
                 password=password or None,
-                run_tests=True,
+                run_tests=False,
             )
             if info.get("success"):
                 return {
