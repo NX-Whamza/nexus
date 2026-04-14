@@ -12975,10 +12975,17 @@ def _warehouse_sm_apply_baseline(discovery: dict, payload: dict) -> dict:
     except Exception as exc:
         return {"success": False, "error": f"Cambium module unavailable: {exc}"}
 
-    target_ip = str(discovery.get("ip_address") or "").strip()
+    target_ip = str(discovery.get("ip_address") or payload.get("target_ip") or "").strip()
     device_type = str(discovery.get("device_type") or "F4600C").strip() or "F4600C"
     if not target_ip:
-        return {"success": False, "error": "No target SM IP for baseline apply"}
+        target_ip = _warehouse_sm_pick_default_target_ip(_WAREHOUSE_SM_PREFERRED_FALLBACK_IPS[:2])
+    target_candidates = _warehouse_sm_unique(
+        [
+            target_ip,
+            str(payload.get("target_ip") or "").strip(),
+            *_WAREHOUSE_SM_PREFERRED_FALLBACK_IPS[:2],
+        ]
+    )
 
     mac_address = str(payload.get("mac_address") or discovery.get("wireless_mac") or "").strip()
     payload_user_number = str(payload.get("user_number") or "").strip()
@@ -12996,93 +13003,105 @@ def _warehouse_sm_apply_baseline(discovery: dict, payload: dict) -> dict:
     if not cnm_url:
         return {"success": False, "error": "cnm_url is required for baseline configuration"}
 
-    existing_info = EPMPConfig.get_device_info(target_ip, device_type, password=password, run_tests=True)
-    existing_props = _warehouse_sm_extract_device_props(existing_info)
-    discovery_name = str(discovery.get("device_name") or "").strip()
-    existing_name = str(existing_props.get("systemConfigDeviceName") or existing_props.get("snmpSystemName") or "").strip()
-    discovery_match = re.search(r'NX-(\d+)', discovery_name, flags=re.IGNORECASE)
-    existing_match = re.search(r'NX-(\d+)', existing_name, flags=re.IGNORECASE)
-    user_number = payload_user_number or (discovery_match.group(1) if discovery_match else "") or (existing_match.group(1) if existing_match else "") or "000000"
-    latitude = payload_latitude or str(discovery.get("latitude") or existing_props.get("systemDeviceLocLatitude") or "0").strip()
-    longitude = payload_longitude or str(discovery.get("longitude") or existing_props.get("systemDeviceLocLongitude") or "0").strip()
-    height = payload_height or str(discovery.get("height") or existing_props.get("systemDeviceLocHeight") or "").strip()
-
-    params = {
-        "ip_address": target_ip,
-        "device_type": device_type,
-        "password": password,
-        "latitude": latitude or "0",
-        "longitude": longitude or "0",
-        "height": height if height else None,
-        "cnm_url": cnm_url,
-        "mac_address": mac_address,
-        "user_number": user_number,
-    }
-    params = {k: v for k, v in params.items() if v is not None}
-
-    d = None
-    reboot_requested = False
-    try:
-        d = EPMPConfig(**params, use_default=False)
-        d.init_session()
-        d._verify_configuration_valid()
-        plan = _warehouse_sm_build_dynamic_updates(existing_props, payload)
-
-        config = {"device_props": {}}
+    attempt_errors = []
+    for candidate_ip in target_candidates:
+        d = None
+        reboot_requested = False
         try:
-            loaded = d.get_standard_config()
-            if isinstance(loaded, dict):
-                config = loaded
-        except Exception:
+            existing_info = EPMPConfig.get_device_info(candidate_ip, device_type, password=password, run_tests=False)
+            existing_props = _warehouse_sm_extract_device_props(existing_info)
+            discovery_name = str(discovery.get("device_name") or "").strip()
+            existing_name = str(existing_props.get("systemConfigDeviceName") or existing_props.get("snmpSystemName") or "").strip()
+            discovery_match = re.search(r'NX-(\d+)', discovery_name, flags=re.IGNORECASE)
+            existing_match = re.search(r'NX-(\d+)', existing_name, flags=re.IGNORECASE)
+            user_number = payload_user_number or (discovery_match.group(1) if discovery_match else "") or (existing_match.group(1) if existing_match else "") or "000000"
+            latitude = payload_latitude or str(discovery.get("latitude") or existing_props.get("systemDeviceLocLatitude") or "0").strip()
+            longitude = payload_longitude or str(discovery.get("longitude") or existing_props.get("systemDeviceLocLongitude") or "0").strip()
+            height = payload_height or str(discovery.get("height") or existing_props.get("systemDeviceLocHeight") or "").strip()
+
+            params = {
+                "ip_address": candidate_ip,
+                "device_type": device_type,
+                "password": password,
+                "latitude": latitude or "0",
+                "longitude": longitude or "0",
+                "height": height if height else None,
+                "cnm_url": cnm_url,
+                "mac_address": mac_address,
+                "user_number": user_number,
+            }
+            params = {k: v for k, v in params.items() if v is not None}
+
+            d = EPMPConfig(**params, use_default=False)
+            d.init_session()
+            d._verify_configuration_valid()
+            plan = _warehouse_sm_build_dynamic_updates(existing_props, payload)
+
             config = {"device_props": {}}
-        if not isinstance(config.get("device_props"), dict):
-            config["device_props"] = {}
+            try:
+                loaded = d.get_standard_config()
+                if isinstance(loaded, dict):
+                    config = loaded
+            except Exception:
+                config = {"device_props": {}}
+            if not isinstance(config.get("device_props"), dict):
+                config["device_props"] = {}
 
-        d._configure_device_params(config)
+            d._configure_device_params(config)
 
-        def _restore_or_drop(prop_key: str):
-            prior = str(existing_props.get(prop_key) or "").strip()
-            if prior:
-                config["device_props"][prop_key] = prior
-            else:
-                config["device_props"].pop(prop_key, None)
+            def _restore_or_drop(prop_key: str):
+                prior = str(existing_props.get(prop_key) or "").strip()
+                if prior:
+                    config["device_props"][prop_key] = prior
+                else:
+                    config["device_props"].pop(prop_key, None)
 
-        if not payload_user_number:
-            _restore_or_drop("systemConfigDeviceName")
-            _restore_or_drop("snmpSystemName")
-            _restore_or_drop("snmpSystemDescription")
-        if not (payload_latitude and payload_longitude):
-            _restore_or_drop("sysLocation")
-            _restore_or_drop("systemDeviceLocLatitude")
-            _restore_or_drop("systemDeviceLocLongitude")
-        if not payload_height:
-            _restore_or_drop("systemDeviceLocHeight")
+            if not payload_user_number:
+                _restore_or_drop("systemConfigDeviceName")
+                _restore_or_drop("snmpSystemName")
+                _restore_or_drop("snmpSystemDescription")
+            if not (payload_latitude and payload_longitude):
+                _restore_or_drop("sysLocation")
+                _restore_or_drop("systemDeviceLocLatitude")
+                _restore_or_drop("systemDeviceLocLongitude")
+            if not payload_height:
+                _restore_or_drop("systemDeviceLocHeight")
 
-        config["device_props"].update(plan["updates"])
-        d.send_configuration({"device_props": config["device_props"]})
+            config["device_props"].update(plan["updates"])
+            d.send_configuration({"device_props": config["device_props"]})
 
-        if bool(payload.get("reboot_after_config", True)):
-            d.reboot()
-            reboot_requested = True
-            time.sleep(8)
+            if bool(payload.get("reboot_after_config", True)):
+                d.reboot()
+                reboot_requested = True
+                time.sleep(8)
 
-        return {
-            "success": True,
-            "target_ip": target_ip,
-            "device_type": device_type,
-            "reboot_requested": reboot_requested,
-            "applied_target_count": len(plan["applied_targets"]),
-            "applied_targets": plan["applied_targets"],
-            "unresolved_targets": plan["unresolved_targets"],
-        }
-    except Exception as exc:
-        return {"success": False, "error": str(exc), "target_ip": target_ip, "device_type": device_type}
-    finally:
-        try:
-            if d:
-                d.logout(suppress_info_log=True)
-        except Exception:
-            pass
+            return {
+                "success": True,
+                "target_ip": candidate_ip,
+                "device_type": device_type,
+                "reboot_requested": reboot_requested,
+                "applied_target_count": len(plan["applied_targets"]),
+                "applied_targets": plan["applied_targets"],
+                "unresolved_targets": plan["unresolved_targets"],
+                "attempted_target_ips": target_candidates,
+            }
+        except Exception as exc:
+            attempt_errors.append(f"{candidate_ip}: {exc}")
+        finally:
+            try:
+                if d:
+                    d.logout(suppress_info_log=True)
+            except Exception:
+                pass
+
+    return {
+        "success": False,
+        "error": "Baseline configuration failed on all target IP attempts",
+        "target_ip": target_ip,
+        "device_type": device_type,
+        "attempted_target_ips": target_candidates,
+        "details": attempt_errors,
+    }
 
 
 def _warehouse_sm_switch_run_script(
