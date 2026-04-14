@@ -12198,6 +12198,8 @@ _WAREHOUSE_SM_MAC_RE = re.compile(r'(?i)\b(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}\b')
 _WAREHOUSE_SM_MAC_DOT_RE = re.compile(r'(?i)\b[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4}\b')
 _WAREHOUSE_SM_IP_RE = re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b')
 _WAREHOUSE_SM_TASK_KIND = "warehouse_sm"
+_WAREHOUSE_SM_DEFAULT_ACCESS_LOCK = threading.Lock()
+_WAREHOUSE_SM_DEFAULT_ACCESS_ALIASES = set()
 _WAREHOUSE_SM_CLOSEOUT_REQUIRED = [
     ("latitude", "Latitude"),
     ("longitude", "Longitude"),
@@ -12321,6 +12323,158 @@ def _warehouse_sm_parse_ports(value, defaults=None):
         if 1 <= port <= 65535 and port not in fallback:
             fallback.append(port)
     return fallback or [22]
+
+
+def _warehouse_sm_env_bool(name: str, default: bool = False) -> bool:
+    raw = str(os.getenv(name, "")).strip().lower()
+    if not raw:
+        return bool(default)
+    return raw in {"1", "true", "yes", "on"}
+
+
+def _warehouse_sm_default_access_alias_for_ip(ip_value: str) -> str | None:
+    try:
+        ip_obj = ipaddress.IPv4Address(str(ip_value).strip())
+    except Exception:
+        return None
+    if ip_obj in ipaddress.IPv4Network("192.168.0.0/24"):
+        return str(os.getenv("WAREHOUSE_SM_ALIAS_192_168_0", "192.168.0.254/24")).strip()
+    if ip_obj in ipaddress.IPv4Network("192.168.1.0/24"):
+        return str(os.getenv("WAREHOUSE_SM_ALIAS_192_168_1", "192.168.1.254/24")).strip()
+    return None
+
+
+def _warehouse_sm_detect_interface_for_switch(switch_ip: str) -> str:
+    override = str(os.getenv("WAREHOUSE_SM_SWITCH_INTERFACE", "")).strip()
+    if override:
+        return override
+    try:
+        route = subprocess.run(
+            ["ip", "route", "get", str(switch_ip).strip()],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        output = str(route.stdout or "") + "\n" + str(route.stderr or "")
+        match = re.search(r"\bdev\s+(\S+)", output)
+        if match:
+            return str(match.group(1) or "").strip()
+    except Exception:
+        pass
+    return ""
+
+
+def _warehouse_sm_interface_cidrs(interface_name: str) -> list[str]:
+    if not interface_name:
+        return []
+    try:
+        result = subprocess.run(
+            ["ip", "-o", "-4", "addr", "show", "dev", interface_name],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+    except Exception:
+        return []
+    cidrs = []
+    for line in str(result.stdout or "").splitlines():
+        match = re.search(r"\binet\s+(\d+\.\d+\.\d+\.\d+/\d+)", line)
+        if match:
+            cidrs.append(str(match.group(1)))
+    return _warehouse_sm_unique(cidrs)
+
+
+def _warehouse_sm_bootstrap_default_access(switch_ip: str, candidate_ips: list[str]) -> dict:
+    """
+    Best-effort Linux host alias bootstrap for default Cambium subnets (192.168.0/24, 192.168.1/24).
+    This is only applied when explicitly enabled or left at default-enabled.
+    """
+    result = {
+        "enabled": False,
+        "attempted": False,
+        "interface": "",
+        "required_aliases": [],
+        "added_aliases": [],
+        "existing_aliases": [],
+        "errors": [],
+    }
+
+    enabled = _warehouse_sm_env_bool("WAREHOUSE_SM_AUTO_DEFAULT_ACCESS", True)
+    result["enabled"] = enabled
+    if not enabled:
+        return result
+
+    if os.name != "posix":
+        result["enabled"] = False
+        return result
+
+    aliases = _warehouse_sm_unique(
+        [alias for alias in (_warehouse_sm_default_access_alias_for_ip(ip) for ip in (candidate_ips or [])) if alias]
+    )
+    result["required_aliases"] = aliases
+    if not aliases:
+        return result
+
+    iface = _warehouse_sm_detect_interface_for_switch(switch_ip)
+    result["interface"] = iface
+    if not iface:
+        result["errors"].append("unable to detect egress interface toward switch_ip")
+        return result
+
+    result["attempted"] = True
+    existing_cidrs = _warehouse_sm_interface_cidrs(iface)
+    existing_networks = set()
+    for cidr in existing_cidrs:
+        try:
+            existing_networks.add(str(ipaddress.ip_interface(cidr).network))
+        except Exception:
+            continue
+
+    for alias in aliases:
+        alias_key = f"{iface}|{alias}"
+        try:
+            alias_network = str(ipaddress.ip_interface(alias).network)
+        except Exception:
+            result["errors"].append(f"invalid alias CIDR configured: {alias}")
+            continue
+
+        if alias_network in existing_networks:
+            result["existing_aliases"].append(alias)
+            continue
+
+        with _WAREHOUSE_SM_DEFAULT_ACCESS_LOCK:
+            if alias_key in _WAREHOUSE_SM_DEFAULT_ACCESS_ALIASES:
+                result["existing_aliases"].append(alias)
+                continue
+
+        try:
+            add_result = subprocess.run(
+                ["ip", "address", "add", alias, "dev", iface],
+                capture_output=True,
+                text=True,
+                timeout=3,
+                check=False,
+            )
+        except Exception as exc:
+            result["errors"].append(f"failed to add alias {alias} on {iface}: {exc}")
+            continue
+
+        add_stdout = str(add_result.stdout or "")
+        add_stderr = str(add_result.stderr or "")
+        add_text = f"{add_stdout}\n{add_stderr}".lower()
+        if add_result.returncode == 0 or "file exists" in add_text:
+            with _WAREHOUSE_SM_DEFAULT_ACCESS_LOCK:
+                _WAREHOUSE_SM_DEFAULT_ACCESS_ALIASES.add(alias_key)
+            result["added_aliases"].append(alias)
+            continue
+
+        result["errors"].append(
+            f"failed to add alias {alias} on {iface} (rc={add_result.returncode}): {add_stderr.strip() or add_stdout.strip()}"
+        )
+
+    return result
 
 
 def _warehouse_sm_interface_candidates(port_value: str) -> list[str]:
@@ -13145,6 +13299,8 @@ def _warehouse_sm_apply_baseline(discovery: dict, payload: dict) -> dict:
             *_WAREHOUSE_SM_PREFERRED_FALLBACK_IPS[:2],
         ]
     )
+    switch_ip = str(payload.get("switch_ip") or "").strip()
+    default_access = _warehouse_sm_bootstrap_default_access(switch_ip=switch_ip, candidate_ips=target_candidates)
 
     mac_address = str(payload.get("mac_address") or discovery.get("wireless_mac") or "").strip()
     payload_user_number = str(payload.get("user_number") or "").strip()
@@ -13242,6 +13398,7 @@ def _warehouse_sm_apply_baseline(discovery: dict, payload: dict) -> dict:
                 "applied_targets": plan["applied_targets"],
                 "unresolved_targets": plan["unresolved_targets"],
                 "attempted_target_ips": target_candidates,
+                "default_access": default_access,
             }
         except Exception as exc:
             attempt_errors.append(f"{candidate_ip}: {exc}")
@@ -13258,6 +13415,7 @@ def _warehouse_sm_apply_baseline(discovery: dict, payload: dict) -> dict:
         "target_ip": target_ip,
         "device_type": device_type,
         "attempted_target_ips": target_candidates,
+        "default_access": default_access,
         "details": attempt_errors,
     }
 
@@ -13409,6 +13567,7 @@ def _warehouse_sm_discover(data: dict) -> dict:
         ip_candidates.extend([str(x).strip() for x in (data.get('ip_candidates') or []) if str(x).strip()])
         ip_candidates.extend(_WAREHOUSE_SM_DEFAULT_IPS)
         ip_candidates = [ip for ip in _warehouse_sm_unique(ip_candidates) if ip != switch_ip][:probe_limit]
+        default_access = _warehouse_sm_bootstrap_default_access(switch_ip=switch_ip, candidate_ips=ip_candidates)
         fallback_target_ip = _warehouse_sm_pick_default_target_ip(ip_candidates)
         return {
             "success": False,
@@ -13425,6 +13584,7 @@ def _warehouse_sm_discover(data: dict) -> dict:
                 "switch_probe_error": switch_probe_error or None,
                 "fallback_target_ip": fallback_target_ip,
                 "selected_port_state": {},
+                "default_access": default_access,
             },
             "fallback_target_ip": fallback_target_ip,
             "status_code": switch_probe_status,
@@ -13435,6 +13595,7 @@ def _warehouse_sm_discover(data: dict) -> dict:
     ip_candidates.extend(_WAREHOUSE_SM_DEFAULT_IPS)
     ip_candidates.extend(switch_probe.get("ip_candidates", []))
     ip_candidates = [ip for ip in _warehouse_sm_unique(ip_candidates) if ip != switch_ip][:probe_limit]
+    default_access = _warehouse_sm_bootstrap_default_access(switch_ip=switch_ip, candidate_ips=ip_candidates)
 
     probed = []
     discovered = None
@@ -13478,6 +13639,8 @@ def _warehouse_sm_discover(data: dict) -> dict:
         base_error = "No Cambium SM discovered from selected switch port/IP candidates"
         if switch_probe_error:
             base_error = f"{switch_probe_error}. {base_error}"
+        if (default_access.get("errors") or []) and default_access.get("required_aliases"):
+            base_error = f"{base_error}. Default subnet bootstrap failed: {(default_access.get('errors') or ['unknown error'])[0]}"
         return {
             "success": False,
             "error": base_error,
@@ -13493,6 +13656,7 @@ def _warehouse_sm_discover(data: dict) -> dict:
                 "switch_probe_error": switch_probe_error or None,
                 "fallback_target_ip": fallback_target_ip,
                 "selected_port_state": switch_probe.get("selected_port_state") or {},
+                "default_access": default_access,
             },
             "fallback_target_ip": fallback_target_ip,
             "status_code": 404 if switch_probe_ok else switch_probe_status,
@@ -13533,6 +13697,7 @@ def _warehouse_sm_discover(data: dict) -> dict:
             "active_scan": active_scan_result or {},
             "switch_probe_error": switch_probe_error or None,
             "selected_port_state": switch_probe.get("selected_port_state") or {},
+            "default_access": default_access,
         },
         "discovery": {
             "ip_address": autofill["target_ip"],
@@ -13640,6 +13805,21 @@ def _warehouse_sm_background_task(task_id: str, payload: dict, username: str):
                 payload["target_ip"] = fallback_ip
             else:
                 raise RuntimeError(discovery_result.get("error") or "SM discovery failed")
+        default_access = (discovery_result.get("scan") or {}).get("default_access") or {}
+        if (default_access.get("errors") or []) and (default_access.get("required_aliases") or []):
+            _warehouse_sm_task_log(
+                task_id,
+                f"Default-subnet access bootstrap warning: {(default_access.get('errors') or ['unknown error'])[0]}",
+                "warning",
+                "discover",
+            )
+        elif default_access.get("added_aliases"):
+            _warehouse_sm_task_log(
+                task_id,
+                f"Default-subnet access bootstrap added alias(es): {', '.join(default_access.get('added_aliases') or [])}",
+                "info",
+                "discover",
+            )
         discovery = discovery_result.get("discovery", {})
         payload["target_ip"] = discovery.get("ip_address")
         payload["mac_address"] = payload.get("mac_address") or discovery.get("wireless_mac")
@@ -13804,6 +13984,7 @@ def warehouse_sm_scan():
             ip_candidates.append(str(data.get("target_ip") or "").strip())
             ip_candidates.extend(_WAREHOUSE_SM_DEFAULT_IPS)
             ip_candidates = _warehouse_sm_unique([ip for ip in ip_candidates if ip])
+            default_access = _warehouse_sm_bootstrap_default_access(switch_ip=switch_ip, candidate_ips=ip_candidates)
             fallback_target_ip = _warehouse_sm_pick_default_target_ip(ip_candidates)
             return jsonify({
                 "success": False,
@@ -13818,6 +13999,7 @@ def warehouse_sm_scan():
                     "switch_probe_error": "scan-timeout",
                     "fallback_target_ip": fallback_target_ip,
                     "selected_port_state": {},
+                    "default_access": default_access,
                 },
                 "fallback_target_ip": fallback_target_ip,
             }), 200

@@ -18157,12 +18157,18 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                         const selectedPortState = body?.scan?.selected_port_state || {};
                         const rawPortStateLine = String(selectedPortState?.line || '').trim();
                         const poeMode = String(selectedPortState?.poe_mode || '').trim();
+                        const defaultAccess = body?.scan?.default_access || {};
+                        const defaultAccessErrors = Array.isArray(defaultAccess?.errors) ? defaultAccess.errors : [];
+                        const defaultAccessAdded = Array.isArray(defaultAccess?.added_aliases) ? defaultAccess.added_aliases : [];
                         const portStateHint = typeof selectedPortState?.link_up === 'boolean'
                             ? ` Port ${input.selected_port} link is ${selectedPortState.link_up ? 'up' : 'down'}.`
                             : (rawPortStateLine ? ` ${rawPortStateLine}` : '');
                         const poeHint = poeMode ? ` PoE mode: ${poeMode}.` : '';
+                        const defaultAccessHint = defaultAccessErrors.length
+                            ? ` Default IP access bootstrap warning: ${defaultAccessErrors[0]}`
+                            : (defaultAccessAdded.length ? ` Default IP access bootstrap added ${defaultAccessAdded.join(', ')}.` : '');
                         const switchHint = switchSshPort ? ` Switch SSH connected on port ${switchSshPort}.` : '';
-                        setWarehouseSmStatus(`Scan returned no definitive SM identity. Using default target IP ${fallbackTargetIp} for staging.${switchHint}${portStateHint}${poeHint}`);
+                        setWarehouseSmStatus(`Scan returned no definitive SM identity. Using default target IP ${fallbackTargetIp} for staging.${switchHint}${portStateHint}${poeHint}${defaultAccessHint}`);
                         return;
                     }
                     if (resp.status === 504) {
@@ -18190,18 +18196,24 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                 const selectedPortState = body?.scan?.selected_port_state || {};
                 const rawPortStateLine = String(selectedPortState?.line || '').trim();
                 const poeMode = String(selectedPortState?.poe_mode || '').trim();
+                const defaultAccess = body?.scan?.default_access || {};
+                const defaultAccessErrors = Array.isArray(defaultAccess?.errors) ? defaultAccess.errors : [];
+                const defaultAccessAdded = Array.isArray(defaultAccess?.added_aliases) ? defaultAccess.added_aliases : [];
                 const portStateHint = typeof selectedPortState?.link_up === 'boolean'
                     ? ` Port ${input.selected_port} link is ${selectedPortState.link_up ? 'up' : 'down'}.`
                     : (rawPortStateLine ? ` ${rawPortStateLine}` : '');
                 const poeHint = poeMode ? ` PoE mode: ${poeMode}.` : '';
+                const defaultAccessHint = defaultAccessErrors.length
+                    ? ` Default IP access bootstrap warning: ${defaultAccessErrors[0]}`
+                    : (defaultAccessAdded.length ? ` Default IP access bootstrap added ${defaultAccessAdded.join(', ')}.` : '');
                 const switchHint = switchSshPort ? ` Switch SSH connected on port ${switchSshPort}.` : '';
                 setWarehouseSmStatus(
                     discoveredIp
-                        ? `Scan completed. Discovered SM at ${discoveredIp}${discoveredMac ? ` (${discoveredMac})` : ''}.${fwSuffix}${switchHint}${portStateHint}${poeHint}`
+                        ? `Scan completed. Discovered SM at ${discoveredIp}${discoveredMac ? ` (${discoveredMac})` : ''}.${fwSuffix}${switchHint}${portStateHint}${poeHint}${defaultAccessHint}`
                         : (() => {
                             const fallbackTargetIp = String(body?.fallback_target_ip || body?.scan?.fallback_target_ip || '192.168.0.1').trim();
                             setWarehouseSmInputValue('warehouseSmTargetIp', fallbackTargetIp);
-                            return `Scan completed without definitive SM identity. Using default target IP ${fallbackTargetIp} for staging.${switchHint}${portStateHint}${poeHint}`;
+                            return `Scan completed without definitive SM identity. Using default target IP ${fallbackTargetIp} for staging.${switchHint}${portStateHint}${poeHint}${defaultAccessHint}`;
                         })()
                 );
             }
