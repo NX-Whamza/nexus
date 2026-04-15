@@ -10451,28 +10451,26 @@ def apply_compliance():
                 }
             })
         
-        # Extract loopback IP from config if not provided
+        # Extract loopback IP robustly if not provided.
         if not loopback_ip:
-            loopback_match = re.search(r'/ip address\s+add address=([0-9.]+/[0-9]+)\s+interface=loop0', config, re.IGNORECASE)
-            if loopback_match:
-                loopback_ip = loopback_match.group(1)
-            else:
-                # Try alternative pattern
-                loopback_match = re.search(r'interface=loop0.*?address=([0-9.]+/[0-9]+)', config, re.IGNORECASE)
-                if loopback_match:
-                    loopback_ip = loopback_match.group(1)
-        
-        if not loopback_ip:
-            loopback_ip = "10.0.0.1/32"  # Default fallback
+            loopback_ip = _extract_loopback_ip_cidr(config, default="10.0.0.1/32")
         
         print(f"[COMPLIANCE] Applying RFC-09-10-25 compliance to configuration (additive, non-destructive)...")
         
         # Get compliance blocks (GitLab-first, hardcoded fallback)
         _lip = (loopback_ip or "10.0.0.1/32").split("/")[0]
-        compliance_blocks = _get_dynamic_compliance_blocks(loopback_ip)
+        compliance_blocks, compliance_source = _get_dynamic_compliance_blocks(loopback_ip, return_source=True)
+        raw_text = _get_raw_gitlab_compliance_text(_lip)
         
-        # Inject compliance into config (additive, preserves existing configs)
-        compliant_config = inject_compliance_blocks(config, compliance_blocks, loopback_ip=_lip)
+        # Inject compliance into config. In "apply compliance" mode we always
+        # refresh from current source-of-truth to replace stale blocks.
+        compliant_config = inject_compliance_blocks(
+            config,
+            compliance_blocks,
+            loopback_ip=_lip,
+            raw_text_override=raw_text,
+            force_refresh=True,
+        )
         
         # Validate compliance
         compliance_validation = validate_compliance(compliant_config)
@@ -10485,7 +10483,8 @@ def apply_compliance():
         return jsonify({
             'success': True,
             'config': compliant_config,
-            'compliance': compliance_validation
+            'compliance': compliance_validation,
+            'compliance_source': compliance_source,
         })
         
     except Exception as e:
@@ -11284,6 +11283,7 @@ def inject_compliance_blocks(
     loopback_ip: str = "10.0.0.1",
     stripped_ips_out: set = None,
     raw_text_override: str | None = None,
+    force_refresh: bool = False,
 ) -> str:
     """
     Inject compliance into a RouterOS configuration.
@@ -11333,8 +11333,17 @@ def inject_compliance_blocks(
     
     # Check if compliance section already exists (to avoid double-injection)
     if "# RFC-09-10-25 COMPLIANCE STANDARDS" in config or "RFC-09-10-25 COMPLIANCE STANDARDS" in config[-3000:]:
-        print("[COMPLIANCE] Compliance section already exists, skipping duplicate injection")
-        return config
+        if not force_refresh:
+            print("[COMPLIANCE] Compliance section already exists, skipping duplicate injection")
+            return config
+        # Force-refresh mode is used by Compliance Scanner "Apply Fix":
+        # remove the old appended compliance section and rebuild from current
+        # dynamic source of truth.
+        marker_match = re.search(r'(?m)^#\s*RFC-09-10-25 COMPLIANCE STANDARDS\s*$', config)
+        if marker_match:
+            marker_idx = marker_match.start()
+            config = config[:marker_idx].rstrip() + "\n"
+            print("[COMPLIANCE] Existing compliance section removed for dynamic refresh")
 
     # ── 0. Obtain the compliance text we will append ──
     # Get it FIRST so we can parse it for dynamic section extraction.
@@ -11440,6 +11449,271 @@ def inject_compliance_blocks(
     
     print(f"[COMPLIANCE] Injected GitLab parsed blocks compliance")
     return config.rstrip() + "\n" + compliance_section
+
+
+def _normalize_compliance_token_value(value: str, key: str = "") -> str:
+    text = str(value or "").strip()
+    if len(text) >= 2 and ((text[0] == '"' and text[-1] == '"') or (text[0] == "'" and text[-1] == "'")):
+        text = text[1:-1]
+    text = re.sub(r"\s+", " ", text.strip().lower())
+
+    # RouterOS policy/token lists are order-insensitive for compliance checks.
+    if key in {"policy", "connection-state", "service", "topics", "topic"} and "," in text:
+        parts = [p.strip() for p in text.split(",") if p.strip()]
+        if parts:
+            text = ",".join(sorted(parts))
+    return text
+
+
+def _extract_loopback_ip_cidr(config_text: str, default: str = "10.0.0.1/32") -> str:
+    """
+    Extract loopback IP CIDR from RouterOS export text.
+
+    Supports both inline and section-style exports, including lines where
+    additional keys appear between address and interface:
+      add address=10.3.0.84 comment=loop0 interface=loop0 network=10.3.0.84
+    """
+    text = str(config_text or "")
+    current_section = ""
+
+    def _extract_from_command(cmd: str) -> str | None:
+        line = str(cmd or "").strip()
+        if not line:
+            return None
+        if "address=" not in line.lower():
+            return None
+        if not re.search(r"\binterface=(loop0|loopback|lo)\b", line, flags=re.IGNORECASE):
+            return None
+        m = re.search(r"\baddress=(\d+\.\d+\.\d+\.\d+(?:/\d{1,2})?)\b", line, flags=re.IGNORECASE)
+        if not m:
+            return None
+        cidr = str(m.group(1) or "").strip()
+        if "/" not in cidr:
+            cidr = f"{cidr}/32"
+        return cidr
+
+    # Try section-aware parsing first.
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("/"):
+            if line.lower().startswith("/ip address"):
+                current_section = "/ip address"
+                inline = line[len("/ip address"):].strip()
+                if inline:
+                    found = _extract_from_command(inline)
+                    if found:
+                        return found
+                continue
+            current_section = ""
+            continue
+        if current_section == "/ip address":
+            found = _extract_from_command(line)
+            if found:
+                return found
+
+    # Fallback: broad scan over full text when section markers are unusual.
+    found = _extract_from_command(text.replace("\r", " "))
+    if found:
+        return found
+    return str(default or "10.0.0.1/32")
+
+
+def _extract_compliance_kv_tokens(line: str) -> set[str]:
+    tokens = set()
+    for match in re.finditer(r'([A-Za-z0-9_.:-]+)=("([^"\\]|\\.)*"|\[[^\]]+\]|[^\s]+)', str(line or "")):
+        key = str(match.group(1) or "").strip().lower()
+        if not key or key in {"comment", "secret", "password", "passphrase"}:
+            continue
+        value = _normalize_compliance_token_value(match.group(2) or "", key=key)
+        if value:
+            tokens.add(f"{key}={value}")
+    return tokens
+
+
+def _iter_routeros_logical_lines(config_text: str) -> list[str]:
+    """
+    Join RouterOS line continuations (trailing backslash) into logical lines.
+    """
+    logical_lines = []
+    buffer = ""
+    for raw in str(config_text or "").splitlines():
+        line = str(raw or "").rstrip()
+        if not buffer:
+            buffer = line
+        else:
+            segment = line.lstrip()
+            if buffer and not buffer.endswith((" ", "\t")) and segment and not segment.startswith((" ", "\t", "/")):
+                buffer += " "
+            buffer += segment
+
+        if buffer.endswith("\\"):
+            buffer = buffer[:-1]
+            continue
+
+        logical_lines.append(buffer)
+        buffer = ""
+
+    if buffer:
+        logical_lines.append(buffer)
+    return logical_lines
+
+
+def _iter_compliance_managed_tokens(config_text: str, managed_sections: set[str], managed_lists: set[str]) -> list[dict]:
+    rows = []
+    current_section = ""
+    managed_sections_l = {str(s or "").strip().lower() for s in (managed_sections or set()) if str(s or "").strip()}
+    managed_lists_l = {str(s or "").strip().lower() for s in (managed_lists or set()) if str(s or "").strip()}
+
+    for line in _iter_routeros_logical_lines(config_text):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or stripped.startswith(":"):
+            continue
+
+        section = current_section
+        command_text = stripped
+        if stripped.startswith("/"):
+            # Inline command style: /ip service set ... OR plain header style: /ip service
+            match = re.match(
+                r'^(/[A-Za-z0-9 _./:-]+?)(?:\s+(add|set|rem|remove|enable|disable|print|find)\b(.*))?$',
+                stripped,
+                flags=re.IGNORECASE,
+            )
+            if not match:
+                current_section = stripped.split()[0].strip().lower()
+                continue
+            section = str(match.group(1) or "").strip().lower()
+            current_section = section
+            verb = str(match.group(2) or "").strip().lower()
+            rest = str(match.group(3) or "").strip()
+            if not verb:
+                continue
+            command_text = f"{verb} {rest}".strip()
+        elif not section:
+            continue
+
+        section_l = section.lower()
+        if section_l != "/ip firewall address-list" and section_l not in managed_sections_l:
+            continue
+
+        command_l = command_text.lower()
+        if command_l.startswith(("rem ", "remove ", "print ", "find ", ":foreach")):
+            continue
+
+        tokens = _extract_compliance_kv_tokens(command_text)
+        # RouterOS export often uses positional object identifiers:
+        #   set ssh disabled=no port=22
+        # Normalize that to name=<id> so it can match compliance lines that use
+        # find/name syntax:
+        #   set [find name=ssh] disabled=no port=22
+        cmd_l = command_text.lower().strip()
+        if cmd_l.startswith("set "):
+            parts = command_text.split()
+            if len(parts) >= 2:
+                second = str(parts[1] or "").strip()
+                if second and "=" not in second and not second.startswith("["):
+                    if section_l in {
+                        "/ip service",
+                        "/system logging action",
+                        "/system logging",
+                        "/ip firewall service-port",
+                        "/snmp community",
+                        "/user group",
+                    }:
+                        tokens.add(f"name={_normalize_compliance_token_value(second)}")
+        if not tokens:
+            continue
+
+        if section_l == "/ip firewall address-list":
+            list_token = next((t for t in tokens if t.startswith("list=")), "")
+            if not list_token:
+                continue
+            list_name = list_token.split("=", 1)[1].strip().lower()
+            if managed_lists_l and list_name not in managed_lists_l:
+                continue
+
+        rows.append({"section": section_l, "tokens": tokens})
+
+    return rows
+
+
+def _evaluate_dynamic_compliance_scan(
+    config_text: str,
+    fixed_config: str,
+    managed_sections: set[str],
+    managed_lists: set[str],
+    max_checks: int = 240,
+) -> dict:
+    expected_rows = _iter_compliance_managed_tokens(fixed_config, managed_sections, managed_lists)
+    if max_checks > 0 and len(expected_rows) > max_checks:
+        expected_rows = expected_rows[:max_checks]
+    actual_rows = _iter_compliance_managed_tokens(config_text, managed_sections, managed_lists)
+
+    actual_by_section = {}
+    actual_by_section_anchor = {}
+
+    def _anchors_for(tokens: set[str]) -> set[str]:
+        anchors = set()
+        for token in (tokens or set()):
+            if token.startswith(("name=", "list=", "chain=", "topics=", "topic=")):
+                anchors.add(token)
+        return anchors
+
+    for row in actual_rows:
+        actual_by_section.setdefault(row["section"], []).append(row["tokens"])
+        for anchor in _anchors_for(row["tokens"]):
+            sec_map = actual_by_section_anchor.setdefault(row["section"], {})
+            sec_map.setdefault(anchor, set()).update(row["tokens"])
+
+    checks = []
+    missing_items = []
+    passed = 0
+    for idx, row in enumerate(expected_rows):
+        section = row["section"]
+        expected_tokens = row["tokens"]
+        candidates = actual_by_section.get(section, [])
+        is_match = any(expected_tokens.issubset(c) for c in candidates)
+        # Handle split commands on the same object: allow union-of-tokens across
+        # lines that share a stable anchor (name/list/chain/topics).
+        if not is_match:
+            expected_anchors = _anchors_for(expected_tokens)
+            if expected_anchors:
+                sec_anchors = actual_by_section_anchor.get(section, {})
+                for anchor in expected_anchors:
+                    union_tokens = sec_anchors.get(anchor, set())
+                    if union_tokens and expected_tokens.issubset(union_tokens):
+                        is_match = True
+                        break
+        if is_match:
+            passed += 1
+        label_tokens = sorted(expected_tokens)
+        short_label = ", ".join(label_tokens[:3]) if label_tokens else "(no tokens)"
+        label = f"{section}: {short_label}"
+        check = {
+            "id": f"dyn_{idx+1}",
+            "category": section,
+            "label": label[:220],
+            "severity": "hard",
+            "passed": is_match,
+        }
+        checks.append(check)
+        if not is_match:
+            missing_items.append(label[:220])
+
+    total = len(expected_rows)
+    score = round((passed / total) * 100) if total else 100
+    return {
+        "checks": checks,
+        "hard_passed": passed,
+        "hard_total": total,
+        "soft_passed": 0,
+        "soft_total": 0,
+        "score": score,
+        "compliant": (passed == total),
+        "missing_items": missing_items[:120],
+        "warnings": [],
+    }
 
 def validate_translation(source, translated, compliance_replaced_ips=None):
     """Comprehensive validation to ensure all important information is preserved.
@@ -26623,8 +26897,15 @@ def bulk_compliance_scan():
                     client.connect(hostname=host_ip, port=port,
                                    username=SSH_USERNAME, password=SSH_PASSWORD,
                                    timeout=10, banner_timeout=10, auth_timeout=10)
-                    stdin, stdout, stderr = client.exec_command('export', timeout=30)
-                    output = stdout.read().decode('utf-8', errors='replace')
+                    output = ""
+                    for export_cmd, export_timeout in (("export verbose", 70), ("export", 35)):
+                        try:
+                            stdin, stdout, stderr = client.exec_command(export_cmd, timeout=export_timeout)
+                            output = stdout.read().decode('utf-8', errors='replace')
+                            if output and output.strip():
+                                break
+                        except Exception:
+                            output = ""
                     if output and output.strip():
                         return {'name': host_ip, 'config_text': normalize_line_breaks(output), 'port': port}
                 except paramiko.AuthenticationException:
@@ -26740,53 +27021,94 @@ def bulk_compliance_scan():
         m_ver = re.search(r'(?m)^\s*#.*RouterOS\s+(\S+)', config_text)
         if m_ver: version = m_ver.group(1).strip()
 
-        # Run detailed checks
+        # Prefer dynamic compliance evaluation against the live compliance script.
         checks = []
         hard_passed = 0
         soft_passed = 0
+        hard_total = total_hard
+        soft_total = total_soft
+        score = 0
+        compliant = False
+        missing_items = []
+        warnings = []
+        compliance_source = "fallback"
+        fixed_config_candidate = ""
 
-        for chk in COMPLIANCE_CHECKS:
-            passed = bool(re.search(chk['pattern'], config_lower if chk['id'] not in ('sys_snmp',) else config_text))
-            if passed: hard_passed += 1
-            checks.append({
-                'id': chk['id'], 'category': chk['category'], 'label': chk['label'],
-                'severity': 'hard', 'passed': passed
-            })
+        dynamic_eval = None
+        try:
+            loopback_ip = _extract_loopback_ip_cidr(config_text, default="10.0.0.1/32")
+            _lip = loopback_ip.split("/")[0]
 
-        for chk in SOFT_CHECKS:
-            passed = bool(re.search(chk['pattern'], config_lower if chk['id'] not in ('radius_primary','radius_secondary') else config_text))
-            if passed: soft_passed += 1
-            checks.append({
-                'id': chk['id'], 'category': chk['category'], 'label': chk['label'],
-                'severity': 'soft', 'passed': passed
-            })
+            compliance_blocks, compliance_source = _get_dynamic_compliance_blocks(loopback_ip, return_source=True)
+            raw_text = _get_raw_gitlab_compliance_text(_lip)
+            parse_text = raw_text or "\n".join(v for v in (compliance_blocks or {}).values() if v)
+            managed_sections, managed_lists = _extract_compliance_managed_sections(parse_text) if parse_text else (set(), set())
+            managed_sections = (managed_sections or set()) | _COMPLIANCE_ALWAYS_STRIP_SECTIONS
 
-        # Score: hard checks = 80% weight, soft checks = 20% weight
-        hard_pct = (hard_passed / total_hard * 100) if total_hard else 100
-        soft_pct = (soft_passed / total_soft * 100) if total_soft else 100
-        score = round(hard_pct * 0.8 + soft_pct * 0.2)
+            fixed_config_candidate = inject_compliance_blocks(
+                config_text,
+                compliance_blocks,
+                loopback_ip=_lip,
+                raw_text_override=raw_text,
+                force_refresh=True,
+            )
+            dynamic_eval = _evaluate_dynamic_compliance_scan(
+                config_text=config_text,
+                fixed_config=fixed_config_candidate,
+                managed_sections=managed_sections,
+                managed_lists=managed_lists,
+            )
+        except Exception as _dyn_exc:
+            print(f"[COMPLIANCE-SCAN] Dynamic evaluation failed for {name}: {_dyn_exc}")
+            dynamic_eval = None
+
+        if dynamic_eval and dynamic_eval.get("hard_total", 0) > 0:
+            checks = dynamic_eval.get("checks", [])
+            hard_passed = int(dynamic_eval.get("hard_passed", 0))
+            hard_total = int(dynamic_eval.get("hard_total", 0))
+            soft_passed = int(dynamic_eval.get("soft_passed", 0))
+            soft_total = int(dynamic_eval.get("soft_total", 0))
+            score = int(dynamic_eval.get("score", 0))
+            compliant = bool(dynamic_eval.get("compliant", False))
+            missing_items = list(dynamic_eval.get("missing_items", []) or [])
+            warnings = list(dynamic_eval.get("warnings", []) or [])
+        else:
+            # Fallback: legacy static checks
+            for chk in COMPLIANCE_CHECKS:
+                passed = bool(re.search(chk['pattern'], config_lower if chk['id'] not in ('sys_snmp',) else config_text))
+                if passed:
+                    hard_passed += 1
+                checks.append({
+                    'id': chk['id'], 'category': chk['category'], 'label': chk['label'],
+                    'severity': 'hard', 'passed': passed
+                })
+
+            for chk in SOFT_CHECKS:
+                passed = bool(re.search(chk['pattern'], config_lower if chk['id'] not in ('radius_primary','radius_secondary') else config_text))
+                if passed:
+                    soft_passed += 1
+                checks.append({
+                    'id': chk['id'], 'category': chk['category'], 'label': chk['label'],
+                    'severity': 'soft', 'passed': passed
+                })
+
+            hard_pct = (hard_passed / hard_total * 100) if hard_total else 100
+            soft_pct = (soft_passed / soft_total * 100) if soft_total else 100
+            score = round(hard_pct * 0.8 + soft_pct * 0.2)
+            compliant = (hard_passed == hard_total)
+            try:
+                official = validate_compliance(config_text)
+                failed_check_labels = set(c['label'] for c in checks if not c['passed'])
+                missing_items = [m for m in official.get('missing_items', []) if any(fl.lower() in m.lower() for fl in failed_check_labels)] if failed_check_labels else []
+                if not missing_items and not compliant:
+                    missing_items = [c['label'] for c in checks if not c['passed'] and c['severity'] == 'hard']
+                warnings = official.get('warnings', [])
+            except Exception:
+                missing_items = [c['label'] for c in checks if not c['passed'] and c['severity'] == 'hard']
+                warnings = [c['label'] for c in checks if not c['passed'] and c['severity'] == 'soft']
 
         grade = 'A' if score >= 90 else 'B' if score >= 75 else 'C' if score >= 60 else 'D' if score >= 40 else 'F'
         grade_counts[grade] += 1
-
-        # Derive compliant from the regex-based score (accurate against SSH export output)
-        # validate_compliance() uses substring matching that fails on export's extra properties
-        # like address="" in /ip service lines, so we only use it for informational missing_items
-        compliant = (hard_passed == total_hard)  # All 22 hard checks must pass
-
-        # Run validate_compliance() for informational missing_items list (NOT for compliant decision)
-        try:
-            official = validate_compliance(config_text)
-            # Merge: only keep missing_items that also failed in our regex checks
-            failed_check_labels = set(c['label'] for c in checks if not c['passed'])
-            missing_items = [m for m in official.get('missing_items', []) if any(fl.lower() in m.lower() for fl in failed_check_labels)] if failed_check_labels else []
-            # Build missing_items from failed regex checks if validate gave us nothing useful
-            if not missing_items and not compliant:
-                missing_items = [c['label'] for c in checks if not c['passed'] and c['severity'] == 'hard']
-            warnings = official.get('warnings', [])
-        except Exception:
-            missing_items = [c['label'] for c in checks if not c['passed'] and c['severity'] == 'hard']
-            warnings = [c['label'] for c in checks if not c['passed'] and c['severity'] == 'soft']
 
         result = {
             'name': name,
@@ -26797,38 +27119,48 @@ def bulk_compliance_scan():
             'compliant': compliant,
             'score': score,
             'grade': grade,
-            'total_checks': total_all,
+            'total_checks': hard_total + soft_total,
             'hard_passed': hard_passed,
-            'hard_total': total_hard,
+            'hard_total': hard_total,
             'soft_passed': soft_passed,
-            'soft_total': total_soft,
+            'soft_total': soft_total,
             'checks': checks,
             'missing_items': missing_items,
             'warnings': warnings,
-            'config_lines': len(config_text.splitlines())
+            'config_lines': len(config_text.splitlines()),
+            'compliance_source': compliance_source,
         }
 
         # Apply fix if requested and device has failed hard checks
         if apply_fix and not compliant:
             try:
-                loopback_ip = ''
-                lm = re.search(r'/ip address\s+add address=([0-9.]+/[0-9]+)\s+interface=loop0', config_text, re.IGNORECASE)
-                if lm: loopback_ip = lm.group(1)
-                if not loopback_ip: loopback_ip = '10.0.0.1/32'
+                loopback_ip = _extract_loopback_ip_cidr(config_text, default='10.0.0.1/32')
                 _lip = loopback_ip.split('/')[0]
-                compliance_blocks = _get_dynamic_compliance_blocks(loopback_ip)
-                fixed_config = inject_compliance_blocks(config_text, compliance_blocks, loopback_ip=_lip)
-                # Re-score with the same regex checks (not validate_compliance)
-                fixed_lower = fixed_config.lower()
-                fixed_hard = sum(1 for chk in COMPLIANCE_CHECKS if re.search(chk['pattern'], fixed_lower if chk['id'] not in ('sys_snmp',) else fixed_config))
-                fixed_soft = sum(1 for chk in SOFT_CHECKS if re.search(chk['pattern'], fixed_lower if chk['id'] not in ('radius_primary','radius_secondary') else fixed_config))
-                fixed_hard_pct = (fixed_hard / total_hard * 100) if total_hard else 100
-                fixed_soft_pct = (fixed_soft / total_soft * 100) if total_soft else 100
-                fixed_score = round(fixed_hard_pct * 0.8 + fixed_soft_pct * 0.2)
+                compliance_blocks, fix_source = _get_dynamic_compliance_blocks(loopback_ip, return_source=True)
+                raw_text = _get_raw_gitlab_compliance_text(_lip)
+                fixed_config = fixed_config_candidate or inject_compliance_blocks(
+                    config_text,
+                    compliance_blocks,
+                    loopback_ip=_lip,
+                    raw_text_override=raw_text,
+                    force_refresh=True,
+                )
+
+                parse_text = raw_text or "\n".join(v for v in (compliance_blocks or {}).values() if v)
+                managed_sections, managed_lists = _extract_compliance_managed_sections(parse_text) if parse_text else (set(), set())
+                managed_sections = (managed_sections or set()) | _COMPLIANCE_ALWAYS_STRIP_SECTIONS
+                fixed_eval = _evaluate_dynamic_compliance_scan(
+                    config_text=fixed_config,
+                    fixed_config=fixed_config,
+                    managed_sections=managed_sections,
+                    managed_lists=managed_lists,
+                )
+
                 result['fixed_config'] = fixed_config
-                result['fixed_compliant'] = (fixed_hard == total_hard)
-                result['fixed_score'] = fixed_score
-                result['fixed_missing'] = [chk['label'] for chk in COMPLIANCE_CHECKS if not re.search(chk['pattern'], fixed_lower if chk['id'] not in ('sys_snmp',) else fixed_config)]
+                result['fixed_compliant'] = bool(fixed_eval.get('compliant', True))
+                result['fixed_score'] = int(fixed_eval.get('score', 100))
+                result['fixed_missing'] = list(fixed_eval.get('missing_items', []) or [])
+                result['fixed_compliance_source'] = fix_source
             except Exception as e:
                 result['fix_error'] = str(e)
 
