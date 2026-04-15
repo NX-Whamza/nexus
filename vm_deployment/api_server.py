@@ -12595,27 +12595,31 @@ def _warehouse_sm_bootstrap_default_access(switch_ip: str, candidate_ips: list[s
                     _WAREHOUSE_SM_DEFAULT_ACCESS_ALIASES.add(alias_key)
                 result["added_aliases"].append(alias)
                 continue
-        except Exception:
-            add_result = None
-
-        ip_text = alias.split("/", 1)[0]
-        try:
-            ifconfig_result = subprocess.run(
-                ["ifconfig", iface, ip_text, "netmask", "255.255.255.0", "up"],
-                capture_output=True,
-                text=True,
-                timeout=3,
-                check=False,
-            )
-            if ifconfig_result.returncode == 0:
-                with _WAREHOUSE_SM_DEFAULT_ACCESS_LOCK:
-                    _WAREHOUSE_SM_DEFAULT_ACCESS_ALIASES.add(alias_key)
-                result["added_aliases"].append(alias)
-                continue
-            ifconfig_msg = str(ifconfig_result.stderr or ifconfig_result.stdout or "").strip()
             result["errors"].append(
-                f"failed to add alias {alias} on {iface}: {ifconfig_msg or 'ip/ifconfig add failed'}"
+                f"failed to add alias {alias} on {iface} (rc={add_result.returncode}): {add_stderr.strip() or add_stdout.strip() or 'ip address add failed'}"
             )
+            continue
+        except FileNotFoundError:
+            ip_text = alias.split("/", 1)[0]
+            try:
+                ifconfig_result = subprocess.run(
+                    ["ifconfig", iface, ip_text, "netmask", "255.255.255.0", "up"],
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
+                    check=False,
+                )
+                if ifconfig_result.returncode == 0:
+                    with _WAREHOUSE_SM_DEFAULT_ACCESS_LOCK:
+                        _WAREHOUSE_SM_DEFAULT_ACCESS_ALIASES.add(alias_key)
+                    result["added_aliases"].append(alias)
+                    continue
+                ifconfig_msg = str(ifconfig_result.stderr or ifconfig_result.stdout or "").strip()
+                result["errors"].append(
+                    f"failed to add alias {alias} on {iface}: {ifconfig_msg or 'ifconfig add failed'}"
+                )
+            except Exception as exc:
+                result["errors"].append(f"failed to add alias {alias} on {iface}: {exc}")
         except Exception as exc:
             result["errors"].append(f"failed to add alias {alias} on {iface}: {exc}")
 
@@ -12957,7 +12961,7 @@ def _warehouse_sm_switch_probe(
         commands=cmd_list,
         enter_enable=False,
         fail_on_cli_error=False,
-        settle_seconds=0.55,
+        settle_seconds=1.20,
     )
     if not full_probe.get("success"):
         return full_probe
@@ -12992,6 +12996,48 @@ def _warehouse_sm_switch_probe(
     if detected_profile == "netonix":
         netonix_discovery_entries = _warehouse_sm_parse_netonix_discovery(outputs_by_command.get("cat /tmp/discovery.json 2>/dev/null", ""))
         mactable_entries = _warehouse_sm_parse_netonix_mactable(outputs_by_command.get("cat /tmp/mactable.json 2>/dev/null", ""))
+        if not netonix_discovery_entries:
+            # Retry with focused commands when discovery output is not captured on first pass.
+            retry_probe = _warehouse_sm_switch_run_interactive(
+                switch_ip=switch_ip,
+                switch_username=switch_username,
+                switch_password=switch_password,
+                ssh_ports=[int(full_probe.get("switch_ssh_port"))] if full_probe.get("switch_ssh_port") else ssh_ports,
+                commands=[
+                    "switch -d",
+                    f"switch -p {selected_port}",
+                    "cat /tmp/discovery.json 2>/dev/null",
+                    "cat /tmp/mactable.json 2>/dev/null",
+                ],
+                enter_enable=False,
+                fail_on_cli_error=False,
+                settle_seconds=1.45,
+            )
+            if retry_probe.get("success"):
+                retry_outputs = retry_probe.get("commands") or []
+                if retry_outputs:
+                    outputs.extend(retry_outputs)
+                    for item in retry_outputs:
+                        cmd_key = str(item.get("command") or "").strip()
+                        cmd_out = str(item.get("output") or "")
+                        if cmd_key and cmd_out:
+                            outputs_by_command[cmd_key] = cmd_out
+                    all_text = "\n".join((x.get("output") or "") for x in outputs)
+                    netonix_discovery_entries = _warehouse_sm_parse_netonix_discovery(outputs_by_command.get("cat /tmp/discovery.json 2>/dev/null", ""))
+                    mactable_entries = _warehouse_sm_parse_netonix_mactable(outputs_by_command.get("cat /tmp/mactable.json 2>/dev/null", ""))
+                    if not netonix_port_line:
+                        rx = re.compile(rf"Port\s+{re.escape(str(selected_port).strip())}\s*:\s*([^\n\r]+)", flags=re.IGNORECASE)
+                        match = rx.search(all_text)
+                        if match:
+                            netonix_port_line = match.group(0).strip()
+                            details = match.group(1).strip().lower()
+                            if "link down" in details:
+                                netonix_link_up = False
+                            elif "link " in details:
+                                netonix_link_up = True
+                            poe_match = re.search(r"poe\s+([A-Za-z0-9]+)", netonix_port_line, flags=re.IGNORECASE)
+                            if poe_match:
+                                netonix_poe_mode = str(poe_match.group(1) or "").strip()
         selected_port_text = str(selected_port or "").strip()
         netonix_selected_entries = [
             entry for entry in netonix_discovery_entries if str(entry.get("port") or "").strip() == selected_port_text
