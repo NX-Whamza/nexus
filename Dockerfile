@@ -3,12 +3,16 @@ FROM python:3.11-slim
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    NEXUS_UVICORN_WORKERS=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
     curl \
+    iproute2 \
+    iputils-ping \
+    net-tools \
     libsnmp-dev \
     libsmi2-dev \
     pkg-config \
@@ -24,4 +28,4 @@ COPY . .
 
 EXPOSE 5000
 
-CMD ["uvicorn", "--app-dir", "vm_deployment", "fastapi_server:app", "--host", "0.0.0.0", "--port", "5000", "--workers", "8"]
+CMD ["sh", "-c", "uvicorn --app-dir vm_deployment fastapi_server:app --host 0.0.0.0 --port 5000 --workers ${NEXUS_UVICORN_WORKERS:-1}"]

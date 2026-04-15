@@ -43,6 +43,8 @@ services:
   backend:
     build: .
     restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
     logging:
       driver: json-file
       options:
@@ -67,6 +69,9 @@ services:
       NEXTLINK_SNMP_CONTACT: ${NEXTLINK_SNMP_CONTACT:-netops@team.nxlink.com}
       NEXTLINK_SSH_USERNAME: ${NEXTLINK_SSH_USERNAME:-}
       NEXTLINK_SSH_PASSWORD: ${NEXTLINK_SSH_PASSWORD:-}
+      # Warehouse SM default-radio access bootstrap (192.168.0.x from factory).
+      WAREHOUSE_SM_AUTO_DEFAULT_ACCESS: ${WAREHOUSE_SM_AUTO_DEFAULT_ACCESS:-true}
+      WAREHOUSE_SM_SWITCH_INTERFACE: ${WAREHOUSE_SM_SWITCH_INTERFACE:-}
       FTTH_USER_ROOT_PASSWORD: ${FTTH_USER_ROOT_PASSWORD:-CHANGE_ME}
       FTTH_USER_DEPLOYMENT_PASSWORD: ${FTTH_USER_DEPLOYMENT_PASSWORD:-CHANGE_ME}
       FTTH_USER_INFRA_PASSWORD: ${FTTH_USER_INFRA_PASSWORD:-CHANGE_ME}
@@ -104,6 +109,11 @@ services:
       AUTO_PURGE_BAD_AVIAT_LOGS_FW: ${AUTO_PURGE_BAD_AVIAT_LOGS_FW:-0.0.0}
       STARTUP_MAINTENANCE_MODE: ${STARTUP_MAINTENANCE_MODE:-background}
       STARTUP_MAINTENANCE_DELAY_SECONDS: ${STARTUP_MAINTENANCE_DELAY_SECONDS:-2}
+      # Keep default at 1 until async jobs/task state move to shared storage.
+      NEXUS_UVICORN_WORKERS: ${NEXUS_UVICORN_WORKERS:-1}
+      # Single process, but allow Flask routes to use a larger in-process thread pool.
+      NEXUS_WSGI_WORKERS: ${NEXUS_WSGI_WORKERS:-32}
+      NEXUS_WSGI_SEND_QUEUE_SIZE: ${NEXUS_WSGI_SEND_QUEUE_SIZE:-32}
       # Device auth defaults (also used by backend for SSH-fetch, Field Config Studio proxy)
       AP_STANDARD_PW: ${AP_STANDARD_PW:-CHANGE_ME}
       SM_STANDARD_PW: ${SM_STANDARD_PW:-CHANGE_ME}
