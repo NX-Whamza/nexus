@@ -35056,6 +35056,20 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
         let compScanDetailIdx = -1;
 
         const GRADE_COLORS = { A: '#27ae60', B: '#2ecc71', C: '#f39c12', D: '#e67e22', F: '#e74c3c' };
+        const compGradeFromScore = (score) => {
+            const s = Number(score) || 0;
+            return s >= 90 ? 'A' : s >= 75 ? 'B' : s >= 60 ? 'C' : s >= 40 ? 'D' : 'F';
+        };
+        const compNormalizeResult = (row) => {
+            if (!row || typeof row !== 'object') return row;
+            const r = { ...row };
+            const scoreNum = Number(r.score);
+            if (Number.isFinite(scoreNum)) {
+                r.score = Math.max(0, Math.min(100, Math.round(scoreNum)));
+                r.grade = compGradeFromScore(r.score);
+            }
+            return r;
+        };
 
         // ── SSH Fetch + Scan ──
         window.compScanSSH = async function () {
@@ -35080,7 +35094,7 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
                 });
                 const data = await resp.json();
                 if (data.error) { nocToast(data.error, 'error'); btn.disabled = false; btn.textContent = '📡 Fetch & Scan'; return; }
-                compScanResults = data.results || [];
+                compScanResults = (data.results || []).map(compNormalizeResult);
                 compRenderDashboard(data);
                 compRenderTable();
                 nocToast(`Compliance scan: ${data.compliant_count}/${data.total} compliant (Grade ${data.fleet_grade})`, data.fleet_grade === 'A' ? 'success' : 'warning');
@@ -35106,7 +35120,7 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
                 });
                 const data = await resp.json();
                 if (data.error) { nocToast(data.error, 'error'); return; }
-                compScanResults = data.results || [];
+                compScanResults = (data.results || []).map(compNormalizeResult);
                 compRenderDashboard(data);
                 compRenderTable();
                 const r = compScanResults[0];
@@ -35157,7 +35171,8 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
         function compRenderTable() {
             const tb = document.getElementById('compScanTableBody');
             if (!tb) return;
-            tb.innerHTML = compScanResults.map((r, i) => {
+            tb.innerHTML = compScanResults.map((raw, i) => {
+                const r = compNormalizeResult(raw);
                 if (!r.success) {
                     return `<tr><td>${i+1}</td><td>${escHtml(r.name)}</td><td colspan="8"><span class="status-badge error">❌ ${escHtml(r.error||'Failed')}</span></td><td></td></tr>`;
                 }
@@ -35186,9 +35201,10 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
         }
 
         window.compShowDetail = function (idx) {
-            const r = compScanResults[idx];
+            const r = compNormalizeResult(compScanResults[idx]);
             if (!r || !r.success) return;
             compScanDetailIdx = idx;
+            const source = (r.compliance_source || 'fallback').toString();
 
             document.getElementById('compScanDetailTitle').textContent = `Compliance: ${r.name} (${r.identity || r.model || 'device'}) — Grade ${r.grade}`;
             document.getElementById('compFixOneBtn').style.display = r.compliant ? 'none' : '';
@@ -35209,7 +35225,8 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
                         <strong>Identity:</strong> ${escHtml(r.identity || 'N/A')}<br>
                         <strong>Model:</strong> ${escHtml(r.model || 'N/A')}<br>
                         <strong>RouterOS:</strong> ${escHtml(r.version || 'N/A')}<br>
-                        <strong>Config Lines:</strong> ${r.config_lines || '-'}
+                        <strong>Config Lines:</strong> ${r.config_lines || '-'}<br>
+                        <strong>Compliance Source:</strong> ${escHtml(source)}
                     </div>
                 </div>
                 <div>
@@ -35222,6 +35239,11 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
                     </div>
                 </div>
             </div>`;
+            if (source.toLowerCase() !== 'gitlab') {
+                html += `<div style="background:#fff3cd;border:1px solid #ffecb5;color:#7a4d00;padding:10px;border-radius:6px;font-size:12px;margin:0 0 12px">
+                    Scanner used fallback/static checks for this result. If this is unexpected, refresh backend to latest build.
+                </div>`;
+            }
 
             // Check list by category
             html += '<h4 style="margin:12px 0 8px;color:var(--accent-color)">All Checks</h4>';
@@ -35279,7 +35301,7 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
                         body: JSON.stringify({ hosts, ports, apply_fix: true })
                     });
                     const data = await resp.json();
-                    compScanResults = data.results || [];
+                    compScanResults = (data.results || []).map(compNormalizeResult);
                     compRenderDashboard(data);
                     compRenderTable();
 
@@ -35354,11 +35376,11 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
                 const data = await resp.json();
                 if (data.error) { nocToast(data.error, 'error'); btn.disabled = false; btn.textContent = '🔧 Apply Compliance Fix'; return; }
 
-                const fixed = (data.results || [])[0];
+                const fixed = compNormalizeResult((data.results || [])[0]);
                 if (fixed && fixed.fixed_config) {
                     compDownloadFixedDirect(fixed);
                     // Update the result in the main list
-                    compScanResults[compScanDetailIdx] = { ...r, ...fixed, score: fixed.fixed_score || r.score };
+                    compScanResults[compScanDetailIdx] = compNormalizeResult({ ...r, ...fixed });
                     compRenderTable();
                     compShowDetail(compScanDetailIdx);
                     nocToast(`Compliance fix applied for ${r.name} — download started`, 'success');
