@@ -27098,7 +27098,7 @@ def bulk_compliance_scan():
                                    username=SSH_USERNAME, password=SSH_PASSWORD,
                                    timeout=10, banner_timeout=10, auth_timeout=10)
                     output = ""
-                    for export_cmd, export_timeout in (("export verbose", 70), ("export", 35)):
+                    for export_cmd, export_timeout in (("export compact", 70), ("export", 35)):
                         try:
                             stdin, stdout, stderr = client.exec_command(export_cmd, timeout=export_timeout)
                             output = stdout.read().decode('utf-8', errors='replace')

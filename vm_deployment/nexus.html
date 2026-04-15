@@ -35269,8 +35269,78 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
                 html += '</ul>';
             }
 
+            // Fix Script tab (shown only when fixed_config exists)
+            if (r.fixed_config) {
+                const fixScript = compExtractFixScript(r.fixed_config);
+                const fixHtml = compHighlightROS(fixScript);
+                html += `
+                <div style="margin-top:16px;border-top:1px solid var(--border-color);padding-top:12px">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                        <h4 style="margin:0;color:var(--accent-color)">Compliance Fix Script</h4>
+                        <div style="display:flex;gap:6px">
+                            <button onclick="compCopyFixScript(${idx})" style="background:var(--input-bg);color:var(--text-color);border:1px solid var(--border-color);padding:3px 10px;border-radius:4px;cursor:pointer;font-size:11px">Copy</button>
+                            <button onclick="compDownloadFixed(${idx})" style="background:#27ae60;color:#fff;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:11px">Download .rsc</button>
+                        </div>
+                    </div>
+                    <div style="font-size:11px;color:var(--text-color-secondary);margin-bottom:6px">
+                        ${fixScript.split('\n').length} lines · commands to bring device into compliance
+                    </div>
+                    <pre id="compFixPreview_${idx}" style="margin:0;padding:12px;background:#1a1a2e;color:#e0e0e0;border-radius:6px;font-family:'JetBrains Mono','Courier New',monospace;font-size:11px;line-height:1.6;max-height:340px;overflow:auto;white-space:pre;border:1px solid #333">${fixHtml}</pre>
+                </div>`;
+            }
+
             document.getElementById('compScanDetailContent').innerHTML = html;
             document.getElementById('compScanDetail').style.display = '';
+        };
+
+        // Extract only the compliance block from a fixed_config (strips the verbose device export header)
+        function compExtractFixScript(fixedConfig) {
+            if (!fixedConfig) return '';
+            // The compliance section is separated by the RFC header comment block
+            const sepPatterns = [
+                /# ={10,}\s*\n# RFC/,
+                /# ={10,}\s*\n#\s*COMPLIANCE/,
+                /# VARIABLES\s*\n:global/,
+            ];
+            for (const pat of sepPatterns) {
+                const m = fixedConfig.search(pat);
+                if (m !== -1) return fixedConfig.slice(m).trim();
+            }
+            // Fallback: if the script is entirely compliance (no RouterOS export header), return as-is
+            if (!fixedConfig.includes('# model =') && !fixedConfig.includes('/interface bridge\n')) return fixedConfig.trim();
+            // Last resort: find the first non-comment line that starts a compliance section
+            const lines = fixedConfig.split('\n');
+            const startIdx = lines.findIndex(l => l.startsWith('/ip service set') || l.startsWith('/snmp community') || l.startsWith('# IP SERVICES') || l.startsWith('# VARIABLES'));
+            if (startIdx > 0) return lines.slice(startIdx).join('\n').trim();
+            return fixedConfig.trim();
+        }
+
+        // RouterOS syntax highlighter (returns escaped HTML with span colors)
+        function compHighlightROS(text) {
+            return text.split('\n').map(line => {
+                const esc = escHtml(line);
+                // Section headers: /ip ..., /system ..., /routing ..., etc.
+                if (/^\/[a-z]/.test(line)) return `<span style="color:#7ec8e3;font-weight:600">${esc}</span>`;
+                // Full-line comments
+                if (/^\s*#/.test(line)) return `<span style="color:#6a9955">${esc}</span>`;
+                // Commands: add, set, rem, :if, :foreach, :global, :local
+                if (/^\s*(add|set|rem|:if|:foreach|:global|:local)\b/.test(line)) {
+                    // Highlight key=value pairs
+                    return esc.replace(/\b([a-zA-Z_-]+=)("[^"]*"|[^\s]+)/g,
+                        (_, k, v) => `<span style="color:#9cdcfe">${k}</span><span style="color:#ce9178">${v}</span>`);
+                }
+                // Blank lines
+                if (!line.trim()) return '';
+                return esc;
+            }).join('\n');
+        }
+
+        window.compCopyFixScript = function (idx) {
+            const r = compScanResults[idx];
+            if (!r || !r.fixed_config) return;
+            navigator.clipboard.writeText(compExtractFixScript(r.fixed_config))
+                .then(() => nocToast('Fix script copied to clipboard', 'success'))
+                .catch(() => nocToast('Copy failed — use Download instead', 'warning'));
         };
 
         // ── Fix All Non-Compliant ──
