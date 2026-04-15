@@ -12556,11 +12556,30 @@ def _warehouse_sm_bootstrap_default_access(switch_ip: str, candidate_ips: list[s
     result["attempted"] = True
     existing_cidrs = _warehouse_sm_interface_cidrs(iface)
     existing_networks = set()
+    iface_networks = []
+    switch_ipv4 = None
+    try:
+        switch_ipv4 = ipaddress.IPv4Address(str(switch_ip).strip())
+    except Exception:
+        switch_ipv4 = None
     for cidr in existing_cidrs:
         try:
-            existing_networks.add(str(ipaddress.ip_interface(cidr).network))
+            iface_obj = ipaddress.ip_interface(cidr)
+            net = iface_obj.network
+            existing_networks.add(str(net))
+            iface_networks.append(net)
         except Exception:
             continue
+
+    if Path("/.dockerenv").exists() and iface_networks:
+        docker_bridge_net = ipaddress.ip_network("172.16.0.0/12")
+        all_bridge_like = all((net.network_address in docker_bridge_net) for net in iface_networks)
+        switch_on_iface = bool(switch_ipv4 and any(switch_ipv4 in net for net in iface_networks))
+        if all_bridge_like and not switch_on_iface:
+            result["errors"].append(
+                "docker bridge networking detected; attach backend to provisioning LAN (host or macvlan) to reach factory-default 192.168.0.x radios"
+            )
+            return result
 
     for alias in aliases:
         alias_key = f"{iface}|{alias}"
