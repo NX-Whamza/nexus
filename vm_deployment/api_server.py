@@ -12751,15 +12751,10 @@ def _warehouse_sm_scan_commands_for_profile(profile: str, selected_port: str) ->
         # Netonix uses a Linux shell with `switch` tooling, not `show ...` network CLI syntax.
         return _warehouse_sm_unique(
             [
-                "uname -a",
-                "switch -m",
                 "switch -d",
-                f"switch -p {selected_port}",
                 "cat /tmp/discovery.json 2>/dev/null",
                 "cat /tmp/mactable.json 2>/dev/null",
                 "cat /proc/net/arp",
-                "ip neigh show 2>/dev/null",
-                "route -n 2>/dev/null",
             ]
         )
     if profile == "edgeswitch":
@@ -12957,8 +12952,6 @@ def _warehouse_sm_switch_run_interactive(
                 if channel.recv_ready():
                     chunk = channel.recv(65535).decode("utf-8", errors="replace")
                     output += chunk
-                    # Read until link is quiet for `seconds`, instead of fixed absolute window.
-                    end_time = time.time() + seconds
                 else:
                     time.sleep(0.05)
             except Exception:
@@ -13058,7 +13051,7 @@ def _warehouse_sm_switch_probe(
         commands=cmd_list,
         enter_enable=False,
         fail_on_cli_error=False,
-        settle_seconds=1.20,
+        settle_seconds=0.70,
     )
     if not full_probe.get("success"):
         return full_probe
@@ -13102,13 +13095,12 @@ def _warehouse_sm_switch_probe(
                 ssh_ports=[int(full_probe.get("switch_ssh_port"))] if full_probe.get("switch_ssh_port") else ssh_ports,
                 commands=[
                     "switch -d",
-                    f"switch -p {selected_port}",
                     "cat /tmp/discovery.json 2>/dev/null",
                     "cat /tmp/mactable.json 2>/dev/null",
                 ],
                 enter_enable=False,
                 fail_on_cli_error=False,
-                settle_seconds=1.45,
+                settle_seconds=0.90,
             )
             if retry_probe.get("success"):
                 retry_outputs = retry_probe.get("commands") or []
@@ -14418,7 +14410,7 @@ def warehouse_sm_scan():
             ipaddress.IPv4Address(switch_ip)
         except Exception:
             return jsonify({'success': False, 'error': 'Invalid switch_ip format'}), 400
-        scan_timeout_seconds = int(os.getenv("WAREHOUSE_SM_SCAN_TIMEOUT_SECONDS") or 20)
+        scan_timeout_seconds = int(os.getenv("WAREHOUSE_SM_SCAN_TIMEOUT_SECONDS") or 28)
         scan_timeout_seconds = min(max(scan_timeout_seconds, 5), 60)
         scan_executor = ThreadPoolExecutor(max_workers=1)
         scan_future = scan_executor.submit(_warehouse_sm_discover, data)
