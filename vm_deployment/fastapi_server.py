@@ -72,6 +72,7 @@ from api_v2 import (
     _maintenance_list,
     _maintenance_update,
 )
+from unimus_backup_configs import router as unimus_backup_configs_router
 
 _PROCESS_SINGLETONS: dict[str, Path] = {}
 _PROCESS_SINGLETONS_LOCK = threading.Lock()
@@ -302,6 +303,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(api_v2_router)
+app.include_router(unimus_backup_configs_router)
 
 
 @app.middleware("http")

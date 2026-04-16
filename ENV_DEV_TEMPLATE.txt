@@ -54,6 +54,16 @@ RPC_STANDARD_PW=CHANGE_ME
 CNMATRIX_STANDARD_PW=CHANGE_ME
 WAVE_AP_PASS=CHANGE_ME
 
+# ── Zabbix / Unimus integrations ──
+ZABBIX_BASE_URL=
+ZABBIX_API_URL=
+ZABBIX_API_TOKEN=
+ZABBIX_TIMEOUT=30
+UNIMUS_BASE_URL=
+UNIMUS_API_TOKEN=
+UNIMUS_VERIFY_SSL=true
+UNIMUS_TIMEOUT=30
+
 # ── Warehouse SM factory-default reachability (Linux Docker engine) ──
 # Enable by starting compose with docker-compose.provisioning-lan.yml
 PROVISIONING_LAN_PARENT=eth0

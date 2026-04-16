@@ -14,6 +14,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="unimus-backup-configs.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script>
         (function() {
@@ -4051,6 +4052,10 @@
                     <span class="sb-item-icon">&#127760;</span>
                     <span class="sb-item-label">Cisco Port Setup</span>
                 </div>
+                <div class="sb-item" data-sb-tab="unimus-backup-configs" data-tooltip="Unimus Backup Configs">
+                    <span class="sb-item-icon">&#128190;</span>
+                    <span class="sb-item-label">Unimus Backup Configs</span>
+                </div>
 
                 <div class="sidebar-section-label">Power Tools</div>
                 <!-- Power Tools group -->
@@ -4238,6 +4243,7 @@
                     </div>
                 </div>
                 <button class="nav-item" data-tab="cisco-config">CISCO PORT SETUP</button>
+                <button class="nav-item" data-tab="unimus-backup-configs">UNIMUS BACKUP CONFIGS</button>
                 <div class="nav-item dropdown" data-default-tab="config-diff"><button>POWER TOOLS</button>
                     <div class="dropdown-menu">
                         <a data-tab="config-diff" data-feature="config_diff">Config Diff Viewer</a>
@@ -9976,6 +9982,176 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
         </div>
     </div>
 
+    <div class="content-pane" id="unimus-backup-configs-pane">
+        <div class="container unimus-backup-configs-page">
+            <div class="unimus-bc-hero">
+                <div class="unimus-bc-hero-accent"></div>
+                <div class="unimus-bc-hero-copy">
+                    <h1>Unimus Backup Configs</h1>
+                    <p>Search by Zabbix host name or IP, review Unimus status, and compare backup configs without leaving Nexus.</p>
+                </div>
+            </div>
+
+            <div class="unimus-bc-shell">
+                <section class="unimus-bc-card">
+                    <div class="unimus-bc-toolbar">
+                        <div class="unimus-bc-search-wrap">
+                            <label for="unimusBcSearchInput">Host Lookup</label>
+                            <div class="unimus-bc-search-row">
+                                <input type="text" id="unimusBcSearchInput" placeholder="Search by Zabbix host name or IP..." autocomplete="off">
+                                <button type="button" id="unimusBcSearchButton">Search</button>
+                            </div>
+                            <div class="unimus-bc-suggest" id="unimusBcSuggest"></div>
+                        </div>
+                        <div class="unimus-bc-summary">
+                            <div class="unimus-bc-summary-label">Integration Status</div>
+                            <div class="unimus-bc-summary-value" id="unimusBcSummaryValue">Loading...</div>
+                            <div class="unimus-bc-summary-note" id="unimusBcSummaryNote">Checking Unimus remote cores.</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="unimus-bc-card" id="unimusBcEmptyState">
+                    <div class="unimus-bc-section-header">
+                        <div>
+                            <h2>Backup Workspace</h2>
+                            <p>Search for a host to open its Unimus backup record.</p>
+                        </div>
+                    </div>
+                    <div class="unimus-bc-empty">
+                        <div class="unimus-bc-empty-icon">&#128269;</div>
+                        <div class="unimus-bc-empty-copy">
+                            <strong>Start with a host search.</strong>
+                            <span>The lookup uses Zabbix names and interface IPs, then maps the selected host into Unimus.</span>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="unimus-bc-card unimus-bc-hidden" id="unimusBcMissingState">
+                    <div class="unimus-bc-section-header">
+                        <div>
+                            <h2>Unimus Device Not Found</h2>
+                            <p>The selected host does not currently have a matching Unimus device record.</p>
+                        </div>
+                    </div>
+                    <div class="unimus-bc-alert-copy">
+                        <p>No Unimus record was found for this host.</p>
+                        <p>This usually means the device does not support SSH or Telnet, or it has not been discovered or configured in Unimus.</p>
+                    </div>
+                </section>
+
+                <div class="unimus-bc-hidden" id="unimusBcWorkspace">
+                    <section class="unimus-bc-card">
+                        <div class="unimus-bc-section-header">
+                            <div>
+                                <h2>Overview</h2>
+                                <p>Live Zabbix and Unimus health for the selected device.</p>
+                            </div>
+                        </div>
+                        <div class="unimus-bc-status-grid">
+                            <article class="unimus-bc-status-card" id="unimusBcZabbixCard">
+                                <div class="unimus-bc-status-label">Zabbix Status</div>
+                                <div class="unimus-bc-status-pill" id="unimusBcZabbixPill">-</div>
+                                <div class="unimus-bc-status-detail" id="unimusBcZabbixDetail"></div>
+                            </article>
+                            <article class="unimus-bc-status-card" id="unimusBcUnimusCard">
+                                <div class="unimus-bc-status-label">Unimus Status</div>
+                                <div class="unimus-bc-status-pill" id="unimusBcUnimusPill">-</div>
+                                <div class="unimus-bc-status-detail" id="unimusBcUnimusDetail"></div>
+                            </article>
+                        </div>
+                    </section>
+
+                    <section class="unimus-bc-card">
+                        <div class="unimus-bc-section-header">
+                            <div>
+                                <h2>Host Information</h2>
+                                <p>Metadata returned from Unimus for the selected device.</p>
+                            </div>
+                            <div class="unimus-bc-host-link" id="unimusBcRemoteCore"></div>
+                        </div>
+                        <div class="unimus-bc-form-grid">
+                            <div class="unimus-bc-field unimus-bc-span-2">
+                                <label>Host Name</label>
+                                <input type="text" id="unimusBcDescription" readonly>
+                            </div>
+                            <div class="unimus-bc-field">
+                                <label>IP Address</label>
+                                <input type="text" id="unimusBcAddress" readonly>
+                            </div>
+                            <div class="unimus-bc-field">
+                                <label>Credential Alias</label>
+                                <input type="text" id="unimusBcCredential" readonly>
+                            </div>
+                            <div class="unimus-bc-field">
+                                <label>Vendor</label>
+                                <input type="text" id="unimusBcVendor" readonly>
+                            </div>
+                            <div class="unimus-bc-field">
+                                <label>Type</label>
+                                <input type="text" id="unimusBcType" readonly>
+                            </div>
+                            <div class="unimus-bc-field">
+                                <label>Model</label>
+                                <input type="text" id="unimusBcModel" readonly>
+                            </div>
+                            <div class="unimus-bc-field">
+                                <label>Connection Type</label>
+                                <input type="text" id="unimusBcConnectionType" readonly>
+                            </div>
+                            <div class="unimus-bc-field">
+                                <label>Connection Port</label>
+                                <input type="text" id="unimusBcConnectionPort" readonly>
+                            </div>
+                            <div class="unimus-bc-field">
+                                <label>Download Extension</label>
+                                <input type="text" id="unimusBcDownloadExtension" readonly>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="unimus-bc-card">
+                        <div class="unimus-bc-section-header">
+                            <div>
+                                <h2>Config Backups</h2>
+                                <p>Select one backup to view or download, or two backups to diff.</p>
+                            </div>
+                            <div class="unimus-bc-count" id="unimusBcCountBadge">0 backups</div>
+                        </div>
+                        <div class="unimus-bc-actions">
+                            <button type="button" id="unimusBcViewButton" disabled>View</button>
+                            <button type="button" id="unimusBcDiffButton" disabled>Diff</button>
+                            <button type="button" id="unimusBcDownloadButton" disabled>Download</button>
+                            <button type="button" class="primary" id="unimusBcBackupNowButton">Backup Now</button>
+                        </div>
+                        <div class="unimus-bc-inline-message unimus-bc-hidden" id="unimusBcInlineMessage"></div>
+                        <div class="unimus-bc-table-wrap">
+                            <table class="unimus-bc-table">
+                                <thead>
+                                    <tr>
+                                        <th></th>
+                                        <th>Backup ID</th>
+                                        <th>Timeline</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="unimusBcBackupsBody">
+                                    <tr><td colspan="3" class="unimus-bc-table-empty">No backups loaded.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="unimus-bc-load-more unimus-bc-hidden" id="unimusBcLoadMoreWrap">
+                            <button type="button" id="unimusBcLoadMoreButton">Load more backups...</button>
+                        </div>
+                    </section>
+
+                    <footer class="unimus-bc-footer">
+                        For any issues or questions related to Unimus, please contact <strong>Bob Spicka</strong>, your Unimus administrator.
+                    </footer>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- ═══════════════════════════════════════════════════════
          CONFIG DIFF VIEWER TAB
          ═══════════════════════════════════════════════════════ -->
@@ -11419,6 +11595,7 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             'command-vault:cisco': { tabId: 'command-vault', subtab: 'cisco', label: 'Command Vault Cisco', desc: 'Cisco command references' },
             'command-vault:mikrotik': { tabId: 'command-vault', subtab: 'mikrotik', label: 'Command Vault MikroTik', desc: 'MikroTik command references' },
             'cisco-config': { tabId: 'cisco-config', label: 'Cisco Port Setup', desc: 'Cisco port and OSPF handoff generator' },
+            'unimus-backup-configs': { tabId: 'unimus-backup-configs', label: 'Unimus Backup Configs', desc: 'Search Zabbix hosts and work with Unimus backups' },
             'config-diff': { tabId: 'config-diff', label: 'Config Diff Viewer', desc: 'Side-by-side config comparison' },
             'bulk-config': { tabId: 'bulk-config', label: 'Bulk Operations Center', desc: 'Generate, fetch, and migrate at scale' },
             'maintenance': { tabId: 'maintenance', label: 'Scheduled Maintenance', desc: 'Plan and track maintenance windows' },
@@ -33788,6 +33965,7 @@ Ready for translation!`);
             { cat: 'Navigate', icon: '', label: 'FTTH Configurator', desc: 'FTTH OLT and BNG workspaces', action: () => window.navigateToTab('ftth-home') },
             { cat: 'Navigate', icon: '', label: 'Command Vault', desc: 'Nokia/Cisco/MikroTik quick commands', action: () => window.navigateToTab('command-vault') },
             { cat: 'Navigate', icon: '', label: 'Cisco Port Setup', desc: 'Cisco port and OSPF handoff generator', action: () => window.navigateToTab('cisco-config') },
+            { cat: 'Navigate', icon: '', label: 'Unimus Backup Configs', desc: 'Search Zabbix hosts and work with Unimus backups', action: () => window.navigateToTab('unimus-backup-configs') },
             { cat: 'Navigate', icon: '', label: 'Completed Configs', desc: 'Saved configurations archive', action: () => window.navigateToTab('completed-configs') },
             { cat: 'Navigate', icon: '', label: 'Log History', desc: 'Activity log history', action: () => window.navigateToTab('log-history') },
             { cat: 'Navigate', icon: '', label: 'Admin Panel', desc: 'Feedback & user management', action: () => window.navigateToTab('admin-panel') },
@@ -36360,8 +36538,9 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
         setInterval(pollFeedbackStatus, POLL_INTERVAL);
     })();
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/diff@5.2.0/dist/diff.min.js"></script>
+    <script src="unimus-backup-configs.js"></script>
 
 </body>
 
 </html>
-
