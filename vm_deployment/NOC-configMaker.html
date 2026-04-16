@@ -65,6 +65,8 @@
             --space-xl: 32px;
             --transition-fast: 0.15s ease;
             --transition-normal: 0.25s ease;
+            --primary-color: var(--accent-color);
+            --danger-color: #ef4444;
         }
 
         :root[data-theme="dark"] {
@@ -2183,6 +2185,133 @@
             color: #e74c3c;
         }
 
+        .feature-flags-modal {
+            max-width: 760px;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        .feature-flags-head {
+            padding: 18px 22px 14px;
+            border-bottom: 1px solid var(--border-color);
+            background: linear-gradient(135deg, rgba(230, 126, 34, 0.14), rgba(52, 152, 219, 0.08));
+        }
+
+        .feature-flags-head .ff-title {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-color);
+        }
+
+        .feature-flags-head .ff-tenant {
+            margin-top: 6px;
+            font-size: 12px;
+            color: var(--text-color-secondary);
+            font-weight: 600;
+        }
+
+        .feature-flags-body {
+            padding: 18px 22px;
+            display: grid;
+            gap: 14px;
+            max-height: 62vh;
+            overflow-y: auto;
+        }
+
+        .ff-section {
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            background: rgba(127, 127, 127, 0.06);
+            padding: 14px;
+        }
+
+        .ff-section h3 {
+            margin: 0;
+            font-size: 13px;
+            color: var(--text-color);
+        }
+
+        .ff-section p {
+            margin: 6px 0 12px;
+            font-size: 11px;
+            color: var(--text-color-secondary);
+        }
+
+        .ff-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .ff-item {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--container-bg);
+        }
+
+        .ff-item input[type="checkbox"] {
+            margin-top: 2px;
+            accent-color: var(--button-primary);
+        }
+
+        .ff-item .ff-label {
+            font-size: 12px;
+            color: var(--text-color);
+            font-weight: 600;
+            line-height: 1.25;
+        }
+
+        .ff-item .ff-desc {
+            margin-top: 3px;
+            font-size: 10px;
+            color: var(--text-color-secondary);
+            line-height: 1.35;
+        }
+
+        .feature-flags-foot {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding: 14px 22px 18px;
+            border-top: 1px solid var(--border-color);
+            background: rgba(127, 127, 127, 0.08);
+        }
+
+        .ff-btn {
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 9px 16px;
+            cursor: pointer;
+            border: 1px solid var(--border-color);
+            transition: var(--transition-fast);
+        }
+
+        .ff-btn.cancel {
+            background: transparent;
+            color: var(--text-color);
+        }
+
+        .ff-btn.cancel:hover {
+            background: var(--input-bg);
+        }
+
+        .ff-btn.save {
+            background: var(--button-primary);
+            border-color: transparent;
+            color: #fff;
+            min-width: 120px;
+        }
+
+        .ff-btn.save:hover {
+            filter: brightness(1.06);
+        }
+
         .feedback-tabs {
             display: flex;
             gap: 10px;
@@ -3641,6 +3770,9 @@
             .metric-value { font-size: 28px; }
 
             .modal-content { width: 95%; padding: 20px; }
+            .feature-flags-modal { width: 95%; padding: 0; }
+            .feature-flags-head, .feature-flags-body, .feature-flags-foot { padding-left: 14px; padding-right: 14px; }
+            .ff-grid { grid-template-columns: 1fr; }
 
             h1 { font-size: 22px; }
             h2 { font-size: 18px; }
@@ -4538,6 +4670,95 @@
                             </button>
                         </div>
                     </form>
+                </div>
+            </div>
+
+            <!-- Tenant Feature Flags Modal -->
+            <div id="featureFlagsModal" class="modal">
+                <div class="modal-content feature-flags-modal">
+                    <div class="feature-flags-head">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+                            <div>
+                                <h2 class="ff-title">Feature Flags</h2>
+                                <div class="ff-tenant" id="featureFlagsTenantLabel">Tenant: -</div>
+                            </div>
+                            <button class="modal-close" onclick="closeTenantFeatureFlagsModal()">&times;</button>
+                        </div>
+                    </div>
+                    <div class="feature-flags-body">
+                        <div class="ff-section">
+                            <h3>Device Types</h3>
+                            <p>Enable config generation for each device family.</p>
+                            <div class="ff-grid">
+                                <label class="ff-item">
+                                    <input type="checkbox" id="ff_device_mikrotik">
+                                    <div>
+                                        <div class="ff-label">MikroTik</div>
+                                        <div class="ff-desc">Tower and BNG generation workflows.</div>
+                                    </div>
+                                </label>
+                                <label class="ff-item">
+                                    <input type="checkbox" id="ff_device_nokia">
+                                    <div>
+                                        <div class="ff-label">Nokia</div>
+                                        <div class="ff-desc">Nokia configurator and migration workflows.</div>
+                                    </div>
+                                </label>
+                                <label class="ff-item">
+                                    <input type="checkbox" id="ff_device_cambium">
+                                    <div>
+                                        <div class="ff-label">Cambium</div>
+                                        <div class="ff-desc">Cambium device and firmware workflows.</div>
+                                    </div>
+                                </label>
+                                <label class="ff-item">
+                                    <input type="checkbox" id="ff_device_aviat">
+                                    <div>
+                                        <div class="ff-label">Aviat</div>
+                                        <div class="ff-desc">Aviat backhaul operations and updates.</div>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="ff-section">
+                            <h3>Platform Tools</h3>
+                            <p>Advanced features and workflow utilities.</p>
+                            <div class="ff-grid">
+                                <label class="ff-item">
+                                    <input type="checkbox" id="ff_tool_command_vault">
+                                    <div>
+                                        <div class="ff-label">Command Vault</div>
+                                        <div class="ff-desc">Curated command library and execution helpers.</div>
+                                    </div>
+                                </label>
+                                <label class="ff-item">
+                                    <input type="checkbox" id="ff_tool_bulk_operations">
+                                    <div>
+                                        <div class="ff-label">Bulk Operations Center</div>
+                                        <div class="ff-desc">Batch generation, scanning, and workflow orchestration.</div>
+                                    </div>
+                                </label>
+                                <label class="ff-item">
+                                    <input type="checkbox" id="ff_tool_maintenance_scheduler">
+                                    <div>
+                                        <div class="ff-label">Scheduled Maintenance</div>
+                                        <div class="ff-desc">Maintenance planning and window tracking.</div>
+                                    </div>
+                                </label>
+                                <label class="ff-item">
+                                    <input type="checkbox" id="ff_tool_compliance_scanner">
+                                    <div>
+                                        <div class="ff-label">Compliance Scanner</div>
+                                        <div class="ff-desc">Policy validation and remediation workflows.</div>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="feature-flags-foot">
+                        <button class="ff-btn cancel" onclick="closeTenantFeatureFlagsModal()">Cancel</button>
+                        <button class="ff-btn save" id="featureFlagsSaveBtn" onclick="saveTenantFeatureFlags()">Save Changes</button>
+                    </div>
                 </div>
             </div>
             <!-- TOWER CONFIG TAB -->
@@ -7325,15 +7546,15 @@
                                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
                                     <div>
                                         <label style="font-size:11px; color:var(--text-color-secondary);">NOC Monitor IP</label>
-                                        <input id="ts_noc_monitor_ip" placeholder="142.147.127.2" style="width:100%; padding:5px 8px; border-radius:5px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                        <input id="ts_noc_monitor_ip" placeholder="e.g. 10.0.0.1" style="width:100%; padding:5px 8px; border-radius:5px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
                                     </div>
                                     <div>
                                         <label style="font-size:11px; color:var(--text-color-secondary);">Syslog Server IP</label>
-                                        <input id="ts_syslog_server" placeholder="142.147.116.215" style="width:100%; padding:5px 8px; border-radius:5px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                        <input id="ts_syslog_server" placeholder="e.g. 10.0.0.2" style="width:100%; padding:5px 8px; border-radius:5px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
                                     </div>
                                     <div style="grid-column:1/-1;">
                                         <label style="font-size:11px; color:var(--text-color-secondary);">ATA Provisioning URL</label>
-                                        <input id="ts_ata_provisioning_url" placeholder="http://ndp1-dal.nxlink.com/cfg/$MA.cfg" style="width:100%; padding:5px 8px; border-radius:5px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                        <input id="ts_ata_provisioning_url" placeholder="http://provisioner.example.com/cfg/$MA.cfg" style="width:100%; padding:5px 8px; border-radius:5px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
                                     </div>
                                     <div style="grid-column:1/-1;">
                                         <label style="font-size:11px; color:var(--text-color-secondary);">SSH Username (for device push)</label>
@@ -7374,6 +7595,33 @@
                                     <div>
                                         <label style="font-size:11px; color:var(--text-color-secondary);">Compliance RADIUS Secondary</label>
                                         <input id="ts_compliance_radius_secondary" style="width:100%; padding:5px 8px; border-radius:5px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Branding -->
+                            <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border-color); grid-column:1/-1;">
+                                <h3 style="font-size:12px; margin-bottom:10px; color:var(--text-color-secondary); text-transform:uppercase;">Branding</h3>
+                                <p style="font-size:11px; color:var(--text-color-secondary); margin-bottom:8px;">Customize the app name, logo, and accent color for this tenant. Leave blank to use platform defaults.</p>
+                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                                    <div>
+                                        <label style="font-size:11px; color:var(--text-color-secondary);">Brand Name</label>
+                                        <input id="ts_brand_name" placeholder="e.g. MyNOC" style="width:100%; padding:5px 8px; border-radius:5px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                    </div>
+                                    <div>
+                                        <label style="font-size:11px; color:var(--text-color-secondary);">Primary Color</label>
+                                        <div style="display:flex; gap:6px; align-items:center;">
+                                            <input id="ts_primary_color_picker" type="color" value="#e67e22" style="width:36px; height:28px; padding:2px; border:1px solid var(--border-color); border-radius:4px; background:var(--input-bg); cursor:pointer;" oninput="document.getElementById('ts_primary_color').value=this.value" />
+                                            <input id="ts_primary_color" placeholder="#e67e22" style="flex:1; padding:5px 8px; border-radius:5px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" oninput="if(/^#[0-9a-fA-F]{6}$/.test(this.value)){document.getElementById('ts_primary_color_picker').value=this.value}" />
+                                        </div>
+                                    </div>
+                                    <div style="grid-column:1/-1;">
+                                        <label style="font-size:11px; color:var(--text-color-secondary);">Logo URL</label>
+                                        <input id="ts_logo_url" placeholder="https://example.com/logo.png" style="width:100%; padding:5px 8px; border-radius:5px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
+                                    </div>
+                                    <div style="grid-column:1/-1;">
+                                        <label style="font-size:11px; color:var(--text-color-secondary);">Favicon URL</label>
+                                        <input id="ts_favicon_url" placeholder="https://example.com/favicon.ico" style="width:100%; padding:5px 8px; border-radius:5px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" />
                                     </div>
                                 </div>
                             </div>
@@ -7431,6 +7679,9 @@
                                     <option value="">All tenants</option>
                                 </select>
                                 <button onclick="loadAdminUsers()" style="background:transparent; border:1px solid var(--border-color); border-radius:6px; padding:6px 10px; font-size:11px; color:var(--text-color); cursor:pointer;">Refresh</button>
+                            </div>
+                            <div id="adminUserRoleHint" style="font-size:11px; color:var(--text-color-secondary); margin:-4px 0 10px 0;">
+                                Select a tenant to edit tenant roles. Platform roles can be edited any time.
                             </div>
                             <div id="adminUserList" style="font-size:12px; color:var(--text-color-secondary);">Loading...</div>
                         </div>
@@ -24825,6 +25076,42 @@ Ready for translation!`);
             initOnlineWidget(session.permissions);
             initProfileAvatar(session);
             initNotificationBell();
+            if (session.tenantSettings) applyTenantBranding(session.tenantSettings);
+        }
+
+        function applyTenantBranding(tenantSettings) {
+            if (!tenantSettings || typeof tenantSettings !== 'object') return;
+            const primaryColor = (tenantSettings.primary_color || '').trim();
+            if (primaryColor && /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(primaryColor)) {
+                document.documentElement.style.setProperty('--primary-color', primaryColor);
+                document.documentElement.style.setProperty('--accent-color', primaryColor);
+                document.documentElement.style.setProperty('--sidebar-active', primaryColor);
+            }
+            const brandName = (tenantSettings.brand_name || '').trim();
+            if (brandName) {
+                document.title = brandName;
+                const logoText = document.querySelector('.sidebar-logo-text');
+                if (logoText) {
+                    logoText.innerHTML = `${brandName}<span class="sub">Unified Network Operations Platform</span>`;
+                }
+                const logoIcon = document.querySelector('.sidebar-logo-icon');
+                if (logoIcon) {
+                    logoIcon.textContent = brandName.slice(0, 2).toUpperCase();
+                }
+            }
+            const logoUrl = (tenantSettings.logo_url || '').trim();
+            if (logoUrl) {
+                const logoIcon = document.querySelector('.sidebar-logo-icon');
+                if (logoIcon) {
+                    logoIcon.innerHTML = `<img src="${logoUrl.replace(/"/g, '').replace(/'/g, '')}" alt="logo" style="width:28px; height:28px; object-fit:contain; border-radius:4px;" onerror="this.style.display='none'" />`;
+                }
+            }
+            const faviconUrl = (tenantSettings.favicon_url || '').trim();
+            if (faviconUrl) {
+                let link = document.querySelector("link[rel~='icon']");
+                if (!link) { link = document.createElement('link'); link.rel = 'icon'; document.head.appendChild(link); }
+                link.href = faviconUrl.replace(/"/g, '').replace(/'/g, '');
+            }
         }
 
         function getCurrentRoleLabel() {
@@ -25277,11 +25564,16 @@ Ready for translation!`);
                                 'snmp_community','snmp_contact','radius_primary','radius_secondary','radius_port','compliance_profile',
                                 'noc_monitor_ip','syslog_server','ata_provisioning_url','ssh_username',
                                 'compliance_dns_primary','compliance_dns_secondary','compliance_ntp','compliance_syslog',
-                                'compliance_snmp_community','compliance_radius_primary','compliance_radius_secondary'];
+                                'compliance_snmp_community','compliance_radius_primary','compliance_radius_secondary',
+                                'brand_name','logo_url','primary_color','favicon_url'];
                 fields.forEach(f => {
                     const el = document.getElementById(`ts_${f}`);
                     if (el) el.value = s[f] !== undefined ? s[f] : '';
                 });
+                const colorPicker = document.getElementById('ts_primary_color_picker');
+                if (colorPicker && s.primary_color && /^#[0-9a-fA-F]{6}$/.test(s.primary_color)) {
+                    colorPicker.value = s.primary_color;
+                }
             } catch(e) { console.warn('[SETTINGS] Failed to load tenant settings:', e); }
         }
 
@@ -25291,7 +25583,8 @@ Ready for translation!`);
                             'snmp_community','snmp_contact','radius_primary','radius_secondary','radius_port','compliance_profile',
                             'noc_monitor_ip','syslog_server','ata_provisioning_url','ssh_username',
                             'compliance_dns_primary','compliance_dns_secondary','compliance_ntp','compliance_syslog',
-                            'compliance_snmp_community','compliance_radius_primary','compliance_radius_secondary'];
+                            'compliance_snmp_community','compliance_radius_primary','compliance_radius_secondary',
+                            'brand_name','logo_url','primary_color','favicon_url'];
             const payload = {};
             fields.forEach(f => {
                 const el = document.getElementById(`ts_${f}`);
@@ -25362,6 +25655,68 @@ Ready for translation!`);
             }
         }
 
+        const ADMIN_PLATFORM_ROLE_OPTIONS = ['user', 'platform_support', 'platform_admin'];
+        const ADMIN_TENANT_ROLE_OPTIONS = ['tenant_viewer', 'tenant_engineer', 'tenant_admin'];
+        const DEVICE_FAMILY_FLAG_KEYS = ['mikrotik', 'nokia', 'cambium', 'aviat'];
+        const PLATFORM_TOOL_FLAG_KEYS = ['command_vault', 'bulk_operations', 'maintenance_scheduler', 'compliance_scanner'];
+        window._adminTenantsCache = window._adminTenantsCache || [];
+        window._tenantFeatureFlagModalState = window._tenantFeatureFlagModalState || { tenantId: null, tenantName: '', settings: {} };
+
+        function _safeText(value) {
+            return String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function _parseJsonValue(raw, fallback) {
+            if (raw == null || raw === '') return fallback;
+            if (typeof raw === 'object') return raw;
+            if (typeof raw === 'string') {
+                try {
+                    return JSON.parse(raw);
+                } catch (_) {
+                    return fallback;
+                }
+            }
+            return fallback;
+        }
+
+        function _normalizeAllowedDeviceFamilies(raw) {
+            const parsed = _parseJsonValue(raw, DEVICE_FAMILY_FLAG_KEYS);
+            const arr = Array.isArray(parsed) ? parsed : DEVICE_FAMILY_FLAG_KEYS;
+            const normalized = arr.map(v => String(v || '').trim().toLowerCase()).filter(Boolean);
+            const selected = DEVICE_FAMILY_FLAG_KEYS.filter(key => normalized.includes(key));
+            return selected.length ? selected : [...DEVICE_FAMILY_FLAG_KEYS];
+        }
+
+        function _normalizePlatformToolFlags(raw) {
+            const out = {};
+            const obj = raw && typeof raw === 'object' ? raw : {};
+            PLATFORM_TOOL_FLAG_KEYS.forEach(key => {
+                out[key] = obj[key] !== false;
+            });
+            return out;
+        }
+
+        function _setFeatureFlagsBusy(isBusy) {
+            const saveBtn = document.getElementById('featureFlagsSaveBtn');
+            if (!saveBtn) return;
+            saveBtn.disabled = !!isBusy;
+            saveBtn.textContent = isBusy ? 'Saving...' : 'Save Changes';
+            saveBtn.style.opacity = isBusy ? '0.7' : '1';
+            saveBtn.style.cursor = isBusy ? 'not-allowed' : 'pointer';
+        }
+
+        function _roleLabel(role) {
+            const map = {
+                user: 'User',
+                platform_support: 'Platform Support',
+                platform_admin: 'Platform Admin',
+                tenant_viewer: 'Tenant Viewer',
+                tenant_engineer: 'Tenant Engineer',
+                tenant_admin: 'Tenant Admin',
+            };
+            return map[role] || role || '';
+        }
+
         async function loadAdminTenants() {
             const container = document.getElementById('adminTenantList');
             if (!container) return;
@@ -25372,18 +25727,28 @@ Ready for translation!`);
                 const data = await resp.json();
                 if (!data.success) { container.innerHTML = `<span style="color:var(--danger-color)">${data.error || 'Failed to load tenants'}</span>`; return; }
                 const tenants = data.tenants || [];
+                window._adminTenantsCache = tenants;
                 if (!tenants.length) { container.innerHTML = '<span style="color:var(--text-color-secondary)">No tenants found.</span>'; return; }
-                const rows = tenants.map(t => `
-                    <tr>
-                        <td style="padding:6px 10px;">${t.slug}</td>
-                        <td style="padding:6px 10px;">${t.name}</td>
-                        <td style="padding:6px 10px;">${t.status}</td>
-                        <td style="padding:6px 10px;">${t.auth_mode}</td>
-                        <td style="padding:6px 10px; text-align:center;">${t.member_count || 0}</td>
-                        <td style="padding:6px 10px;">
-                            ${t.status === 'active' ? `<button onclick="deactivateTenant(${t.id})" style="font-size:11px; padding:3px 8px; background:transparent; border:1px solid var(--danger-color); color:var(--danger-color); border-radius:4px; cursor:pointer;">Deactivate</button>` : `<button onclick="activateTenant(${t.id})" style="font-size:11px; padding:3px 8px; background:transparent; border:1px solid var(--primary-color); color:var(--primary-color); border-radius:4px; cursor:pointer;">Activate</button>`}
-                        </td>
-                    </tr>`).join('');
+                const rows = tenants.map(t => {
+                    const tenantNameArg = String(t.name || t.slug || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                    const statusBtn = t.status === 'active'
+                        ? `<button onclick="deactivateTenant(${t.id})" style="font-size:11px; padding:4px 10px; background:transparent; border:1px solid var(--danger-color); color:var(--danger-color); border-radius:5px; cursor:pointer;">Deactivate</button>`
+                        : `<button onclick="activateTenant(${t.id})" style="font-size:11px; padding:4px 10px; background:transparent; border:1px solid var(--primary-color); color:var(--primary-color); border-radius:5px; cursor:pointer;">Activate</button>`;
+                    return `
+                        <tr>
+                            <td style="padding:6px 10px;">${_safeText(t.slug)}</td>
+                            <td style="padding:6px 10px;">${_safeText(t.name)}</td>
+                            <td style="padding:6px 10px;">${_safeText(t.status)}</td>
+                            <td style="padding:6px 10px;">${_safeText(t.auth_mode)}</td>
+                            <td style="padding:6px 10px; text-align:center;">${t.member_count || 0}</td>
+                            <td style="padding:6px 10px;">
+                                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                    <button onclick="openTenantFeatureFlagsModal(${t.id}, '${tenantNameArg}')" style="font-size:11px; padding:4px 10px; background:var(--input-bg); border:1px solid var(--border-color); color:var(--text-color); border-radius:5px; cursor:pointer;">Feature Flags</button>
+                                    ${statusBtn}
+                                </div>
+                            </td>
+                        </tr>`;
+                }).join('');
                 container.innerHTML = `<table style="width:100%; border-collapse:collapse; background:var(--card-bg); border-radius:8px; overflow:hidden;">
                     <thead><tr style="background:var(--table-header-bg, var(--container-bg)); font-size:11px; text-transform:uppercase; color:var(--text-color-secondary);">
                         <th style="padding:8px 10px; text-align:left;">Slug</th>
@@ -25396,7 +25761,7 @@ Ready for translation!`);
                 const filterSel = document.getElementById('adminUserTenantFilter');
                 if (filterSel) {
                     const current = filterSel.value;
-                    filterSel.innerHTML = '<option value="">All tenants</option>' + tenants.map(t => `<option value="${t.id}" ${String(current) === String(t.id) ? 'selected' : ''}>${t.name}</option>`).join('');
+                    filterSel.innerHTML = '<option value="">All tenants</option>' + tenants.map(t => `<option value="${t.id}" ${String(current) === String(t.id) ? 'selected' : ''}>${_safeText(t.name)}</option>`).join('');
                 }
             } catch (e) {
                 container.innerHTML = `<span style="color:var(--danger-color)">Error loading tenants: ${e.message}</span>`;
@@ -25409,6 +25774,13 @@ Ready for translation!`);
             container.innerHTML = '<span style="color:var(--text-color-secondary)">Loading...</span>';
             const filterSel = document.getElementById('adminUserTenantFilter');
             const tenantId = filterSel ? filterSel.value : '';
+            const selectedTenantId = tenantId ? Number(tenantId) : null;
+            const hint = document.getElementById('adminUserRoleHint');
+            if (hint) {
+                hint.textContent = selectedTenantId
+                    ? 'Tenant membership role editing is active for the selected tenant.'
+                    : 'Select a tenant to edit tenant roles. Platform roles can be edited any time.';
+            }
             const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : '/api';
             const url = tenantId ? `${apiBase}/admin/users?tenant_id=${tenantId}` : `${apiBase}/admin/users`;
             try {
@@ -25418,11 +25790,41 @@ Ready for translation!`);
                 const users = data.users || [];
                 if (!users.length) { container.innerHTML = '<span style="color:var(--text-color-secondary)">No users found.</span>'; return; }
                 const rows = users.map(u => {
-                    const memberships = (u.memberships || []).map(m => `<span style="display:inline-block; margin:2px; padding:2px 6px; border-radius:4px; background:var(--container-bg); font-size:10px;">${m.name || m.slug} / ${m.role}</span>`).join('');
+                    const memberships = (u.memberships || []).map(m =>
+                        `<span style="display:inline-block; margin:2px; padding:2px 6px; border-radius:4px; background:var(--container-bg); font-size:10px;">${_safeText((m.name || m.slug) + ' / ' + (m.role || ''))}</span>`
+                    ).join('');
+                    const platformRoleSelect = ADMIN_PLATFORM_ROLE_OPTIONS.map(role =>
+                        `<option value="${role}" ${(u.platform_role || 'user') === role ? 'selected' : ''}>${_roleLabel(role)}</option>`
+                    ).join('');
+                    const selectedMembership = selectedTenantId
+                        ? (u.memberships || []).find(m => String(m.tenant_id) === String(selectedTenantId))
+                        : null;
+                    const tenantRoleSelect = ADMIN_TENANT_ROLE_OPTIONS.map(role =>
+                        `<option value="${role}" ${selectedMembership && selectedMembership.role === role ? 'selected' : ''}>${_roleLabel(role)}</option>`
+                    ).join('');
+                    const tenantRoleEditor = selectedTenantId
+                        ? `<div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                                <select id="adminTenantRole_${u.id}" style="padding:5px 8px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:11px;">
+                                    ${tenantRoleSelect}
+                                </select>
+                                <button onclick="updateAdminUserTenantRole(${u.id}, ${selectedTenantId})" style="font-size:11px; padding:4px 10px; background:var(--primary-color); color:#fff; border:none; border-radius:5px; cursor:pointer;">Save</button>
+                            </div>
+                            <div style="margin-top:5px; font-size:10px; color:var(--text-color-secondary);">
+                                ${selectedMembership ? `Current: ${_roleLabel(selectedMembership.role)}` : 'No membership yet. Saving will add one.'}
+                            </div>`
+                        : '<span style="font-size:11px; color:var(--text-color-secondary);">Select a tenant to edit</span>';
                     return `<tr>
-                        <td style="padding:6px 10px;">${u.email}</td>
-                        <td style="padding:6px 10px; text-transform:capitalize;">${u.platform_role || 'user'}</td>
+                        <td style="padding:6px 10px; font-size:12px;">${_safeText(u.email)}</td>
+                        <td style="padding:6px 10px;">
+                            <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                                <select id="adminPlatformRole_${u.id}" style="padding:5px 8px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:11px;">
+                                    ${platformRoleSelect}
+                                </select>
+                                <button onclick="updateAdminUserPlatformRole(${u.id})" style="font-size:11px; padding:4px 10px; background:var(--primary-color); color:#fff; border:none; border-radius:5px; cursor:pointer;">Save</button>
+                            </div>
+                        </td>
                         <td style="padding:6px 10px;">${memberships || '<span style="color:var(--text-color-secondary)">none</span>'}</td>
+                        <td style="padding:6px 10px;">${tenantRoleEditor}</td>
                     </tr>`;
                 }).join('');
                 container.innerHTML = `<table style="width:100%; border-collapse:collapse; background:var(--card-bg); border-radius:8px; overflow:hidden;">
@@ -25430,11 +25832,166 @@ Ready for translation!`);
                         <th style="padding:8px 10px; text-align:left;">Email</th>
                         <th style="padding:8px 10px; text-align:left;">Platform Role</th>
                         <th style="padding:8px 10px; text-align:left;">Tenant Memberships</th>
+                        <th style="padding:8px 10px; text-align:left;">Tenant Role Editor</th>
                     </tr></thead><tbody>${rows}</tbody></table>`;
             } catch (e) {
                 container.innerHTML = `<span style="color:var(--danger-color)">Error loading users: ${e.message}</span>`;
             }
         }
+
+        async function updateAdminUserPlatformRole(userId) {
+            const select = document.getElementById(`adminPlatformRole_${userId}`);
+            if (!select) return;
+            const platform_role = select.value;
+            const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : '/api';
+            try {
+                const resp = await fetch(`${apiBase}/admin/users/${userId}/platform-role`, {
+                    method: 'PATCH',
+                    headers: getAuthHeaders('application/json'),
+                    body: JSON.stringify({ platform_role })
+                });
+                const data = await resp.json();
+                if (!resp.ok || !data.success) {
+                    throw new Error(data.error || 'Failed to update platform role');
+                }
+                if (typeof nocToast === 'function') nocToast('Platform role updated.', 'success', 2600);
+                loadAdminUsers();
+            } catch (e) {
+                if (typeof nocToast === 'function') nocToast(`Role update failed: ${e.message}`, 'error', 4000);
+                else alert(`Role update failed: ${e.message}`);
+            }
+        }
+
+        async function updateAdminUserTenantRole(userId, tenantId) {
+            const select = document.getElementById(`adminTenantRole_${userId}`);
+            if (!select || !tenantId) return;
+            const role = select.value;
+            const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : '/api';
+            try {
+                const resp = await fetch(`${apiBase}/admin/users/${userId}/membership`, {
+                    method: 'PATCH',
+                    headers: getAuthHeaders('application/json'),
+                    body: JSON.stringify({ tenant_id: tenantId, role, status: 'active' })
+                });
+                const data = await resp.json();
+                if (!resp.ok || !data.success) {
+                    throw new Error(data.error || 'Failed to update membership role');
+                }
+                if (typeof nocToast === 'function') nocToast('Tenant role updated.', 'success', 2600);
+                loadAdminUsers();
+            } catch (e) {
+                if (typeof nocToast === 'function') nocToast(`Role update failed: ${e.message}`, 'error', 4000);
+                else alert(`Role update failed: ${e.message}`);
+            }
+        }
+
+        function _applyTenantFeatureFlagsFromSettings(settings) {
+            const allowedFamilies = _normalizeAllowedDeviceFamilies(settings.allowed_device_families);
+            DEVICE_FAMILY_FLAG_KEYS.forEach(key => {
+                const el = document.getElementById(`ff_device_${key}`);
+                if (el) el.checked = allowedFamilies.includes(key);
+            });
+
+            const extra = _parseJsonValue(settings.extra_json, {});
+            const featureFlags = (extra && typeof extra === 'object' ? extra.feature_flags : {}) || {};
+            const platformTools = _normalizePlatformToolFlags(featureFlags.platform_tools || {});
+            PLATFORM_TOOL_FLAG_KEYS.forEach(key => {
+                const el = document.getElementById(`ff_tool_${key}`);
+                if (el) el.checked = !!platformTools[key];
+            });
+        }
+
+        async function openTenantFeatureFlagsModal(tenantId, tenantName) {
+            const modal = document.getElementById('featureFlagsModal');
+            if (!modal || !tenantId) return;
+            const cacheTenant = (window._adminTenantsCache || []).find(t => String(t.id) === String(tenantId));
+            const resolvedName = tenantName || (cacheTenant ? cacheTenant.name : `Tenant ${tenantId}`);
+            const label = document.getElementById('featureFlagsTenantLabel');
+            if (label) label.textContent = `Tenant: ${resolvedName}`;
+            window._tenantFeatureFlagModalState = { tenantId, tenantName: resolvedName, settings: {} };
+            _setFeatureFlagsBusy(false);
+            modal.classList.add('show');
+            const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : '/api';
+            try {
+                _setFeatureFlagsBusy(true);
+                const resp = await fetch(`${apiBase}/admin/tenant-settings/${tenantId}`, { headers: getAuthHeaders() });
+                const data = await resp.json();
+                if (!resp.ok || !data.success) throw new Error(data.error || 'Failed to load feature flags');
+                window._tenantFeatureFlagModalState.settings = data.settings || {};
+                _applyTenantFeatureFlagsFromSettings(data.settings || {});
+            } catch (e) {
+                if (typeof nocToast === 'function') nocToast(`Failed to load feature flags: ${e.message}`, 'error', 5000);
+                else alert(`Failed to load feature flags: ${e.message}`);
+            } finally {
+                _setFeatureFlagsBusy(false);
+            }
+        }
+
+        function closeTenantFeatureFlagsModal() {
+            const modal = document.getElementById('featureFlagsModal');
+            if (modal) modal.classList.remove('show');
+            _setFeatureFlagsBusy(false);
+        }
+
+        async function saveTenantFeatureFlags() {
+            const state = window._tenantFeatureFlagModalState || {};
+            if (!state.tenantId) return;
+            const selectedFamilies = DEVICE_FAMILY_FLAG_KEYS.filter(key => !!document.getElementById(`ff_device_${key}`)?.checked);
+            if (!selectedFamilies.length) {
+                if (typeof nocToast === 'function') nocToast('At least one device type must remain enabled.', 'warning', 3500);
+                else alert('At least one device type must remain enabled.');
+                return;
+            }
+            const selectedTools = {};
+            PLATFORM_TOOL_FLAG_KEYS.forEach(key => {
+                selectedTools[key] = !!document.getElementById(`ff_tool_${key}`)?.checked;
+            });
+
+            const currentExtra = _parseJsonValue((state.settings || {}).extra_json, {});
+            const currentFeatureFlags = (currentExtra.feature_flags && typeof currentExtra.feature_flags === 'object')
+                ? currentExtra.feature_flags
+                : {};
+            const nextExtra = {
+                ...currentExtra,
+                feature_flags: {
+                    ...currentFeatureFlags,
+                    platform_tools: selectedTools,
+                },
+            };
+
+            const payload = {
+                allowed_device_families: JSON.stringify(selectedFamilies),
+                extra_json: JSON.stringify(nextExtra),
+            };
+
+            const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : '/api';
+            try {
+                _setFeatureFlagsBusy(true);
+                const resp = await fetch(`${apiBase}/admin/tenant-settings/${state.tenantId}`, {
+                    method: 'PUT',
+                    headers: getAuthHeaders('application/json'),
+                    body: JSON.stringify(payload),
+                });
+                const data = await resp.json();
+                if (!resp.ok || !data.success) throw new Error(data.error || 'Failed to save feature flags');
+                window._tenantFeatureFlagModalState.settings = data.settings || payload;
+                if (typeof nocToast === 'function') nocToast('Feature flags saved.', 'success', 3000);
+                closeTenantFeatureFlagsModal();
+                loadAdminTenants();
+            } catch (e) {
+                if (typeof nocToast === 'function') nocToast(`Failed to save feature flags: ${e.message}`, 'error', 5000);
+                else alert(`Failed to save feature flags: ${e.message}`);
+            } finally {
+                _setFeatureFlagsBusy(false);
+            }
+        }
+
+        window.addEventListener('click', function (event) {
+            const modal = document.getElementById('featureFlagsModal');
+            if (modal && event.target === modal) {
+                closeTenantFeatureFlagsModal();
+            }
+        });
 
         async function createTenantAdmin() {
             const slug = (document.getElementById('newTenantSlug')?.value || '').trim();
