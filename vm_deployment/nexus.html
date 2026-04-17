@@ -7960,10 +7960,23 @@
                 <div style="background:var(--card-bg); border-radius:10px; padding:24px; max-width:480px; width:100%; max-height:88vh; overflow-y:auto; box-shadow:0 8px 32px rgba(0,0,0,0.3);">
                     <h3 style="margin-top:0; color:var(--text-color); font-size:15px;">Branding — <span id="brandingModalTenantName"></span></h3>
                     <input type="hidden" id="brandingModalTenantId" />
-                    <div style="display:grid; gap:10px; margin-bottom:16px;">
+                    <div style="display:grid; gap:10px; margin-bottom:16px; max-height:72vh; overflow-y:auto; padding-right:4px;">
                         <div><label style="font-size:11px; color:var(--text-color-secondary);">Company Name</label><input id="brandingCompanyName" placeholder="Acme Corp" style="width:100%; padding:6px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" /></div>
                         <div><label style="font-size:11px; color:var(--text-color-secondary);">Primary Color</label><div style="display:flex; gap:8px; align-items:center;"><input type="color" id="brandingPrimaryColor" value="#2563eb" style="width:44px; height:32px; border:none; padding:0; cursor:pointer;" /><input id="brandingPrimaryColorText" placeholder="#2563eb" style="flex:1; padding:6px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px;" oninput="document.getElementById('brandingPrimaryColor').value=this.value" /></div></div>
-                        <div><label style="font-size:11px; color:var(--text-color-secondary);">Logo URL</label><input id="brandingLogoUrl" placeholder="https://example.com/logo.png" style="width:100%; padding:6px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" /></div>
+                        <div>
+                            <label style="font-size:11px; color:var(--text-color-secondary);">Logo</label>
+                            <div style="display:flex; align-items:center; gap:10px; margin-top:4px; padding:10px; border-radius:8px; border:1px dashed var(--border-color); background:var(--container-bg);">
+                                <img id="brandingLogoPreview" src="" alt="" style="width:48px; height:48px; object-fit:contain; border-radius:6px; border:1px solid var(--border-color); background:var(--card-bg); display:none;" />
+                                <div style="flex:1;">
+                                    <label style="display:inline-block; padding:5px 12px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:11px; cursor:pointer;">
+                                        Upload File
+                                        <input type="file" id="brandingLogoFile" accept="image/*" style="display:none;" onchange="brandingHandleLogoFile(this)" />
+                                    </label>
+                                    <span style="font-size:10px; color:var(--text-color-secondary); margin-left:6px;">or paste URL below</span>
+                                </div>
+                            </div>
+                            <input id="brandingLogoUrl" placeholder="https://example.com/logo.png" style="width:100%; margin-top:6px; padding:6px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" oninput="brandingUpdatePreview(this.value)" />
+                        </div>
                         <div><label style="font-size:11px; color:var(--text-color-secondary);">Favicon URL</label><input id="brandingFaviconUrl" placeholder="https://example.com/favicon.ico" style="width:100%; padding:6px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" /></div>
                         <div><label style="font-size:11px; color:var(--text-color-secondary);">Custom Domain</label><input id="brandingCustomDomain" placeholder="app.acmecorp.com" style="width:100%; padding:6px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-color); font-size:12px; box-sizing:border-box;" /></div>
                     </div>
@@ -26987,7 +27000,7 @@ Ready for translation!`);
                                 </select>
                                 <button onclick="updateAdminUserTenantRole(${u.id}, ${selectedTenantId})" style="font-size:11px; padding:4px 10px; background:var(--primary-color); color:#fff; border:none; border-radius:5px; cursor:pointer;">Save</button>
                             </div>
-                            <div style="margin-top:5px; font-size:10px; color:var(--text-color-secondary);">
+                            <div id="adminTenantRoleCurrent_${u.id}" style="margin-top:5px; font-size:10px; color:var(--text-color-secondary);">
                                 ${selectedMembership ? `Current: ${_roleLabel(selectedMembership.role)}` : 'No membership yet. Saving will add one.'}
                             </div>`
                         : '<span style="font-size:11px; color:var(--text-color-secondary);">Select a tenant to edit</span>';
@@ -27000,6 +27013,7 @@ Ready for translation!`);
                                 </select>
                                 <button onclick="updateAdminUserPlatformRole(${u.id})" style="font-size:11px; padding:4px 10px; background:var(--primary-color); color:#fff; border:none; border-radius:5px; cursor:pointer;">Save</button>
                             </div>
+                            <div id="adminPlatformRoleCurrent_${u.id}" style="margin-top:4px; font-size:10px; color:var(--text-color-secondary);">Current: ${_roleLabel(u.platform_role || 'user')}</div>
                         </td>
                         <td style="padding:6px 10px;">${memberships || '<span style="color:var(--text-color-secondary)">none</span>'}</td>
                         <td style="padding:6px 10px;">${tenantRoleEditor}</td>
@@ -27021,6 +27035,8 @@ Ready for translation!`);
             const select = document.getElementById(`adminPlatformRole_${userId}`);
             if (!select) return;
             const platform_role = select.value;
+            const btn = select.parentElement?.querySelector('button');
+            if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
             const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : '/api';
             try {
                 const resp = await fetch(`${apiBase}/admin/users/${userId}/platform-role`, {
@@ -27032,11 +27048,19 @@ Ready for translation!`);
                 if (!resp.ok || !data.success) {
                     throw new Error(data.error || 'Failed to update platform role');
                 }
-                if (typeof nocToast === 'function') nocToast('Platform role updated.', 'success', 2600);
-                loadAdminUsers();
+                // Immediately update the "Current:" label in the row
+                const currentLabel = document.getElementById(`adminPlatformRoleCurrent_${userId}`);
+                if (currentLabel) {
+                    currentLabel.textContent = `Current: ${_roleLabel(platform_role)}`;
+                    currentLabel.style.color = 'var(--success-color, #22c55e)';
+                    setTimeout(() => { if (currentLabel) currentLabel.style.color = 'var(--text-color-secondary)'; }, 2500);
+                }
+                if (typeof nocToast === 'function') nocToast('Platform role updated. User must refresh their page for the new role to take effect.', 'success', 4000);
             } catch (e) {
                 if (typeof nocToast === 'function') nocToast(`Role update failed: ${e.message}`, 'error', 4000);
                 else alert(`Role update failed: ${e.message}`);
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
             }
         }
 
@@ -27044,6 +27068,8 @@ Ready for translation!`);
             const select = document.getElementById(`adminTenantRole_${userId}`);
             if (!select || !tenantId) return;
             const role = select.value;
+            const btn = select.parentElement?.querySelector('button');
+            if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
             const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : '/api';
             try {
                 const resp = await fetch(`${apiBase}/admin/users/${userId}/membership`, {
@@ -27055,11 +27081,19 @@ Ready for translation!`);
                 if (!resp.ok || !data.success) {
                     throw new Error(data.error || 'Failed to update membership role');
                 }
-                if (typeof nocToast === 'function') nocToast('Tenant role updated.', 'success', 2600);
-                loadAdminUsers();
+                // Immediately update the "Current:" label in the row
+                const currentLabel = document.getElementById(`adminTenantRoleCurrent_${userId}`);
+                if (currentLabel) {
+                    currentLabel.textContent = `Current: ${_roleLabel(role)}`;
+                    currentLabel.style.color = 'var(--success-color, #22c55e)';
+                    setTimeout(() => { if (currentLabel) currentLabel.style.color = 'var(--text-color-secondary)'; }, 2500);
+                }
+                if (typeof nocToast === 'function') nocToast('Tenant role updated. User must refresh their page for the new role to take effect.', 'success', 4000);
             } catch (e) {
                 if (typeof nocToast === 'function') nocToast(`Role update failed: ${e.message}`, 'error', 4000);
                 else alert(`Role update failed: ${e.message}`);
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
             }
         }
 
@@ -27456,42 +27490,106 @@ Ready for translation!`);
         }
 
         // ── Branding Modal ─────────────────────────────────────────────────────────
+        function brandingUpdatePreview(url) {
+            const img = document.getElementById('brandingLogoPreview');
+            if (!img) return;
+            if (url) { img.src = url; img.style.display = 'block'; }
+            else img.style.display = 'none';
+        }
+        function brandingHandleLogoFile(input) {
+            const file = input.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = e => {
+                brandingUpdatePreview(e.target.result);
+                // Store the file object for upload on save
+                window._brandingPendingLogoFile = file;
+                // Clear URL field to indicate we'll use the uploaded file
+                const urlInput = document.getElementById('brandingLogoUrl');
+                if (urlInput) urlInput.value = '(uploading on save...)';
+            };
+            reader.readAsDataURL(file);
+        }
+
         async function openBrandingModal(tenantId, tenantName) {
             document.getElementById('brandingModalTenantId').value = tenantId;
             document.getElementById('brandingModalTenantName').textContent = tenantName;
+            window._brandingPendingLogoFile = null;
+            const fileInput = document.getElementById('brandingLogoFile');
+            if (fileInput) fileInput.value = '';
             document.getElementById('brandingModal').style.display = 'flex';
+            // Clear fields while loading
+            ['brandingCompanyName','brandingLogoUrl','brandingFaviconUrl','brandingCustomDomain'].forEach(id => {
+                const el = document.getElementById(id); if (el) el.value = '';
+            });
+            document.getElementById('brandingPrimaryColor').value = '#2563eb';
+            document.getElementById('brandingPrimaryColorText').value = '#2563eb';
+            brandingUpdatePreview('');
             const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : '/api';
             try {
-                const resp = await fetch(`${apiBase}/tenant/branding?slug=_id_${tenantId}`, { headers: getAuthHeaders() });
-                // Branding endpoint uses slug, so we just pre-clear fields
-                ['brandingCompanyName','brandingLogoUrl','brandingFaviconUrl','brandingCustomDomain'].forEach(id => {
-                    const el = document.getElementById(id); if (el) el.value = '';
-                });
-                document.getElementById('brandingPrimaryColor').value = '#2563eb';
-                document.getElementById('brandingPrimaryColorText').value = '#2563eb';
+                const resp = await fetch(`${apiBase}/admin/tenants/${tenantId}/branding`, { headers: getAuthHeaders() });
+                const data = await resp.json();
+                if (resp.ok && data.branding) {
+                    const b = data.branding;
+                    if (b.company_name) document.getElementById('brandingCompanyName').value = b.company_name;
+                    if (b.logo_url) { document.getElementById('brandingLogoUrl').value = b.logo_url; brandingUpdatePreview(b.logo_url); }
+                    if (b.favicon_url) document.getElementById('brandingFaviconUrl').value = b.favicon_url;
+                    if (b.custom_domain) document.getElementById('brandingCustomDomain').value = b.custom_domain;
+                    const color = b.primary_color || '#2563eb';
+                    document.getElementById('brandingPrimaryColor').value = color;
+                    document.getElementById('brandingPrimaryColorText').value = color;
+                }
             } catch(e) {}
         }
 
         async function saveBranding() {
             const tenantId = document.getElementById('brandingModalTenantId').value;
-            const payload = {
-                company_name: document.getElementById('brandingCompanyName')?.value || '',
-                logo_url: document.getElementById('brandingLogoUrl')?.value || '',
-                favicon_url: document.getElementById('brandingFaviconUrl')?.value || '',
-                custom_domain: document.getElementById('brandingCustomDomain')?.value || '',
-                primary_color: document.getElementById('brandingPrimaryColorText')?.value || document.getElementById('brandingPrimaryColor')?.value || '#2563eb',
-            };
             const apiBase = typeof resolveApiBase === 'function' ? resolveApiBase() : '/api';
+            const btn = document.querySelector('#brandingModal button[onclick="saveBranding()"]');
+            if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
             try {
+                // If a logo file was selected, upload it first
+                let logoUrl = document.getElementById('brandingLogoUrl')?.value || '';
+                if (window._brandingPendingLogoFile) {
+                    const fd = new FormData();
+                    fd.append('logo', window._brandingPendingLogoFile);
+                    const uploadResp = await fetch(`${apiBase}/admin/tenants/${tenantId}/logo`, {
+                        method: 'POST',
+                        headers: getAuthHeaders(),
+                        body: fd
+                    });
+                    const uploadData = await uploadResp.json();
+                    if (!uploadResp.ok || !uploadData.success) throw new Error(uploadData.error || 'Logo upload failed');
+                    logoUrl = uploadData.url;
+                    window._brandingPendingLogoFile = null;
+                    const urlInput = document.getElementById('brandingLogoUrl');
+                    if (urlInput) urlInput.value = logoUrl;
+                    brandingUpdatePreview(logoUrl);
+                }
+                const payload = {
+                    company_name: document.getElementById('brandingCompanyName')?.value || '',
+                    logo_url: logoUrl,
+                    favicon_url: document.getElementById('brandingFaviconUrl')?.value || '',
+                    custom_domain: document.getElementById('brandingCustomDomain')?.value || '',
+                    primary_color: document.getElementById('brandingPrimaryColorText')?.value || document.getElementById('brandingPrimaryColor')?.value || '#2563eb',
+                };
                 const resp = await fetch(`${apiBase}/admin/tenants/${tenantId}/branding`, {
                     method: 'PUT',
                     headers: getAuthHeaders('application/json'),
                     body: JSON.stringify(payload)
                 });
                 const data = await resp.json();
-                if (data.success) { document.getElementById('brandingModal').style.display = 'none'; alert('Branding saved.'); }
-                else alert(data.error || 'Failed to save branding');
-            } catch(e) { alert('Error: ' + e.message); }
+                if (data.success) {
+                    document.getElementById('brandingModal').style.display = 'none';
+                    if (typeof nocToast === 'function') nocToast('Branding saved successfully.', 'success', 3000);
+                    else alert('Branding saved.');
+                } else { throw new Error(data.error || 'Failed to save branding'); }
+            } catch(e) {
+                if (typeof nocToast === 'function') nocToast(`Branding save failed: ${e.message}`, 'error', 4000);
+                else alert('Error: ' + e.message);
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = 'Save Branding'; }
+            }
         }
 
         // ── Quotas Modal ───────────────────────────────────────────────────────────

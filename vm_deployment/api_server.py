@@ -28388,24 +28388,71 @@ def get_tenant_branding():
     return jsonify({'success': True, 'branding': dict(row)})
 
 
-@app.route('/api/admin/tenants/<int:tenant_id>/branding', methods=['PUT'])
+@app.route('/api/admin/tenants/<int:tenant_id>/branding', methods=['GET', 'PUT'])
 @require_auth
 def update_tenant_branding(tenant_id):
-    """Update branding for a tenant. Platform admin only."""
+    """Get or update branding for a tenant. Platform admin only."""
     if _platform_role_for_email((getattr(request, 'current_user', {}) or {}).get('email', '')) != 'platform_admin':
         return jsonify({'error': 'Platform admin required'}), 403
+    db = init_users_db()
+    conn = sqlite3.connect(str(db))
+    conn.row_factory = sqlite3.Row
+    if request.method == 'GET':
+        c = conn.cursor()
+        c.execute('SELECT company_name, logo_url, primary_color, favicon_url, custom_domain FROM tenants WHERE id = ?', (tenant_id,))
+        row = c.fetchone()
+        conn.close()
+        return jsonify({'success': True, 'branding': dict(row) if row else {}})
     data = request.json or {}
     allowed = ('logo_url', 'primary_color', 'company_name', 'custom_domain', 'favicon_url')
     updates = {k: v for k, v in data.items() if k in allowed}
     if not updates:
+        conn.close()
         return jsonify({'error': 'No valid fields provided'}), 400
     sets = ', '.join(f'{k} = ?' for k in updates)
-    db = init_users_db()
-    conn = sqlite3.connect(str(db))
     conn.execute(f'UPDATE tenants SET {sets} WHERE id = ?', (*updates.values(), tenant_id))
     conn.commit()
     conn.close()
     return jsonify({'success': True})
+
+
+@app.route('/api/admin/tenants/<int:tenant_id>/logo', methods=['POST'])
+@require_auth
+def upload_tenant_logo(tenant_id):
+    """Upload a logo image for a tenant. Saves to secure_data/logos/, served via /api/logos/."""
+    if _platform_role_for_email((getattr(request, 'current_user', {}) or {}).get('email', '')) != 'platform_admin':
+        return jsonify({'error': 'Platform admin required'}), 403
+    f = request.files.get('logo')
+    if not f or not f.filename:
+        return jsonify({'error': 'No file provided'}), 400
+    ext = os.path.splitext(f.filename)[1].lower()
+    allowed_exts = {'.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico'}
+    if ext not in allowed_exts:
+        return jsonify({'error': f'Unsupported file type: {ext}'}), 400
+    logos_dir = os.path.join('secure_data', 'logos')
+    os.makedirs(logos_dir, exist_ok=True)
+    filename = f'tenant_{tenant_id}_logo{ext}'
+    save_path = os.path.join(logos_dir, filename)
+    f.save(save_path)
+    url = f'/api/logos/{filename}'
+    # Also update the tenant's logo_url in the DB
+    db = init_users_db()
+    conn = sqlite3.connect(str(db))
+    conn.execute('UPDATE tenants SET logo_url = ? WHERE id = ?', (url, tenant_id))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'url': url})
+
+
+@app.route('/api/logos/<path:filename>', methods=['GET'])
+def serve_tenant_logo(filename):
+    """Serve uploaded tenant logos (no auth required — logos are semi-public branding assets)."""
+    logos_dir = os.path.abspath(os.path.join('secure_data', 'logos'))
+    # Prevent path traversal
+    target = os.path.abspath(os.path.join(logos_dir, filename))
+    if not target.startswith(logos_dir + os.sep) and target != logos_dir:
+        return jsonify({'error': 'Not found'}), 404
+    return send_from_directory(logos_dir, filename)
 
 
 # ============================================================
