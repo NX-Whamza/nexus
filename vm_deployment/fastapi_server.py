@@ -72,7 +72,7 @@ from api_v2 import (
     _maintenance_list,
     _maintenance_update,
 )
-from unimus_backup_configs import router as unimus_backup_configs_router
+from unimus.backup_configs import router as unimus_backup_configs_router
 
 _PROCESS_SINGLETONS: dict[str, Path] = {}
 _PROCESS_SINGLETONS_LOCK = threading.Lock()

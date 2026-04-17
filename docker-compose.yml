@@ -92,7 +92,6 @@ services:
       NOC_API_KEYS_JSON: ${NOC_API_KEYS_JSON:-}
       NOC_API_KEYS: ${NOC_API_KEYS:-}
       NOC_API_KEY: ${NOC_API_KEY:-}
-      # Zabbix / Unimus integrations (Unimus Backup Configs tool)
       ZABBIX_BASE_URL: ${ZABBIX_BASE_URL:-}
       ZABBIX_API_URL: ${ZABBIX_API_URL:-}
       ZABBIX_API_TOKEN: ${ZABBIX_API_TOKEN:-}

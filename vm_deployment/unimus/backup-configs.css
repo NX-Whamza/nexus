@@ -1,16 +1,31 @@
 .unimus-backup-configs-page {
     padding-bottom: 36px;
+    min-width: 0;
 }
 
 .unimus-bc-hidden {
     display: none !important;
 }
 
+.unimus-backup-configs-page,
+.unimus-bc-shell,
+#unimusBcWorkspace,
+.unimus-bc-card,
+.unimus-bc-toolbar,
+.unimus-bc-search-wrap,
+.unimus-bc-search-row,
+.unimus-bc-search-input-wrap,
+.unimus-bc-form-grid,
+.unimus-bc-field,
+.unimus-bc-table-wrap {
+    min-width: 0;
+}
+
 .unimus-bc-hero {
     position: relative;
     display: flex;
     align-items: center;
-    gap: 18px;
+    justify-content: center;
     padding: 26px 28px;
     margin-bottom: 24px;
     border: 1px solid var(--border-color);
@@ -23,11 +38,12 @@
 }
 
 .unimus-bc-hero-accent {
-    width: 5px;
-    align-self: stretch;
-    border-radius: 999px;
-    background: linear-gradient(180deg, #ff9d42, #ff7a00);
-    box-shadow: 0 0 24px rgba(255, 122, 0, 0.25);
+    display: none;
+}
+
+.unimus-bc-hero-copy {
+    width: 100%;
+    text-align: center;
 }
 
 .unimus-bc-hero-copy h1 {
@@ -48,6 +64,11 @@
     gap: 18px;
 }
 
+#unimusBcWorkspace {
+    display: grid;
+    gap: 18px;
+}
+
 .unimus-bc-card {
     position: relative;
     padding: 22px;
@@ -55,6 +76,12 @@
     border-radius: 16px;
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.015), rgba(255, 255, 255, 0)), var(--container-bg);
     box-shadow: 0 18px 42px rgba(0, 0, 0, 0.18);
+    overflow: hidden;
+}
+
+.unimus-bc-shell > .unimus-bc-card:first-child {
+    overflow: visible;
+    z-index: 30;
 }
 
 .unimus-bc-toolbar {
@@ -66,6 +93,12 @@
 
 .unimus-bc-search-wrap {
     position: relative;
+    z-index: 31;
+}
+
+.unimus-bc-search-input-wrap {
+    position: relative;
+    min-width: 0;
 }
 
 .unimus-bc-search-wrap label,
@@ -85,9 +118,10 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 10px;
+    align-items: start;
 }
 
-.unimus-bc-search-row input,
+.unimus-bc-search-input-wrap input,
 .unimus-bc-field input {
     width: 100%;
     min-height: 48px;
@@ -100,7 +134,6 @@
 }
 
 .unimus-bc-search-row button,
-.unimus-bc-actions button,
 .unimus-bc-load-more button {
     min-height: 46px;
     padding: 0 16px;
@@ -110,13 +143,29 @@
     color: var(--text-color);
     font-weight: 700;
     cursor: pointer;
-    transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+    white-space: nowrap;
 }
 
 .unimus-bc-search-row button:hover,
-.unimus-bc-actions button:hover,
 .unimus-bc-load-more button:hover {
-    transform: translateY(-1px);
+    border-color: rgba(255, 122, 0, 0.5);
+}
+
+.unimus-bc-actions button {
+    min-height: 46px;
+    padding: 0 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: #2f2f32;
+    color: var(--text-color);
+    font-weight: 700;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+    white-space: nowrap;
+}
+
+.unimus-bc-actions button:hover {
     border-color: rgba(255, 122, 0, 0.5);
 }
 
@@ -127,10 +176,17 @@
     border-color: #ff8b21;
 }
 
+.unimus-bc-actions button:not(.primary):not(:disabled) {
+    background: #34353a;
+    color: var(--text-color);
+}
+
 .unimus-bc-actions button:disabled {
     opacity: 0.55;
     cursor: not-allowed;
-    transform: none;
+    background: #2a2b2f;
+    color: var(--text-color-secondary);
+    border-color: rgba(255, 255, 255, 0.08);
 }
 
 .unimus-bc-suggest {
@@ -140,7 +196,7 @@
     left: 0;
     right: 0;
     display: none;
-    max-height: 320px;
+    max-height: min(65vh, 540px);
     overflow-y: auto;
     border: 1px solid var(--border-color);
     border-radius: 12px;
@@ -366,9 +422,11 @@
 }
 
 .unimus-bc-table-wrap {
-    overflow: auto;
+    overflow-x: auto;
+    overflow-y: hidden;
     border: 1px solid var(--border-color);
     border-radius: 14px;
+    max-width: 100%;
 }
 
 .unimus-bc-table {
@@ -412,7 +470,8 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    min-width: 300px;
+    min-width: 0;
+    flex-wrap: wrap;
 }
 
 .unimus-bc-backup-arrow {
@@ -455,6 +514,8 @@
 .unimus-bc-modal-panel {
     width: min(1180px, 100%);
     max-height: 92vh;
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
     border: 1px solid var(--border-color);
     border-radius: 18px;
@@ -509,9 +570,12 @@
 }
 
 .unimus-bc-modal-body {
+    flex: 1 1 auto;
     max-height: calc(92vh - 130px);
     overflow: auto;
     padding: 18px 20px 22px;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
 }
 
 .unimus-bc-pre,
@@ -557,6 +621,10 @@
     .unimus-bc-span-2 {
         grid-column: auto;
     }
+
+    .unimus-bc-summary {
+        width: 100%;
+    }
 }
 
 @media (max-width: 720px) {
@@ -587,15 +655,95 @@
     }
 
     .unimus-bc-backup-timeline {
-        min-width: 240px;
         font-size: 13px;
+    }
+
+    .unimus-bc-host-link,
+    .unimus-bc-count {
+        width: 100%;
+        text-align: center;
+        justify-content: center;
     }
 
     .unimus-bc-modal {
         padding: 10px;
+        align-items: stretch;
     }
 
     .unimus-bc-modal-body {
         padding: 14px;
+    }
+}
+
+@media (max-width: 480px) {
+    .unimus-backup-configs-page {
+        padding-bottom: 20px;
+    }
+
+    .unimus-bc-hero-copy h1 {
+        font-size: 1.35rem;
+        line-height: 1.2;
+    }
+
+    .unimus-bc-hero-copy p {
+        font-size: 0.92rem;
+    }
+
+    .unimus-bc-card {
+        padding: 14px;
+        border-radius: 14px;
+    }
+
+    .unimus-bc-search-input-wrap input,
+    .unimus-bc-field input {
+        min-height: 44px;
+        padding: 10px 12px;
+        font-size: 14px;
+    }
+
+    .unimus-bc-actions {
+        grid-template-columns: 1fr;
+    }
+
+    .unimus-bc-table th,
+    .unimus-bc-table td {
+        padding: 12px 10px;
+        font-size: 13px;
+    }
+
+    .unimus-bc-modal {
+        padding: 0;
+    }
+
+    .unimus-bc-modal-panel {
+        width: 100%;
+        max-height: 100dvh;
+        min-height: 100dvh;
+        border-radius: 0;
+        border-left: 0;
+        border-right: 0;
+    }
+
+    .unimus-bc-modal-header,
+    .unimus-bc-modal-toolbar {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: #1f1f22;
+    }
+
+    .unimus-bc-modal-toolbar {
+        padding: 12px 14px 0;
+    }
+
+    .unimus-bc-modal-body {
+        max-height: none;
+        padding: 12px 14px 18px;
+    }
+
+    .unimus-bc-pre,
+    .unimus-bc-diff {
+        padding: 14px;
+        font-size: 12px;
     }
 }

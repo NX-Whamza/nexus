@@ -24,7 +24,7 @@ _ZONE_CACHE: dict[str, Any] = {
     "zone_numbers": [],
     "zone_map": {},
 }
-_NETONIX_BASE_CONFIG_PATH = Path(__file__).resolve().parent / "assets" / "NETONIX_BASE_CONFIG.ncfg"
+_NETONIX_BASE_CONFIG_PATH = Path(__file__).resolve().parent.parent / "base_configs" / "Netonix" / "NETONIX_BASE_CONFIG.ncfg"
 _DOWNLOAD_EXTENSION_RULES = {
     "default_extension": ".cfg",
     "rules": [
@@ -597,7 +597,7 @@ def get_summary(request: Request):
 def search_hosts(request: Request, q: str = "", limit: int = 10):
     _require_auth(request)
     query = str(q or "").strip()
-    limit = max(1, min(int(limit or 10), 35))
+    limit = max(1, min(int(limit or 10), 50))
     if len(query) < 2:
         return {"results": []}
     config = _zabbix_runtime()

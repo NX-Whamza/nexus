@@ -47,6 +47,33 @@
         return document.getElementById(id);
     }
 
+    function getUrlState() {
+        return new URLSearchParams(window.location.search);
+    }
+
+    function syncUrlState(next = {}) {
+        const params = getUrlState();
+        params.set('tab', 'unimus-backup-configs');
+        if (next.address) params.set('address', String(next.address).trim());
+        else params.delete('address');
+        const query = params.toString();
+        const nextUrl = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash || ''}`;
+        window.history.replaceState({}, '', nextUrl);
+    }
+
+    function isSmallViewport() {
+        return window.matchMedia('(max-width: 720px)').matches;
+    }
+
+    function isSearchFieldFocused(inputEl) {
+        return !!inputEl && document.activeElement === inputEl;
+    }
+
+    function dismissMobileKeyboard(inputEl) {
+        if (!isSmallViewport() || !isSearchFieldFocused(inputEl)) return;
+        inputEl.blur();
+    }
+
     let initialized = false;
 
     function createModal() {
@@ -95,6 +122,7 @@
             searchTimer: null,
             searchResults: [],
             searchIndex: -1,
+            searchController: null,
             currentDeviceId: '',
             currentAddress: '',
             backups: [],
@@ -147,6 +175,8 @@
             modalDiff: $('unimusBcModalDiff'),
             showFullDiff: $('unimusBcShowFullDiff'),
         };
+
+        const scrollHost = document.querySelector('.content-area');
 
         function showInlineMessage(message, kind = '') {
             els.inlineMessage.textContent = message || '';
@@ -208,7 +238,10 @@
                     event.preventDefault();
                     const idx = Number(itemEl.getAttribute('data-index'));
                     const item = state.searchResults[idx];
-                    if (item?.ip) loadHost(item.ip);
+                    if (item?.ip) {
+                        dismissMobileKeyboard(els.searchInput);
+                        loadHost(item.ip);
+                    }
                 });
             });
         }
@@ -414,6 +447,7 @@
                     state.currentDeviceId = '';
                     state.backups = [];
                     state.selectedBackupIds = [];
+                    syncUrlState({ address });
                     setWorkspaceMode('missing');
                     return;
                 }
@@ -426,6 +460,7 @@
                 state.hasMore = !!payload.backups_has_more;
                 state.selectedBackupIds = [];
                 state.backupCache.clear();
+                syncUrlState({ address: state.currentAddress });
                 setWorkspaceMode('workspace');
 
                 const device = payload.device || {};
@@ -450,7 +485,7 @@
                 showInlineMessage(error.message || 'Failed to load the selected host.', 'error');
             } finally {
                 els.searchButton.disabled = false;
-                els.searchButton.textContent = 'Search';
+                els.searchButton.textContent = 'Load Host';
             }
         }
 
@@ -458,19 +493,22 @@
             const query = String(els.searchInput.value || '').trim();
             if (!query) return;
             if (state.searchIndex >= 0 && state.searchResults[state.searchIndex]?.ip) {
+                dismissMobileKeyboard(els.searchInput);
                 loadHost(state.searchResults[state.searchIndex].ip);
                 return;
             }
             if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(query)) {
+                dismissMobileKeyboard(els.searchInput);
                 loadHost(query);
                 return;
             }
             try {
-                const response = await apiFetch(`${API_BASE}/unimus-backup-configs/host-search?q=${encodeURIComponent(query)}&limit=10`);
+                const response = await apiFetch(`${API_BASE}/unimus-backup-configs/host-search?q=${encodeURIComponent(query)}&limit=50`);
                 const payload = await response.json().catch(() => ({}));
                 if (!response.ok) throw new Error(payload.detail || payload.error || `HTTP ${response.status}`);
                 const first = Array.isArray(payload.results) ? payload.results[0] : null;
                 if (first?.ip) {
+                    dismissMobileKeyboard(els.searchInput);
                     loadHost(first.ip);
                     return;
                 }
@@ -487,18 +525,31 @@
                 return;
             }
             try {
-                const response = await apiFetch(`${API_BASE}/unimus-backup-configs/host-search?q=${encodeURIComponent(query)}&limit=8`);
+                if (state.searchController) {
+                    state.searchController.abort();
+                }
+                state.searchController = new AbortController();
+                const response = await apiFetch(`${API_BASE}/unimus-backup-configs/host-search?q=${encodeURIComponent(query)}&limit=50`, {
+                    signal: state.searchController.signal,
+                });
                 const payload = await response.json().catch(() => ({}));
                 if (!response.ok) throw new Error(payload.detail || payload.error || `HTTP ${response.status}`);
                 renderSuggest(Array.isArray(payload.results) ? payload.results : []);
             } catch (error) {
+                if (error?.name === 'AbortError') return;
                 hideSuggest();
             }
         }
 
         els.searchInput.addEventListener('input', () => {
             clearTimeout(state.searchTimer);
-            state.searchTimer = window.setTimeout(refreshSuggestions, 250);
+            state.searchTimer = window.setTimeout(refreshSuggestions, 325);
+        });
+
+        els.searchInput.addEventListener('focus', () => {
+            if (String(els.searchInput.value || '').trim().length >= 2) {
+                refreshSuggestions();
+            }
         });
 
         els.searchInput.addEventListener('keydown', (event) => {
@@ -636,8 +687,21 @@
             }
         });
 
+        const dismissOnScroll = () => dismissMobileKeyboard(els.searchInput);
+        els.suggest.addEventListener('scroll', dismissOnScroll, { passive: true });
+        els.suggest.addEventListener('touchmove', dismissOnScroll, { passive: true });
+        window.addEventListener('scroll', dismissOnScroll, { passive: true });
+        scrollHost?.addEventListener('scroll', dismissOnScroll, { passive: true });
+
         loadSummary();
         setWorkspaceMode('empty');
+
+        const urlState = getUrlState();
+        const directAddress = String(urlState.get('address') || '').trim();
+        if (directAddress) {
+            els.searchInput.value = directAddress;
+            window.setTimeout(() => loadHost(directAddress), 150);
+        }
     }
 
     if (document.readyState === 'loading') {

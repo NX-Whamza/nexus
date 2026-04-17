@@ -14,7 +14,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="unimus-backup-configs.css">
+    <link rel="stylesheet" href="unimus/backup-configs.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script>
         (function() {
@@ -4053,7 +4053,7 @@
                     <span class="sb-item-label">Cisco Port Setup</span>
                 </div>
                 <div class="sb-item" data-sb-tab="unimus-backup-configs" data-tooltip="Unimus Backup Configs">
-                    <span class="sb-item-icon">&#128190;</span>
+                    <span class="sb-item-icon">&#128451;</span>
                     <span class="sb-item-label">Unimus Backup Configs</span>
                 </div>
 
@@ -9998,10 +9998,12 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
                         <div class="unimus-bc-search-wrap">
                             <label for="unimusBcSearchInput">Host Lookup</label>
                             <div class="unimus-bc-search-row">
-                                <input type="text" id="unimusBcSearchInput" placeholder="Search by Zabbix host name or IP..." autocomplete="off">
-                                <button type="button" id="unimusBcSearchButton">Search</button>
+                                <div class="unimus-bc-search-input-wrap">
+                                    <input type="text" id="unimusBcSearchInput" placeholder="Search by Zabbix host name or IP..." autocomplete="off">
+                                    <div class="unimus-bc-suggest" id="unimusBcSuggest"></div>
+                                </div>
+                                <button type="button" id="unimusBcSearchButton">Load Host</button>
                             </div>
-                            <div class="unimus-bc-suggest" id="unimusBcSuggest"></div>
                         </div>
                         <div class="unimus-bc-summary">
                             <div class="unimus-bc-summary-label">Integration Status</div>
@@ -11715,6 +11717,29 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             return true;
         }
         window.navigateToToolRoute = navigateToToolRoute;
+
+        function syncAppRouteUrl(tabId, extras = {}) {
+            const params = new URLSearchParams(window.location.search);
+            const normalizedTab = String(tabId || '').trim();
+
+            if (!normalizedTab || normalizedTab === 'home') {
+                params.delete('tab');
+                params.delete('address');
+            } else {
+                params.set('tab', normalizedTab);
+                if (normalizedTab !== 'unimus-backup-configs') params.delete('address');
+            }
+
+            Object.entries(extras || {}).forEach(([key, value]) => {
+                if (value == null || value === '') params.delete(key);
+                else params.set(key, String(value).trim());
+            });
+
+            const query = params.toString();
+            const nextUrl = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash || ''}`;
+            window.history.replaceState({}, '', nextUrl);
+        }
+        window.syncAppRouteUrl = syncAppRouteUrl;
 
         /* ── Activity display helpers (shared across Home, Log History, etc.) ── */
         function getActivityDisplay(type, siteName) {
@@ -33920,6 +33945,7 @@ Ready for translation!`);
 
     <script src="cambium-firmware-updater.js"></script>
     <script src="wave-firmware-updater.js"></script>
+    <script src="unimus/backup-configs.js"></script>
 
     <!-- ═══════════════════════════════════════════════════════════════
          POWER TOOLS: Toast, Command Palette, Config Diff, Bulk Gen,
@@ -33965,7 +33991,6 @@ Ready for translation!`);
             { cat: 'Navigate', icon: '', label: 'FTTH Configurator', desc: 'FTTH OLT and BNG workspaces', action: () => window.navigateToTab('ftth-home') },
             { cat: 'Navigate', icon: '', label: 'Command Vault', desc: 'Nokia/Cisco/MikroTik quick commands', action: () => window.navigateToTab('command-vault') },
             { cat: 'Navigate', icon: '', label: 'Cisco Port Setup', desc: 'Cisco port and OSPF handoff generator', action: () => window.navigateToTab('cisco-config') },
-            { cat: 'Navigate', icon: '', label: 'Unimus Backup Configs', desc: 'Search Zabbix hosts and work with Unimus backups', action: () => window.navigateToTab('unimus-backup-configs') },
             { cat: 'Navigate', icon: '', label: 'Completed Configs', desc: 'Saved configurations archive', action: () => window.navigateToTab('completed-configs') },
             { cat: 'Navigate', icon: '', label: 'Log History', desc: 'Activity log history', action: () => window.navigateToTab('log-history') },
             { cat: 'Navigate', icon: '', label: 'Admin Panel', desc: 'Feedback & user management', action: () => window.navigateToTab('admin-panel') },
@@ -36396,6 +36421,7 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
                 const result = await origNavigateToTab(tabId);
                 const route = getToolRouteDefinition(tabId) || { tabId, subtab: null };
                 updateSidebarActive(route.tabId, route.subtab || null);
+                window.syncAppRouteUrl && window.syncAppRouteUrl(route.tabId === 'unimus-backup-configs' ? route.tabId : 'home');
                 if (route.tabId === 'ftth-home' || route.tabId === 'command-vault' || route.tabId === 'device-firmware-updater') {
                     storeLastRoute(route.tabId, route.subtab || null);
                 } else if (route.tabId) {
@@ -36445,6 +36471,14 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
 
         window.addEventListener('hashchange', () => updateSidebarActive());
         document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlTab = (urlParams.get('tab') || '').trim();
+            if (urlTab === 'unimus-backup-configs') {
+                navigateToToolRoute(TOOL_ROUTE_DEFINITIONS['unimus-backup-configs']);
+                updateSidebarActive('unimus-backup-configs');
+                storeLastRoute('unimus-backup-configs');
+                return;
+            }
             const storedRoute = getStoredRoute();
             if (storedRoute) {
                 navigateToToolRoute(storedRoute);
@@ -36538,8 +36572,6 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
         setInterval(pollFeedbackStatus, POLL_INTERVAL);
     })();
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/diff@5.2.0/dist/diff.min.js"></script>
-    <script src="unimus-backup-configs.js"></script>
 
 </body>
 
