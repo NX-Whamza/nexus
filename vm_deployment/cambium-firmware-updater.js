@@ -997,16 +997,5 @@
     }
 
     window.getCambiumApiBase = getCambiumApiBase;
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            initCambiumUpdater().catch(err => {
-                console.error('[Cambium] Failed to initialize updater', err);
-            });
-        }, { once: true });
-    } else {
-        initCambiumUpdater().catch(err => {
-            console.error('[Cambium] Failed to initialize updater', err);
-        });
-    }
+    window.initCambiumUpdater = initCambiumUpdater;
 })();

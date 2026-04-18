@@ -1097,8 +1097,14 @@ def _aviat_version_tuple(version):
 
 
 def _aviat_firmware_is_final(version):
-    target = _aviat_extract_version(getattr(AVIAT_CONFIG, "firmware_final_version", "6.1.0"))
-    return _aviat_version_tuple(_aviat_extract_version(version)) >= _aviat_version_tuple(target)
+    # Final classification should follow the configured rollout target.
+    minimum_final = _aviat_extract_version(
+        getattr(AVIAT_CONFIG, "firmware_final_version", "6.2.4")
+    ) or "6.2.4"
+    actual = _aviat_extract_version(version)
+    if not actual:
+        return False
+    return _aviat_version_tuple(actual) >= _aviat_version_tuple(minimum_final)
 
 
 def _aviat_version_meets_target(version, target_version=None):

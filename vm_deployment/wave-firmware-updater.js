@@ -781,16 +781,5 @@
     }
 
     window.getWaveApiBase = getWaveApiBase;
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            initWaveUpdater().catch(err => {
-                console.error('[WaveFW] Failed to initialize updater', err);
-            });
-        }, { once: true });
-    } else {
-        initWaveUpdater().catch(err => {
-            console.error('[WaveFW] Failed to initialize updater', err);
-        });
-    }
+    window.initWaveUpdater = initWaveUpdater;
 }());

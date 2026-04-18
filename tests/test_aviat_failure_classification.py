@@ -76,8 +76,9 @@ def test_result_dict_normalizes_transitional_status_to_non_failure():
 
 def test_firmware_final_check_uses_version_tuple_not_major_prefix():
     api_server = _load_module()
-    assert api_server._aviat_firmware_is_final("6.1.0") is True
-    assert api_server._aviat_firmware_is_final("6.2.0") is True
+    assert api_server._aviat_firmware_is_final("6.2.4") is True
+    assert api_server._aviat_firmware_is_final("6.3.0") is True
+    assert api_server._aviat_firmware_is_final("6.1.0") is False
     assert api_server._aviat_firmware_is_final("2.11.11") is False
 
 
