@@ -1,7 +1,9 @@
+import asyncio
 import base64
 import os
 import fnmatch
 import io
+import re
 import tarfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -413,6 +415,20 @@ def _build_zabbix_search_wildcard(term: str) -> str:
     return f"*{cleaned}*"
 
 
+def _looks_like_ip_query(query: str) -> bool:
+    """Check if a query looks like an IP address or IP fragment."""
+    cleaned = str(query or "").strip()
+    if not cleaned:
+        return False
+    # Match: starts with digits + dot (e.g., "192.168") or full IP (e.g., "192.168.1.1")
+    if re.match(r"^\d+\.", cleaned):
+        return True
+    # Match full IPv4 pattern
+    if re.match(r"^\d{1,3}(\.\d{1,3}){1,3}$", cleaned):
+        return True
+    return False
+
+
 def _collect_zabbix_hosts(result: list[dict[str, Any]]) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
@@ -606,6 +622,54 @@ def search_hosts(request: Request, q: str = "", limit: int = 10):
     try:
         matches: list[dict[str, Any]] = []
         seen: set[tuple[str, str]] = set()
+
+        # If query looks like an IP, search via hostinterface.get first (highest relevance)
+        if _looks_like_ip_query(query):
+            for idx, status_value in enumerate(("0", "1"), start=77):
+                # Search interfaces by IP
+                interface_payload = {
+                    "jsonrpc": "2.0",
+                    "method": "hostinterface.get",
+                    "params": {
+                        "output": ["hostid", "ip"],
+                        "filter": {"status": [status_value]},
+                        "search": {"ip": query},
+                        "searchWildcardsEnabled": True,
+                        "limit": 75,
+                    },
+                    "auth": config.get("api_token"),
+                    "id": idx,
+                }
+                interfaces = _zabbix_request(interface_payload)
+                host_ids = sorted({str(item.get("hostid") or "").strip() for item in interfaces if str(item.get("hostid") or "").strip()})
+
+                if host_ids:
+                    # Fetch hosts by their IDs
+                    hosts_payload = {
+                        "jsonrpc": "2.0",
+                        "method": "host.get",
+                        "params": {
+                            "output": ["hostid", "host", "name", "status"],
+                            "selectInterfaces": ["ip", "main"],
+                            "hostids": host_ids,
+                            "sortfield": ["name"],
+                            "sortorder": "ASC",
+                        },
+                        "auth": config.get("api_token"),
+                        "id": idx + 100,
+                    }
+                    for host in _collect_zabbix_hosts(_zabbix_request(hosts_payload)):
+                        dedupe_key = (str(host.get("hostid") or "").strip(), str(host.get("ip") or "").strip())
+                        if dedupe_key in seen:
+                            continue
+                        seen.add(dedupe_key)
+                        matches.append(host)
+                        if len(matches) >= limit:
+                            break
+                if len(matches) >= limit:
+                    break
+
+        # Always search by name/host for completeness (append results not already found)
         for idx, status_value in enumerate(("0", "1"), start=77):
             payload = {
                 "jsonrpc": "2.0",
@@ -617,7 +681,6 @@ def search_hosts(request: Request, q: str = "", limit: int = 10):
                     "search": {
                         "host": _build_zabbix_search_wildcard(query),
                         "name": _build_zabbix_search_wildcard(query),
-                        "ip": _build_zabbix_search_wildcard(query),
                     },
                     "searchByAny": True,
                     "searchWildcardsEnabled": True,
@@ -771,8 +834,36 @@ def get_host_backup(request: Request, device_id: str = "", address: str = "", ba
         raise HTTPException(status_code=502, detail=f"Failed to fetch Unimus backup: {exc}")
 
 
+def _poll_backup_completion(
+    device_id: str,
+    before_status: str,
+    before_signature: tuple[str, int, int],
+    before_backups: list[dict[str, Any]],
+    config: dict[str, Any],
+    address: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any], bool]:
+    """Poll for backup completion synchronously. Returns (completed_backups, refreshed_device, completed)."""
+    completed_backups = before_backups
+    completed = False
+    refreshed_device = _get_device(device_id, config)
+    deadline = time.time() + 45
+    while time.time() < deadline:
+        time.sleep(2)
+        refreshed_device = _get_device(device_id, config)
+        current_status = str(refreshed_device.get("lastJobStatus") or "").strip()
+        current_backups = _list_device_backups(device_id, size=100, config=config)
+        if (current_status and current_status != before_status) or (_latest_backup_signature(current_backups) != before_signature):
+            completed_backups = current_backups
+            completed = True
+            break
+    if not completed:
+        completed_backups = _list_device_backups(device_id, size=100, config=config)
+        refreshed_device = _get_device(device_id, config)
+    return completed_backups, refreshed_device, completed
+
+
 @router.post("/host-backup-now")
-def run_host_backup_now(request: Request, device_id: str = "", address: str = ""):
+async def run_host_backup_now(request: Request, device_id: str = "", address: str = ""):
     _require_auth(request)
     device_id = str(device_id or "").strip()
     address = str(address or "").strip()
@@ -801,22 +892,16 @@ def run_host_backup_now(request: Request, device_id: str = "", address: str = ""
                 },
             )
 
-        completed_backups = before_backups
-        completed = False
-        refreshed_device = device
-        deadline = time.time() + 45
-        while time.time() < deadline:
-            time.sleep(2)
-            refreshed_device = _get_device(resolved_device_id, config)
-            current_status = str(refreshed_device.get("lastJobStatus") or "").strip()
-            current_backups = _list_device_backups(resolved_device_id, size=100, config=config)
-            if (current_status and current_status != before_status) or (_latest_backup_signature(current_backups) != before_signature):
-                completed_backups = current_backups
-                completed = True
-                break
-        if not completed:
-            completed_backups = _list_device_backups(resolved_device_id, size=100, config=config)
-            refreshed_device = _get_device(resolved_device_id, config)
+        # Run polling asynchronously without blocking thread pool
+        completed_backups, refreshed_device, completed = await asyncio.to_thread(
+            _poll_backup_completion,
+            resolved_device_id,
+            before_status,
+            before_signature,
+            before_backups,
+            config,
+            address,
+        )
 
         connections = _resolve_device_connections(
             config,

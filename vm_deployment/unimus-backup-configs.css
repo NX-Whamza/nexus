@@ -547,6 +547,16 @@
     text-align: center;
 }
 
+.unimus-bc-diff-error {
+    padding: 12px 16px;
+    border-radius: 6px;
+    background: #fef3c7;
+    color: #d97706;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    text-align: center;
+}
+
 @media (max-width: 1080px) {
     .unimus-bc-toolbar,
     .unimus-bc-status-grid,
@@ -559,7 +569,71 @@
     }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 768px) {
+    .unimus-bc-toolbar {
+        grid-template-columns: 1fr;
+        gap: 14px;
+    }
+
+    .unimus-bc-search-wrap {
+        width: 100%;
+    }
+
+    .unimus-bc-summary {
+        width: 100%;
+    }
+
+    .unimus-bc-form-grid {
+        grid-template-columns: 1fr;
+        gap: 12px 14px;
+    }
+
+    .unimus-bc-span-2 {
+        grid-column: auto;
+    }
+
+    .unimus-bc-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .unimus-bc-actions button {
+        flex: 1;
+        min-width: 120px;
+    }
+
+    .unimus-bc-status-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .unimus-bc-status-card {
+        padding: 14px;
+    }
+
+    .unimus-bc-table-wrap {
+        overflow-x: auto;
+    }
+
+    .unimus-bc-backup-timeline {
+        min-width: 200px;
+        font-size: 12px;
+    }
+
+    .unimus-bc-modal-panel {
+        width: 100%;
+        max-width: 100vw;
+        max-height: 90vh;
+        border-radius: 12px;
+    }
+
+    .unimus-bc-modal-body {
+        max-height: calc(90vh - 130px);
+        overflow-y: auto;
+        padding: 14px;
+    }
+
     .unimus-bc-hero {
         padding: 20px 18px;
         margin-bottom: 18px;
@@ -569,33 +643,130 @@
         font-size: 1.55rem;
     }
 
+    .unimus-bc-hero-copy p {
+        font-size: 0.9rem;
+    }
+
+    .unimus-bc-suggest {
+        max-width: 100%;
+    }
+
+    .unimus-bc-pre,
+    .unimus-bc-diff {
+        overflow-x: auto;
+        white-space: pre;
+        word-break: normal;
+    }
+}
+
+@media (max-width: 480px) {
+    .unimus-bc-hero {
+        gap: 12px;
+        padding: 16px 14px;
+    }
+
+    .unimus-bc-hero-copy h1 {
+        font-size: 1.25rem;
+        margin-bottom: 6px;
+    }
+
+    .unimus-bc-hero-copy p {
+        font-size: 0.85rem;
+    }
+
     .unimus-bc-card {
-        padding: 18px;
+        padding: 14px;
     }
 
     .unimus-bc-search-row {
         grid-template-columns: 1fr;
     }
 
-    .unimus-bc-section-header {
-        flex-direction: column;
+    .unimus-bc-search-row input,
+    .unimus-bc-search-row button {
+        width: 100%;
+        min-height: 44px;
     }
 
-    .unimus-bc-actions {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+    .unimus-bc-actions button {
+        width: 100%;
+        min-height: 44px;
+        font-size: 14px;
+    }
+
+    .unimus-bc-section-header {
+        flex-direction: column;
+        margin-bottom: 14px;
+    }
+
+    .unimus-bc-section-header h2 {
+        font-size: 1.05rem;
     }
 
     .unimus-bc-backup-timeline {
-        min-width: 240px;
-        font-size: 13px;
+        min-width: 160px;
+        font-size: 11px;
+        gap: 6px;
+    }
+
+    .unimus-bc-status-card {
+        padding: 12px;
+    }
+
+    .unimus-bc-status-pill {
+        min-height: 32px;
+        padding: 0 10px;
+        font-size: 12px;
     }
 
     .unimus-bc-modal {
-        padding: 10px;
+        padding: 8px;
+    }
+
+    .unimus-bc-modal-panel {
+        border-radius: 8px;
+    }
+
+    .unimus-bc-modal-header {
+        padding: 14px 16px;
     }
 
     .unimus-bc-modal-body {
-        padding: 14px;
+        padding: 12px;
     }
+
+    .unimus-bc-pre,
+    .unimus-bc-diff {
+        padding: 12px;
+        font-size: 12px;
+    }
+
+    .unimus-bc-table th,
+    .unimus-bc-table td {
+        padding: 10px 8px;
+        font-size: 12px;
+    }
+
+    .unimus-bc-backup-id {
+        font-size: 11px;
+    }
+
+    .unimus-bc-load-more button {
+        min-width: 180px;
+    }
+}
+
+/* Ensure all elements use border-box sizing for proper responsive layout */
+.unimus-backup-configs-page * {
+    box-sizing: border-box;
+}
+
+/* Ensure modals and overflow containers scroll properly on small screens */
+.unimus-bc-modal-panel {
+    max-height: 90vh;
+    overflow: hidden;
+}
+
+.unimus-bc-modal-body {
+    overflow-y: auto;
 }

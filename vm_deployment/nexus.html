@@ -20597,9 +20597,11 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
             // Initialize all event handlers
             initializeEventHandlers();
 
-            // Initialize dashboard
-            updateDashboardMetrics();
-            updateRecentActivity();
+            // Initialize dashboard (deferred for better initial page load)
+            setTimeout(function() {
+                updateDashboardMetrics();
+                updateRecentActivity();
+            }, 3000);
 
             // Load saved theme preference
             const savedTheme = localStorage.getItem('theme') || 'dark';
@@ -26472,10 +26474,10 @@ Ready for translation!`);
                 }
             });
 
-            // Initial load + periodic refresh every 15s for near-real-time presence
+            // Initial load + periodic refresh every 30s for near-real-time presence
             refreshOnlineUsers();
             if (_onlineRefreshTimer) clearInterval(_onlineRefreshTimer);
-            _onlineRefreshTimer = setInterval(refreshOnlineUsers, 15000);
+            _onlineRefreshTimer = setInterval(refreshOnlineUsers, 30000);
 
             // Heartbeat every 30s to stay "online" (timeout window is 5 minutes)
             setInterval(function() {
@@ -26568,10 +26570,10 @@ Ready for translation!`);
                     if (dd) dd.classList.remove('open');
                 }
             });
-            // Load immediately and poll every 60s
+            // Load immediately and poll every 120s
             loadNotifications();
             if (_notifTimer) clearInterval(_notifTimer);
-            _notifTimer = setInterval(loadNotifications, 60000);
+            _notifTimer = setInterval(loadNotifications, 120000);
         }
         // ── End Notification Bell ──────────────────────────────────────────────
 
@@ -33899,22 +33901,6 @@ Ready for translation!`);
                 }
             }
 
-            document.addEventListener('DOMContentLoaded', () => {
-                aviatLoadSharedQueue().then(loaded => {
-                    if (!loaded) {
-                        aviatRestoreRadios();
-                        aviatUpdateUI();
-                    }
-                    aviatRefreshStatus();
-                });
-                aviatBindControls();
-                aviatUpdateMaintenanceBanner();
-                setInterval(aviatUpdateMaintenanceBanner, 60000);
-                setInterval(() => aviatRefreshStatus({ quiet: true }), 30000);
-                aviatStartAutoStatusChecks();
-                aviatStartGlobalLogStream();
-                aviatAddLog('Tool initialized', 'info');
-            });
         })();
     </script>
 
@@ -36544,6 +36530,66 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
     </script>
     <script src="https://cdn.jsdelivr.net/npm/diff@5.2.0/dist/diff.min.js"></script>
     <script src="unimus-backup-configs.js"></script>
+
+    <!-- ═══════════════════════════════════════════════════════
+         LAZY INITIALIZATION WRAPPER FOR FIRMWARE UPDATERS AND UNIMUS
+         ═══════════════════════════════════════════════════════ -->
+    <script>
+    (function () {
+        'use strict';
+        // Lazy initialization wrapper for device firmware updater sub-tabs.
+        // Aviat, Cambium, and Wave are deferred until the user first visits each tab.
+        if (window.showDeviceFirmwareUpdaterSubTab && !window.showDeviceFirmwareUpdaterSubTab.__lazyInitWrapped) {
+            var _origSubTab = window.showDeviceFirmwareUpdaterSubTab;
+            window.showDeviceFirmwareUpdaterSubTab = async function (tabKey) {
+                // Run lazy init before switching the view
+                if (tabKey === 'cambium' && typeof window.initCambiumUpdater === 'function') {
+                    await window.initCambiumUpdater();
+                } else if (tabKey === 'wave-fw' && typeof window.initWaveUpdater === 'function') {
+                    await window.initWaveUpdater();
+                } else if (tabKey === 'aviat' && !window.__aviatInitialized) {
+                    window.__aviatInitialized = true;
+                    if (typeof aviatLoadSharedQueue === 'function') {
+                        aviatLoadSharedQueue().then(function (loaded) {
+                            if (!loaded) {
+                                if (typeof aviatRestoreRadios === 'function') aviatRestoreRadios();
+                                if (typeof aviatUpdateUI === 'function') aviatUpdateUI();
+                            }
+                            if (typeof aviatRefreshStatus === 'function') aviatRefreshStatus();
+                        });
+                    }
+                    if (typeof aviatBindControls === 'function') aviatBindControls();
+                    if (typeof aviatUpdateMaintenanceBanner === 'function') {
+                        aviatUpdateMaintenanceBanner();
+                        setInterval(aviatUpdateMaintenanceBanner, 60000);
+                    }
+                    if (typeof aviatStartAutoStatusChecks === 'function') aviatStartAutoStatusChecks();
+                    if (typeof aviatStartGlobalLogStream === 'function') aviatStartGlobalLogStream();
+                    setInterval(function () {
+                        if (typeof aviatRefreshStatus === 'function') aviatRefreshStatus({ quiet: true });
+                    }, 30000);
+                    if (typeof aviatAddLog === 'function') aviatAddLog('Tool initialized', 'info');
+                }
+                return _origSubTab(tabKey);
+            };
+            window.showDeviceFirmwareUpdaterSubTab.__lazyInitWrapped = true;
+        }
+
+        // Lazy initialization wrapper for Unimus backup configs.
+        // loadSummary() is deferred until the user first visits the tab.
+        var _origNav = window.navigateToTab;
+        if (_origNav && !_origNav.__unimusInitWrapped) {
+            window.navigateToTab = async function(tabId) {
+                var result = await _origNav(tabId);
+                if (tabId === 'unimus-backup-configs' && typeof window.initUnimusBackupConfigs === 'function') {
+                    window.initUnimusBackupConfigs();
+                }
+                return result;
+            };
+            window.navigateToTab.__unimusInitWrapped = true;
+        }
+    }());
+    </script>
 
 </body>
 

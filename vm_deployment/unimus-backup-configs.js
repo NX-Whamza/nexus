@@ -379,7 +379,11 @@
 
         function rerenderDiff() {
             if (!state.activeDiff) return;
-            const diffParts = window.Diff ? window.Diff.diffLines(state.activeDiff.olderText, state.activeDiff.newerText) : [];
+            if (!window.Diff) {
+                els.modalDiff.innerHTML = '<div class="unimus-bc-diff-error">Config diff is unavailable — the diff library failed to load. Please refresh the page and try again.</div>';
+                return;
+            }
+            const diffParts = window.Diff.diffLines(state.activeDiff.olderText, state.activeDiff.newerText);
             renderDiffRows(buildDiffRows(diffParts, !!els.showFullDiff.checked));
         }
 
@@ -640,9 +644,6 @@
         setWorkspaceMode('empty');
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        init();
-    }
+    // Expose init function for lazy initialization
+    window.initUnimusBackupConfigs = init;
 })();
