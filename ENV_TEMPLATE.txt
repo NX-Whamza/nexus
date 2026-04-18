@@ -167,3 +167,22 @@ GITLAB_COMPLIANCE_REF=main
 GITLAB_COMPLIANCE_TTL=900
 GITLAB_COMPLIANCE_SCRIPT_PATH=TX-ARv2.rsc
 # Also accepts full GitLab blob URLs; backend normalizes them to repo path.
+
+# ── Unimus backup configs integration ──────────────────────────────────────────
+# Required for the Unimus Backup Configs tab to function.
+# UNIMUS_BASE_URL: base URL of your Unimus server (e.g. https://unimus.nxlink.com)
+# UNIMUS_API_TOKEN: bearer token from Unimus Admin > API Tokens
+UNIMUS_BASE_URL=CHANGE_ME
+UNIMUS_API_TOKEN=CHANGE_ME
+# UNIMUS_TIMEOUT=30
+# UNIMUS_VERIFY_SSL=true
+
+# ── Zabbix integration (used by Unimus host search) ────────────────────────────
+# Required for the host-search autocomplete to work by name/IP.
+# ZABBIX_BASE_URL: base UI URL (used for display/linking)
+# ZABBIX_API_URL: JSON-RPC endpoint (usually <base>/api_jsonrpc.php)
+# ZABBIX_API_TOKEN: token from Zabbix User Settings > API tokens
+ZABBIX_BASE_URL=CHANGE_ME
+ZABBIX_API_URL=CHANGE_ME
+ZABBIX_API_TOKEN=CHANGE_ME
+# ZABBIX_TIMEOUT=30
