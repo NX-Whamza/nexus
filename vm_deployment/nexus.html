@@ -376,7 +376,8 @@
         .sidebar-logo-text .sub { display: block; font-size: 9px; font-weight: 400; color: var(--text-muted); letter-spacing: 0; text-transform: none; }
         .app-sidebar:hover .sidebar-logo-text,
         .app-sidebar.expanded .sidebar-logo-text,
-        .app-sidebar.pinned .sidebar-logo-text {
+        .app-sidebar.pinned .sidebar-logo-text,
+        .app-sidebar.mobile-open .sidebar-logo-text {
             opacity: 1;
             max-width: 220px;
             transform: translateX(0);
@@ -407,7 +408,8 @@
         }
         .app-sidebar:hover .sidebar-section-label,
         .app-sidebar.expanded .sidebar-section-label,
-        .app-sidebar.pinned .sidebar-section-label { opacity: 1; }
+        .app-sidebar.pinned .sidebar-section-label,
+        .app-sidebar.mobile-open .sidebar-section-label { opacity: 1; }
 
         .sb-item {
             display: flex;
@@ -470,7 +472,8 @@
         }
         .app-sidebar:hover .sb-item-label,
         .app-sidebar.expanded .sb-item-label,
-        .app-sidebar.pinned .sb-item-label { opacity: 1; transform: translateX(0); }
+        .app-sidebar.pinned .sb-item-label,
+        .app-sidebar.mobile-open .sb-item-label { opacity: 1; transform: translateX(0); }
 
         .sb-item-arrow {
             opacity: 0;
@@ -481,7 +484,8 @@
         }
         .app-sidebar:hover .sb-item-arrow,
         .app-sidebar.expanded .sb-item-arrow,
-        .app-sidebar.pinned .sb-item-arrow { opacity: 1; }
+        .app-sidebar.pinned .sb-item-arrow,
+        .app-sidebar.mobile-open .sb-item-arrow { opacity: 1; }
         .sb-group.open > .sb-item-header .sb-item-arrow { transform: rotate(90deg); }
 
         .sb-group-children {
@@ -547,7 +551,8 @@
         }
         .app-sidebar:hover .sidebar-version,
         .app-sidebar.expanded .sidebar-version,
-        .app-sidebar.pinned .sidebar-version { opacity: 1; }
+        .app-sidebar.pinned .sidebar-version,
+        .app-sidebar.mobile-open .sidebar-version { opacity: 1; }
         .sidebar-version .ver-tag {
             display: inline-block;
             background: rgba(139,92,246,0.15);
@@ -4103,6 +4108,85 @@
             .dashboard-container { padding: 8px !important; }
             .top-bar { padding: 0 8px; gap: 4px; }
             .metrics-row { gap: 8px !important; }
+        }
+
+        /* ── Mobile sidebar fixes ───────────────────────────────────────── */
+        @media (max-width: 768px) {
+            /* Suppress tooltip pseudo-elements — hover is unreliable on touch */
+            .sb-item[data-tooltip]::after { display: none !important; }
+
+            /* Top bar: hide version pill to prevent overflow; tighten gap */
+            .header-status { display: none !important; }
+            .top-bar { gap: 6px; flex-wrap: nowrap; overflow-x: auto; }
+
+            /* Feedback tabs – wrap onto multiple lines instead of overflowing */
+            .feedback-tabs { flex-wrap: wrap; }
+            .feedback-tab { flex: 1 1 auto; min-width: 90px; text-align: center; padding: 10px 12px; }
+
+            /* Bulk-mode tabs – horizontal scroll, tighter padding */
+            .bulk-mode-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; }
+            .bulk-mode-tab { padding: 10px 14px; font-size: 13px; white-space: nowrap; flex-shrink: 0; }
+
+            /* Field-config subtabs – full-width row with scroll on very narrow screens */
+            .field-config-subtabs { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; padding-bottom: 4px; }
+            .field-config-subtab { white-space: nowrap; flex-shrink: 0; }
+        }
+
+        @media (max-width: 480px) {
+            /* Feedback tabs stack vertically on phones */
+            .feedback-tabs { flex-direction: column; gap: 6px; }
+            .feedback-tab { width: 100% !important; }
+        }
+
+        /* ── Per-pane inline grid gaps: patterns not yet covered ──────── */
+        @media (max-width: 768px) {
+            /* 4-col space-separated — not matched by existing repeat(4) rule */
+            .content-pane [style*="grid-template-columns: 1fr 1fr 1fr 1fr"],
+            .content-pane [style*="grid-template-columns:1fr 1fr 1fr 1fr"] {
+                grid-template-columns: 1fr !important;
+            }
+
+            /* Mixed-fr grids (2fr 1fr 1fr, etc.) — enterprise-feeding and similar */
+            .content-pane [style*="grid-template-columns: 2fr"],
+            .content-pane [style*="grid-template-columns:2fr"] {
+                grid-template-columns: 1fr !important;
+            }
+
+            /* Diff toolbar: remove hardcoded min-width so selects don't overflow */
+            .diff-toolbar select { min-width: 0 !important; width: 100%; }
+
+            /* IN-STATE / OUT-STATE sub-tab buttons: tighten on tablet */
+            .sub-tab-btn { font-size: 14px !important; }
+        }
+
+        /* ── 640 px: collapse remaining 2-col inline grids ────────────── */
+        /* Covers: enterprise, ccr2004, cisco, tarana, switch-maker,
+           completed-configs, log-history, enterprise-feeding, and any future pane */
+        @media (max-width: 640px) {
+            .content-pane [style*="grid-template-columns: 1fr 1fr"],
+            .content-pane [style*="grid-template-columns:1fr 1fr"] {
+                grid-template-columns: 1fr !important;
+            }
+
+            /* Diff toolbar: stack source selects + action buttons vertically */
+            .diff-toolbar { flex-direction: column; align-items: stretch; }
+            .diff-toolbar > div { width: 100%; box-sizing: border-box; }
+
+            /* Button rows that rely on margin-left:auto to right-align — make them wrap */
+            .bulk-mode-content > div:first-child { flex-wrap: wrap !important; }
+        }
+
+        /* ── 480 px: phone-specific pane fixes ─────────────────────────── */
+        @media (max-width: 480px) {
+            /* IN-STATE / OUT-STATE sub-tab buttons: shrink padding on tiny phones */
+            .sub-tab-btn { padding: 10px !important; font-size: 13px !important; }
+
+            /* Diff toolbar action buttons: full width */
+            .diff-toolbar button { width: 100%; }
+
+            /* Cisco / Nokia / any pane textarea output: ensure horizontal scroll */
+            .content-pane textarea[readonly],
+            .content-pane pre { overflow-x: auto !important; white-space: pre !important; max-width: 100%; }
         }
 
     </style>
