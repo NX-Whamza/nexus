@@ -607,9 +607,20 @@
             els.backupNowButton.textContent = 'Running...';
             try {
                 const params = new URLSearchParams({ device_id: state.currentDeviceId });
-                const response = await apiFetch(`${API_BASE}/unimus-backup-configs/host-backup-now?${params.toString()}`, {
-                    method: 'POST',
-                });
+                // Use raw fetch with a 90s timeout — robustFetch's 10s limit is too short
+                // for the backup-now polling loop (backend waits up to 45s for completion).
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 90000);
+                let response;
+                try {
+                    response = await fetch(`${API_BASE}/unimus-backup-configs/host-backup-now?${params.toString()}`, {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        signal: controller.signal,
+                    });
+                } finally {
+                    clearTimeout(timeoutId);
+                }
                 const payload = await response.json().catch(() => ({}));
                 if (!response.ok && response.status !== 202) {
                     throw new Error(payload.detail || payload.error || `HTTP ${response.status}`);

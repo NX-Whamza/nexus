@@ -14,7 +14,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="unimus-backup-configs.css">
+    <link rel="stylesheet" href="unimus-backup-configs.css?v=4">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script>
         (function() {
@@ -378,7 +378,8 @@
         .sidebar-logo-text .sub { display: block; font-size: 9px; font-weight: 400; color: var(--text-muted); letter-spacing: 0; text-transform: none; }
         .app-sidebar:hover .sidebar-logo-text,
         .app-sidebar.expanded .sidebar-logo-text,
-        .app-sidebar.pinned .sidebar-logo-text {
+        .app-sidebar.pinned .sidebar-logo-text,
+        .app-sidebar.mobile-open .sidebar-logo-text {
             opacity: 1;
             max-width: 220px;
             transform: translateX(0);
@@ -409,7 +410,8 @@
         }
         .app-sidebar:hover .sidebar-section-label,
         .app-sidebar.expanded .sidebar-section-label,
-        .app-sidebar.pinned .sidebar-section-label { opacity: 1; }
+        .app-sidebar.pinned .sidebar-section-label,
+        .app-sidebar.mobile-open .sidebar-section-label { opacity: 1; }
 
         .sb-item {
             display: flex;
@@ -472,7 +474,8 @@
         }
         .app-sidebar:hover .sb-item-label,
         .app-sidebar.expanded .sb-item-label,
-        .app-sidebar.pinned .sb-item-label { opacity: 1; transform: translateX(0); }
+        .app-sidebar.pinned .sb-item-label,
+        .app-sidebar.mobile-open .sb-item-label { opacity: 1; transform: translateX(0); }
 
         .sb-item-arrow {
             opacity: 0;
@@ -483,7 +486,8 @@
         }
         .app-sidebar:hover .sb-item-arrow,
         .app-sidebar.expanded .sb-item-arrow,
-        .app-sidebar.pinned .sb-item-arrow { opacity: 1; }
+        .app-sidebar.pinned .sb-item-arrow,
+        .app-sidebar.mobile-open .sb-item-arrow { opacity: 1; }
         .sb-group.open > .sb-item-header .sb-item-arrow { transform: rotate(90deg); }
 
         .sb-group-children {
@@ -549,7 +553,8 @@
         }
         .app-sidebar:hover .sidebar-version,
         .app-sidebar.expanded .sidebar-version,
-        .app-sidebar.pinned .sidebar-version { opacity: 1; }
+        .app-sidebar.pinned .sidebar-version,
+        .app-sidebar.mobile-open .sidebar-version { opacity: 1; }
         .sidebar-version .ver-tag {
             display: inline-block;
             background: rgba(139,92,246,0.15);
@@ -705,6 +710,64 @@
             position: sticky;
             top: 0;
             z-index: 999;
+        }
+
+        /* ── Mobile sidebar overlay ───────────────────────────────────── */
+        .sidebar-mobile-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.55);
+            z-index: 999;
+            backdrop-filter: blur(2px);
+            -webkit-backdrop-filter: blur(2px);
+        }
+        .sidebar-mobile-backdrop.is-open { display: block; }
+
+        /* Hamburger button — hidden on desktop, shown on mobile */
+        .sidebar-hamburger {
+            display: none;
+            flex-shrink: 0;
+            order: -1;
+            width: 36px;
+            height: 36px;
+            padding: 0;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-color);
+            cursor: pointer;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .sidebar-hamburger:hover { background: var(--sidebar-hover); border-color: var(--sidebar-active); }
+        .sidebar-hamburger svg { display: block; }
+
+        @media (max-width: 768px) {
+            /* Sidebar slides off-screen; z-index above backdrop */
+            .app-sidebar {
+                transform: translateX(-100%);
+                transition: width var(--sidebar-transition), transform var(--sidebar-transition);
+                z-index: 1001;
+                /* Always show full labels on mobile when open */
+                --sidebar-current: var(--sidebar-expanded);
+            }
+            .app-sidebar.mobile-open {
+                transform: translateX(0);
+                box-shadow: 4px 0 40px rgba(0, 0, 0, 0.45);
+            }
+            /* Remove body margin — sidebar is an overlay on mobile */
+            .app-body,
+            .app-sidebar:hover ~ .app-body,
+            .app-sidebar.expanded ~ .app-body,
+            .app-sidebar.pinned ~ .app-body {
+                margin-left: 0 !important;
+            }
+            /* Show hamburger in top bar */
+            .sidebar-hamburger { display: flex; }
+            /* Put hamburger on the left, rest stays on the right */
+            .top-bar { justify-content: space-between; }
         }
 
         /* Header Navigation - HIDDEN (replaced by sidebar) */
@@ -4016,10 +4079,253 @@
         .maint-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
         @media(max-width:768px){.maint-form-grid{grid-template-columns:1fr}.diff-panel-wrap{grid-template-columns:1fr}}
 
+        /* ══════════════════════════════════════════════════════════════════
+           GLOBAL MOBILE LAYOUT FIXES  — all tabs / all panes
+           These rules consolidate responsive behaviour that was missing
+           from individual components.  Breakpoints:
+             1024px  tablet (iPad, landscape phone)
+              768px  small tablet / large phone  (sidebar already handled)
+              480px  phone portrait
+              360px  small phone edge case
+        ══════════════════════════════════════════════════════════════════ */
+
+        /* ── 1024 px – tablet ──────────────────────────────────────────── */
+        @media (max-width: 1024px) {
+            .container { padding: 20px; }
+            .dashboard-container { padding: 20px; }
+            /* Nokia 7250 – stack at tablet if not already via 900px rule */
+            .nokia7250-config-container { grid-template-columns: 1fr; }
+            /* Metric cards min-width tighter so they don't squish */
+            .metrics-row { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+        }
+
+        /* ── 768 px – mobile ────────────────────────────────────────────── */
+        @media (max-width: 768px) {
+            /* Containers */
+            .container { padding: 14px !important; }
+            .dashboard-container { padding: 14px !important; }
+
+            /* Headings */
+            h1 { font-size: 1.45rem !important; }
+            h2 { font-size: 1.15rem !important; }
+
+            /* ── Named grid classes → single column ── */
+            .grid-2col,
+            .grid-3col,
+            .grid-4col,
+            .device-selection-grid,
+            .ido-tools-input-grid,
+            .warehouse-sm-layout,
+            .customer-grid { grid-template-columns: 1fr !important; }
+
+            /* Port grid – cut from 6 → 3 cols */
+            .warehouse-sm-port-grid { grid-template-columns: repeat(3, 1fr) !important; }
+
+            /* Dashboard */
+            .metrics-row { grid-template-columns: repeat(2, 1fr) !important; gap: 12px !important; }
+            .metric-card { padding: 16px !important; }
+            .dashboard-header h1 { font-size: 1.5rem !important; }
+
+            /* ── Inline grid overrides (pane-scoped so we don't clobber grids
+               that already work, e.g. auto-fit ones) ── */
+            /* Compliance scanner – 2-col scan input area */
+            #compliance-scanner-pane [style*="grid-template-columns: 1fr 1fr"],
+            #compliance-scanner-pane [style*="grid-template-columns:1fr 1fr"] {
+                grid-template-columns: 1fr !important;
+            }
+            /* FTTH panes */
+            #ftth-pane [style*="grid-template-columns: 1fr 1fr"],
+            #ftth-pane [style*="grid-template-columns:1fr 1fr"],
+            #ftth-home-pane [style*="grid-template-columns: 1fr 1fr"],
+            #ftth-home-pane [style*="grid-template-columns:1fr 1fr"] {
+                grid-template-columns: 1fr !important;
+            }
+            /* Nokia 7250 inline form grids */
+            #nokia7250-maker-pane [style*="grid-template-columns: 1fr 1fr"],
+            #nokia7250-maker-pane [style*="grid-template-columns:1fr 1fr"] {
+                grid-template-columns: 1fr !important;
+            }
+            /* MikroTik Tower / BNG2 */
+            #tower-pane [style*="grid-template-columns: 1fr 1fr"],
+            #tower-pane [style*="grid-template-columns:1fr 1fr"],
+            #bng2-pane [style*="grid-template-columns: 1fr 1fr"],
+            #bng2-pane [style*="grid-template-columns:1fr 1fr"] {
+                grid-template-columns: 1fr !important;
+            }
+            /* Admin / settings panes */
+            #admin-pane [style*="grid-template-columns: 1fr 1fr"],
+            #admin-pane [style*="grid-template-columns:1fr 1fr"],
+            #settings-pane [style*="grid-template-columns: 1fr 1fr"],
+            #settings-pane [style*="grid-template-columns:1fr 1fr"] {
+                grid-template-columns: 1fr !important;
+            }
+            /* Catch remaining 3-col inline grids across all panes */
+            .content-pane [style*="grid-template-columns: 1fr 1fr 1fr"],
+            .content-pane [style*="grid-template-columns:1fr 1fr 1fr"],
+            .content-pane [style*="repeat(3"],
+            .content-pane [style*="repeat(4"] {
+                grid-template-columns: 1fr !important;
+            }
+
+            /* ── Forms ── */
+            .form-group input,
+            .form-group select,
+            .form-group textarea { width: 100%; box-sizing: border-box; }
+
+            /* ── Buttons – minimum 44 px touch target ── */
+            .btn { min-height: 44px; }
+            button { min-height: 38px; }
+
+            /* ── Tables – always scroll horizontally ── */
+            .data-table, .bulk-table { min-width: 520px; }
+            .bulk-table-wrap,
+            .table-wrap,
+            .data-table-wrap { overflow-x: auto !important; }
+
+            /* ── Flex rows that should wrap on mobile ── */
+            .maint-status-bar { flex-direction: column; }
+            .maint-status-card { min-width: 0; }
+
+            /* ── Aviat / firmware grid – already auto-fit but enforce 1 col ── */
+            .aviat-grid { grid-template-columns: 1fr !important; }
+
+            /* ── Announcement cards ── */
+            .announcement-card { padding: 14px !important; }
+
+            /* ── Section padding ── */
+            .section { padding: 14px !important; }
+        }
+
+        /* ── 480 px – phone portrait ────────────────────────────────────── */
+        @media (max-width: 480px) {
+            .container { padding: 10px !important; }
+            .dashboard-container { padding: 10px !important; }
+
+            /* Metrics → full single column */
+            .metrics-row { grid-template-columns: 1fr !important; gap: 10px !important; }
+            .metric-card { padding: 14px !important; }
+            .metric-icon { font-size: 24px; }
+
+            /* Port grid → 2 cols */
+            .warehouse-sm-port-grid { grid-template-columns: repeat(2, 1fr) !important; }
+
+            /* Buttons full-width in form contexts */
+            .section .btn,
+            .form-actions .btn { width: 100%; }
+
+            /* Tab buttons stacked */
+            .ftth-home-tabs,
+            .command-vault-tabs { flex-direction: column !important; gap: 6px; }
+            .ftth-home-tabs button,
+            .command-vault-tabs button,
+            .command-vault-tab { width: 100% !important; text-align: center !important; }
+
+            /* Top-bar pills – hide verbose text, keep icons */
+            #userEmailDisplay { display: none !important; }
+            #roleBadge { display: none !important; }
+            #tenantBadge { display: none !important; }
+
+            /* Headings */
+            h1 { font-size: 1.25rem !important; }
+            h2 { font-size: 1.05rem !important; }
+
+            /* Section */
+            .section { padding: 10px !important; border-radius: 10px !important; }
+            .maint-card { padding: 14px !important; }
+        }
+
+        /* ── 360 px – small phone edge ──────────────────────────────────── */
+        @media (max-width: 360px) {
+            .container { padding: 8px !important; }
+            .dashboard-container { padding: 8px !important; }
+            .top-bar { padding: 0 8px; gap: 4px; }
+            .metrics-row { gap: 8px !important; }
+        }
+
+        /* ── Mobile sidebar fixes ───────────────────────────────────────── */
+        @media (max-width: 768px) {
+            /* Suppress tooltip pseudo-elements — hover is unreliable on touch */
+            .sb-item[data-tooltip]::after { display: none !important; }
+
+            /* Top bar: hide version pill to prevent overflow; tighten gap */
+            .header-status { display: none !important; }
+            .top-bar { gap: 6px; flex-wrap: nowrap; overflow-x: auto; }
+
+            /* Feedback tabs – wrap onto multiple lines instead of overflowing */
+            .feedback-tabs { flex-wrap: wrap; }
+            .feedback-tab { flex: 1 1 auto; min-width: 90px; text-align: center; padding: 10px 12px; }
+
+            /* Bulk-mode tabs – horizontal scroll, tighter padding */
+            .bulk-mode-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; }
+            .bulk-mode-tab { padding: 10px 14px; font-size: 13px; white-space: nowrap; flex-shrink: 0; }
+
+            /* Field-config subtabs – full-width row with scroll on very narrow screens */
+            .field-config-subtabs { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; padding-bottom: 4px; }
+            .field-config-subtab { white-space: nowrap; flex-shrink: 0; }
+        }
+
+        @media (max-width: 480px) {
+            /* Feedback tabs stack vertically on phones */
+            .feedback-tabs { flex-direction: column; gap: 6px; }
+            .feedback-tab { width: 100% !important; }
+        }
+
+        /* ── Per-pane inline grid gaps: patterns not yet covered ──────── */
+        @media (max-width: 768px) {
+            /* 4-col space-separated — not matched by existing repeat(4) rule */
+            .content-pane [style*="grid-template-columns: 1fr 1fr 1fr 1fr"],
+            .content-pane [style*="grid-template-columns:1fr 1fr 1fr 1fr"] {
+                grid-template-columns: 1fr !important;
+            }
+
+            /* Mixed-fr grids (2fr 1fr 1fr, etc.) — enterprise-feeding and similar */
+            .content-pane [style*="grid-template-columns: 2fr"],
+            .content-pane [style*="grid-template-columns:2fr"] {
+                grid-template-columns: 1fr !important;
+            }
+
+            /* Diff toolbar: remove hardcoded min-width so selects don't overflow */
+            .diff-toolbar select { min-width: 0 !important; width: 100%; }
+
+            /* IN-STATE / OUT-STATE sub-tab buttons: tighten on tablet */
+            .sub-tab-btn { font-size: 14px !important; }
+        }
+
+        /* ── 640 px: collapse remaining 2-col inline grids ────────────── */
+        /* Covers: enterprise, ccr2004, cisco, tarana, switch-maker,
+           completed-configs, log-history, enterprise-feeding, and any future pane */
+        @media (max-width: 640px) {
+            .content-pane [style*="grid-template-columns: 1fr 1fr"],
+            .content-pane [style*="grid-template-columns:1fr 1fr"] {
+                grid-template-columns: 1fr !important;
+            }
+
+            /* Diff toolbar: stack source selects + action buttons vertically */
+            .diff-toolbar { flex-direction: column; align-items: stretch; }
+            .diff-toolbar > div { width: 100%; box-sizing: border-box; }
+
+            /* Button rows that rely on margin-left:auto to right-align — make them wrap */
+            .bulk-mode-content > div:first-child { flex-wrap: wrap !important; }
+        }
+
+        /* ── 480 px: phone-specific pane fixes ─────────────────────────── */
+        @media (max-width: 480px) {
+            /* IN-STATE / OUT-STATE sub-tab buttons: shrink padding on tiny phones */
+            .sub-tab-btn { padding: 10px !important; font-size: 13px !important; }
+
+            /* Diff toolbar action buttons: full width */
+            .diff-toolbar button { width: 100%; }
+
+            /* Cisco / Nokia / any pane textarea output: ensure horizontal scroll */
+            .content-pane textarea[readonly],
+            .content-pane pre { overflow-x: auto !important; white-space: pre !important; max-width: 100%; }
+        }
+
     </style>
 </head>
 
 <body>
+    <div class="sidebar-mobile-backdrop" id="sidebarMobileBackdrop"></div>
     <div class="main-container">
         <!-- Sidebar Navigation -->
         <aside class="app-sidebar" id="appSidebar">
@@ -4252,6 +4558,13 @@
         <div class="app-body">
             <!-- Compact Top Bar -->
             <div class="top-bar">
+                <button class="sidebar-hamburger" id="sidebarHamburger" aria-label="Open navigation menu" title="Open menu">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <rect x="2" y="4" width="14" height="1.8" rx="0.9" fill="currentColor"/>
+                        <rect x="2" y="8.1" width="14" height="1.8" rx="0.9" fill="currentColor"/>
+                        <rect x="2" y="12.2" width="14" height="1.8" rx="0.9" fill="currentColor"/>
+                    </svg>
+                </button>
                 <button class="toggle-dark" onclick="window.openCommandPalette && window.openCommandPalette()"
                     title="Search everything (Ctrl+K)"
                     style="font-size: 9px; padding: 4px 8px;"> SEARCH</button>
@@ -37036,6 +37349,50 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
             }
         });
 
+        // ── Mobile sidebar toggle ──────────────────────────────────────────────
+        (function () {
+            const hamburger = document.getElementById('sidebarHamburger');
+            const backdrop = document.getElementById('sidebarMobileBackdrop');
+            if (!hamburger || !backdrop) return;
+
+            function isMobile() { return window.innerWidth <= 768; }
+
+            function openMobileSidebar() {
+                sidebar.classList.add('mobile-open');
+                backdrop.classList.add('is-open');
+                hamburger.setAttribute('aria-expanded', 'true');
+                document.body.style.overflow = 'hidden';
+            }
+
+            function closeMobileSidebar() {
+                sidebar.classList.remove('mobile-open');
+                backdrop.classList.remove('is-open');
+                hamburger.setAttribute('aria-expanded', 'false');
+                document.body.style.overflow = '';
+            }
+
+            hamburger.addEventListener('click', () => {
+                if (sidebar.classList.contains('mobile-open')) closeMobileSidebar();
+                else openMobileSidebar();
+            });
+
+            backdrop.addEventListener('click', closeMobileSidebar);
+
+            // Close sidebar after navigating on mobile
+            sidebar.addEventListener('click', (event) => {
+                if (!isMobile()) return;
+                const item = event.target.closest('.sb-item:not(.sb-item-header)');
+                if (item && !item.classList.contains('sb-group')) {
+                    setTimeout(closeMobileSidebar, 150);
+                }
+            });
+
+            // Close sidebar on resize back to desktop
+            window.addEventListener('resize', () => {
+                if (!isMobile()) closeMobileSidebar();
+            }, { passive: true });
+        }());
+
         const origNavigateToTab = window.navigateToTab;
         if (typeof origNavigateToTab === 'function' && !origNavigateToTab.__sidebarSyncWrapped) {
             const wrappedNavigateToTab = async function(tabId) {
@@ -37185,7 +37542,7 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
     })();
     </script>
     <script src="https://cdn.jsdelivr.net/npm/diff@5.2.0/dist/diff.min.js"></script>
-    <script src="unimus-backup-configs.js"></script>
+    <script src="unimus-backup-configs.js?v=4"></script>
 
     <!-- ═══════════════════════════════════════════════════════
          LAZY INITIALIZATION WRAPPER FOR FIRMWARE UPDATERS AND UNIMUS
