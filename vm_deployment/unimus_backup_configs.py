@@ -440,6 +440,9 @@ def _collect_zabbix_hosts(result: list[dict[str, Any]]) -> list[dict[str, Any]]:
         main_interface = next((item for item in interfaces if str(item.get("main")) == "1"), None)
         selected_interface = main_interface or (interfaces[0] if interfaces else {})
         ip_address = str(selected_interface.get("ip") or "").strip()
+        # Strip port suffix (e.g. "10.1.2.3:161") — Zabbix SNMP interfaces may include port in IP field
+        if ip_address and re.match(r"^\d{1,3}(?:\.\d{1,3}){3}:\d+$", ip_address):
+            ip_address = ip_address.rsplit(":", 1)[0]
         if not ip_address:
             continue
         dedupe_key = (str(host.get("hostid") or "").strip(), ip_address)
@@ -616,7 +619,7 @@ def get_summary(request: Request):
 def search_hosts(request: Request, q: str = "", limit: int = 10):
     _require_auth(request)
     query = str(q or "").strip()
-    limit = max(1, min(int(limit or 10), 35))
+    limit = max(1, min(int(limit or 50), 50))
     if len(query) < 2:
         return {"results": []}
     config = _zabbix_runtime()
@@ -714,6 +717,9 @@ def get_host_details(request: Request, device_id: str = "", address: str = ""):
     _require_auth(request)
     device_id = str(device_id or "").strip()
     address = str(address or "").strip()
+    # Strip port suffix from IPv4 addresses (e.g. "10.1.2.3:161" from Zabbix SNMP interface)
+    if address and re.match(r"^\d{1,3}(?:\.\d{1,3}){3}:\d+$", address):
+        address = address.rsplit(":", 1)[0]
     if not device_id and not address:
         raise HTTPException(status_code=400, detail="Missing required parameter: device_id or address")
     config = _require_unimus_runtime()
