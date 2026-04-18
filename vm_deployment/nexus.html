@@ -10254,7 +10254,6 @@ ipv4 address 10.10.10.1 255.255.255.252</div>
     <div class="content-pane" id="unimus-backup-configs-pane">
         <div class="container unimus-backup-configs-page">
             <div class="unimus-bc-hero">
-                <div class="unimus-bc-hero-accent"></div>
                 <div class="unimus-bc-hero-copy">
                     <h1>Unimus Backup Configs</h1>
                     <p>Search by Zabbix host name or IP, review Unimus status, and compare backup configs without leaving Nexus.</p>
@@ -37230,20 +37229,6 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
                 return _origSubTab(tabKey);
             };
             window.showDeviceFirmwareUpdaterSubTab.__lazyInitWrapped = true;
-        }
-
-        // Lazy initialization wrapper for Unimus backup configs.
-        // loadSummary() is deferred until the user first visits the tab.
-        var _origNav = window.navigateToTab;
-        if (_origNav && !_origNav.__unimusInitWrapped) {
-            window.navigateToTab = async function(tabId) {
-                var result = await _origNav(tabId);
-                if (tabId === 'unimus-backup-configs' && typeof window.initUnimusBackupConfigs === 'function') {
-                    window.initUnimusBackupConfigs();
-                }
-                return result;
-            };
-            window.navigateToTab.__unimusInitWrapped = true;
         }
     }());
     </script>

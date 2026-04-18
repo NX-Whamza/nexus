@@ -8,26 +8,16 @@
 
 .unimus-bc-hero {
     position: relative;
-    display: flex;
-    align-items: center;
-    gap: 18px;
-    padding: 26px 28px;
+    padding: 28px 28px 24px;
     margin-bottom: 24px;
     border: 1px solid var(--border-color);
     border-radius: 18px;
     background:
-        radial-gradient(circle at top right, rgba(255, 122, 0, 0.13), transparent 30%),
+        radial-gradient(circle at top right, rgba(255, 122, 0, 0.10), transparent 35%),
         linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01)),
         var(--container-bg);
     overflow: hidden;
-}
-
-.unimus-bc-hero-accent {
-    width: 5px;
-    align-self: stretch;
-    border-radius: 999px;
-    background: linear-gradient(180deg, #ff9d42, #ff7a00);
-    box-shadow: 0 0 24px rgba(255, 122, 0, 0.25);
+    text-align: center;
 }
 
 .unimus-bc-hero-copy h1 {
@@ -37,10 +27,10 @@
 }
 
 .unimus-bc-hero-copy p {
-    margin: 0;
+    margin: 0 auto;
     color: var(--text-color-secondary);
     font-size: 0.98rem;
-    max-width: 880px;
+    max-width: 680px;
 }
 
 .unimus-bc-shell {
@@ -640,11 +630,12 @@
     }
 
     .unimus-bc-hero-copy h1 {
-        font-size: 1.55rem;
+        font-size: 1.5rem;
     }
 
     .unimus-bc-hero-copy p {
         font-size: 0.9rem;
+        max-width: 100%;
     }
 
     .unimus-bc-suggest {
@@ -661,7 +652,6 @@
 
 @media (max-width: 480px) {
     .unimus-bc-hero {
-        gap: 12px;
         padding: 16px 14px;
     }
 
@@ -672,6 +662,7 @@
 
     .unimus-bc-hero-copy p {
         font-size: 0.85rem;
+        max-width: 100%;
     }
 
     .unimus-bc-card {

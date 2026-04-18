@@ -404,17 +404,19 @@
         }
 
         async function loadHost(address) {
+            // Strip port suffix from IPv4 addresses (e.g. "10.1.2.3:161" → "10.1.2.3")
+            const cleanAddress = String(address || '').trim().replace(/^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/, '$1');
             hideSuggest();
             hideInlineMessage();
-            els.searchInput.value = address;
+            els.searchInput.value = cleanAddress;
             els.searchButton.disabled = true;
             els.searchButton.textContent = 'Loading...';
             try {
-                const params = new URLSearchParams({ address: String(address || '').trim() });
+                const params = new URLSearchParams({ address: cleanAddress });
                 const response = await apiFetch(`${API_BASE}/unimus-backup-configs/host-details?${params.toString()}`);
                 const payload = await response.json().catch(() => ({}));
                 if (response.status === 404 && payload?.code === 'device_not_found') {
-                    state.currentAddress = address;
+                    state.currentAddress = cleanAddress;
                     state.currentDeviceId = '';
                     state.backups = [];
                     state.selectedBackupIds = [];
@@ -422,7 +424,7 @@
                     return;
                 }
                 if (!response.ok) throw new Error(payload.detail || payload.error || `HTTP ${response.status}`);
-                state.currentAddress = payload.address || address;
+                state.currentAddress = payload.address || cleanAddress;
                 state.currentDeviceId = payload.device_id || '';
                 state.backups = Array.isArray(payload.backups) ? payload.backups : [];
                 state.currentPage = Number(payload.backups_page || 0);
@@ -470,7 +472,7 @@
                 return;
             }
             try {
-                const response = await apiFetch(`${API_BASE}/unimus-backup-configs/host-search?q=${encodeURIComponent(query)}&limit=10`);
+                const response = await apiFetch(`${API_BASE}/unimus-backup-configs/host-search?q=${encodeURIComponent(query)}&limit=50`);
                 const payload = await response.json().catch(() => ({}));
                 if (!response.ok) throw new Error(payload.detail || payload.error || `HTTP ${response.status}`);
                 const first = Array.isArray(payload.results) ? payload.results[0] : null;
@@ -491,7 +493,7 @@
                 return;
             }
             try {
-                const response = await apiFetch(`${API_BASE}/unimus-backup-configs/host-search?q=${encodeURIComponent(query)}&limit=8`);
+                const response = await apiFetch(`${API_BASE}/unimus-backup-configs/host-search?q=${encodeURIComponent(query)}&limit=50`);
                 const payload = await response.json().catch(() => ({}));
                 if (!response.ok) throw new Error(payload.detail || payload.error || `HTTP ${response.status}`);
                 renderSuggest(Array.isArray(payload.results) ? payload.results : []);
@@ -644,6 +646,9 @@
         setWorkspaceMode('empty');
     }
 
-    // Expose init function for lazy initialization
-    window.initUnimusBackupConfigs = init;
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
 })();
