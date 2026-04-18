@@ -4074,6 +4074,169 @@
         .maint-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
         @media(max-width:768px){.maint-form-grid{grid-template-columns:1fr}.diff-panel-wrap{grid-template-columns:1fr}}
 
+        /* ══════════════════════════════════════════════════════════════════
+           GLOBAL MOBILE LAYOUT FIXES  — all tabs / all panes
+           These rules consolidate responsive behaviour that was missing
+           from individual components.  Breakpoints:
+             1024px  tablet (iPad, landscape phone)
+              768px  small tablet / large phone  (sidebar already handled)
+              480px  phone portrait
+              360px  small phone edge case
+        ══════════════════════════════════════════════════════════════════ */
+
+        /* ── 1024 px – tablet ──────────────────────────────────────────── */
+        @media (max-width: 1024px) {
+            .container { padding: 20px; }
+            .dashboard-container { padding: 20px; }
+            /* Nokia 7250 – stack at tablet if not already via 900px rule */
+            .nokia7250-config-container { grid-template-columns: 1fr; }
+            /* Metric cards min-width tighter so they don't squish */
+            .metrics-row { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+        }
+
+        /* ── 768 px – mobile ────────────────────────────────────────────── */
+        @media (max-width: 768px) {
+            /* Containers */
+            .container { padding: 14px !important; }
+            .dashboard-container { padding: 14px !important; }
+
+            /* Headings */
+            h1 { font-size: 1.45rem !important; }
+            h2 { font-size: 1.15rem !important; }
+
+            /* ── Named grid classes → single column ── */
+            .grid-2col,
+            .grid-3col,
+            .grid-4col,
+            .device-selection-grid,
+            .ido-tools-input-grid,
+            .warehouse-sm-layout,
+            .customer-grid { grid-template-columns: 1fr !important; }
+
+            /* Port grid – cut from 6 → 3 cols */
+            .warehouse-sm-port-grid { grid-template-columns: repeat(3, 1fr) !important; }
+
+            /* Dashboard */
+            .metrics-row { grid-template-columns: repeat(2, 1fr) !important; gap: 12px !important; }
+            .metric-card { padding: 16px !important; }
+            .dashboard-header h1 { font-size: 1.5rem !important; }
+
+            /* ── Inline grid overrides (pane-scoped so we don't clobber grids
+               that already work, e.g. auto-fit ones) ── */
+            /* Compliance scanner – 2-col scan input area */
+            #compliance-scanner-pane [style*="grid-template-columns: 1fr 1fr"],
+            #compliance-scanner-pane [style*="grid-template-columns:1fr 1fr"] {
+                grid-template-columns: 1fr !important;
+            }
+            /* FTTH panes */
+            #ftth-pane [style*="grid-template-columns: 1fr 1fr"],
+            #ftth-pane [style*="grid-template-columns:1fr 1fr"],
+            #ftth-home-pane [style*="grid-template-columns: 1fr 1fr"],
+            #ftth-home-pane [style*="grid-template-columns:1fr 1fr"] {
+                grid-template-columns: 1fr !important;
+            }
+            /* Nokia 7250 inline form grids */
+            #nokia7250-maker-pane [style*="grid-template-columns: 1fr 1fr"],
+            #nokia7250-maker-pane [style*="grid-template-columns:1fr 1fr"] {
+                grid-template-columns: 1fr !important;
+            }
+            /* MikroTik Tower / BNG2 */
+            #tower-pane [style*="grid-template-columns: 1fr 1fr"],
+            #tower-pane [style*="grid-template-columns:1fr 1fr"],
+            #bng2-pane [style*="grid-template-columns: 1fr 1fr"],
+            #bng2-pane [style*="grid-template-columns:1fr 1fr"] {
+                grid-template-columns: 1fr !important;
+            }
+            /* Admin / settings panes */
+            #admin-pane [style*="grid-template-columns: 1fr 1fr"],
+            #admin-pane [style*="grid-template-columns:1fr 1fr"],
+            #settings-pane [style*="grid-template-columns: 1fr 1fr"],
+            #settings-pane [style*="grid-template-columns:1fr 1fr"] {
+                grid-template-columns: 1fr !important;
+            }
+            /* Catch remaining 3-col inline grids across all panes */
+            .content-pane [style*="grid-template-columns: 1fr 1fr 1fr"],
+            .content-pane [style*="grid-template-columns:1fr 1fr 1fr"],
+            .content-pane [style*="repeat(3"],
+            .content-pane [style*="repeat(4"] {
+                grid-template-columns: 1fr !important;
+            }
+
+            /* ── Forms ── */
+            .form-group input,
+            .form-group select,
+            .form-group textarea { width: 100%; box-sizing: border-box; }
+
+            /* ── Buttons – minimum 44 px touch target ── */
+            .btn { min-height: 44px; }
+            button { min-height: 38px; }
+
+            /* ── Tables – always scroll horizontally ── */
+            .data-table, .bulk-table { min-width: 520px; }
+            .bulk-table-wrap,
+            .table-wrap,
+            .data-table-wrap { overflow-x: auto !important; }
+
+            /* ── Flex rows that should wrap on mobile ── */
+            .maint-status-bar { flex-direction: column; }
+            .maint-status-card { min-width: 0; }
+
+            /* ── Aviat / firmware grid – already auto-fit but enforce 1 col ── */
+            .aviat-grid { grid-template-columns: 1fr !important; }
+
+            /* ── Announcement cards ── */
+            .announcement-card { padding: 14px !important; }
+
+            /* ── Section padding ── */
+            .section { padding: 14px !important; }
+        }
+
+        /* ── 480 px – phone portrait ────────────────────────────────────── */
+        @media (max-width: 480px) {
+            .container { padding: 10px !important; }
+            .dashboard-container { padding: 10px !important; }
+
+            /* Metrics → full single column */
+            .metrics-row { grid-template-columns: 1fr !important; gap: 10px !important; }
+            .metric-card { padding: 14px !important; }
+            .metric-icon { font-size: 24px; }
+
+            /* Port grid → 2 cols */
+            .warehouse-sm-port-grid { grid-template-columns: repeat(2, 1fr) !important; }
+
+            /* Buttons full-width in form contexts */
+            .section .btn,
+            .form-actions .btn { width: 100%; }
+
+            /* Tab buttons stacked */
+            .ftth-home-tabs,
+            .command-vault-tabs { flex-direction: column !important; gap: 6px; }
+            .ftth-home-tabs button,
+            .command-vault-tabs button,
+            .command-vault-tab { width: 100% !important; text-align: center !important; }
+
+            /* Top-bar pills – hide verbose text, keep icons */
+            #userEmailDisplay { display: none !important; }
+            #roleBadge { display: none !important; }
+            #tenantBadge { display: none !important; }
+
+            /* Headings */
+            h1 { font-size: 1.25rem !important; }
+            h2 { font-size: 1.05rem !important; }
+
+            /* Section */
+            .section { padding: 10px !important; border-radius: 10px !important; }
+            .maint-card { padding: 14px !important; }
+        }
+
+        /* ── 360 px – small phone edge ──────────────────────────────────── */
+        @media (max-width: 360px) {
+            .container { padding: 8px !important; }
+            .dashboard-container { padding: 8px !important; }
+            .top-bar { padding: 0 8px; gap: 4px; }
+            .metrics-row { gap: 8px !important; }
+        }
+
     </style>
 </head>
 
