@@ -393,7 +393,10 @@ def _zabbix_request(payload: dict[str, Any]) -> Any:
     response = requests.post(
         str(config.get("api_url")),
         json=payload,
-        headers={"Content-Type": "application/json-rpc"},
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {config.get('api_token', '')}",
+        },
         timeout=float(config.get("timeout") or 30),
     )
     response.raise_for_status()
