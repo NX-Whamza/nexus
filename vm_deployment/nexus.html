@@ -37652,11 +37652,9 @@ BNG2 Site,MT2216,10.255.1.1/32,10.200.0.0/22,10.200.4.0/22,100.65.0.0/22,132.147
 
         window.addEventListener('hashchange', () => updateSidebarActive());
         document.addEventListener('DOMContentLoaded', () => {
-            const storedRoute = getStoredRoute();
-            if (storedRoute) {
-                navigateToToolRoute(storedRoute);
-                return;
-            }
+            // Always land on home page on refresh / initial load.
+            // home-pane is already .active in HTML so no navigateToTab call needed —
+            // just sync the sidebar highlight and clear any stale stored route.
             updateSidebarActive('home');
             storeLastRoute('home');
         });
