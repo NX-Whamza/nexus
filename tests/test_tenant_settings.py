@@ -77,3 +77,63 @@ def test_platform_admin_can_get_any_tenant_settings(monkeypatch):
         assert "dns_primary" in r.get_json()["settings"]
     finally:
         anchor.close()
+
+
+def test_branding_syncs_to_tenants_table_via_tenant_settings(monkeypatch):
+    api = _load_api_server()
+    uri, anchor = _patch_dbs(monkeypatch, api)
+    anchor.row_factory = sqlite3.Row
+    try:
+        client = api.app.test_client()
+        token = _login(client, api, "whamza@team.nxlink.com")
+        list_r = client.get("/api/admin/tenants", headers={"Authorization": f"Bearer {token}"}).get_json()
+        tid = list_r["tenants"][0]["id"]
+        rv = client.put("/api/tenant-settings", json={
+            'brand_name': 'AcmeCorp',
+            'logo_url': 'https://acme.com/logo.png',
+            'primary_color': '#ff0000',
+            'favicon_url': 'https://acme.com/fav.ico',
+        }, headers={"Authorization": f"Bearer {token}"})
+        assert rv.status_code == 200
+        data = rv.get_json()
+        assert data.get('success') is True
+        row = anchor.execute(
+            'SELECT company_name, logo_url, primary_color, favicon_url FROM tenants WHERE id = ?',
+            (tid,)
+        ).fetchone()
+        assert row['company_name'] == 'AcmeCorp'
+        assert row['logo_url'] == 'https://acme.com/logo.png'
+        assert row['primary_color'] == '#ff0000'
+        assert row['favicon_url'] == 'https://acme.com/fav.ico'
+    finally:
+        anchor.close()
+
+
+def test_branding_syncs_to_tenants_table_via_admin_tenant_settings(monkeypatch):
+    api = _load_api_server()
+    uri, anchor = _patch_dbs(monkeypatch, api)
+    anchor.row_factory = sqlite3.Row
+    try:
+        client = api.app.test_client()
+        token = _login(client, api, "whamza@team.nxlink.com")
+        list_r = client.get("/api/admin/tenants", headers={"Authorization": f"Bearer {token}"}).get_json()
+        tid = list_r["tenants"][0]["id"]
+        rv = client.put(f"/api/admin/tenant-settings/{tid}", json={
+            'brand_name': 'AdminCorp',
+            'logo_url': 'https://admin.com/logo.png',
+            'primary_color': '#00ff00',
+            'favicon_url': 'https://admin.com/fav.ico',
+        }, headers={"Authorization": f"Bearer {token}"})
+        assert rv.status_code == 200
+        data = rv.get_json()
+        assert data.get('success') is True
+        row = anchor.execute(
+            'SELECT company_name, logo_url, primary_color, favicon_url FROM tenants WHERE id = ?',
+            (tid,)
+        ).fetchone()
+        assert row['company_name'] == 'AdminCorp'
+        assert row['logo_url'] == 'https://admin.com/logo.png'
+        assert row['primary_color'] == '#00ff00'
+        assert row['favicon_url'] == 'https://admin.com/fav.ico'
+    finally:
+        anchor.close()

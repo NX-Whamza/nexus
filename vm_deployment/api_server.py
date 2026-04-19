@@ -46,7 +46,7 @@ import json
 import socket
 import requests
 import zipfile
-from urllib.parse import urljoin, urlencode, quote_plus
+from urllib.parse import urljoin, urlencode, quote_plus, urlparse
 from datetime import datetime, timedelta, timezone
 import time
 try:
@@ -18984,7 +18984,13 @@ def update_tenant_settings():
             'compliance_dns_primary', 'compliance_dns_secondary',
             'compliance_ntp', 'compliance_syslog', 'compliance_snmp_community',
             'compliance_radius_primary', 'compliance_radius_secondary',
+            # Branding fields
+            'brand_name', 'logo_url', 'primary_color', 'favicon_url',
         }
+        for url_field in ('logo_url', 'favicon_url'):
+            val = data.get(url_field, '')
+            if val and urlparse(val).scheme not in {'http', 'https', ''}:
+                return jsonify({'success': False, 'error': 'Invalid URL scheme for logo_url or favicon_url'}), 400
         updates = {k: v for k, v in data.items() if k in allowed_fields}
         if not updates:
             return jsonify({'error': 'No valid fields provided'}), 400
@@ -18999,6 +19005,23 @@ def update_tenant_settings():
         params = list(updates.values()) + [tenant_id]
         conn.execute(f'UPDATE tenant_settings SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = ?', params)
         conn.commit()
+        try:
+            branding_col_map = {
+                'brand_name': 'company_name',
+                'logo_url': 'logo_url',
+                'primary_color': 'primary_color',
+                'favicon_url': 'favicon_url',
+            }
+            branding_updates = {branding_col_map[k]: v for k, v in updates.items() if k in branding_col_map}
+            if branding_updates:
+                set_clause_t = ', '.join(f'{col} = ?' for col in branding_updates)
+                conn.execute(
+                    f'UPDATE tenants SET {set_clause_t} WHERE id = ?',
+                    list(branding_updates.values()) + [tenant_id]
+                )
+                conn.commit()
+        except Exception as e:
+            app.logger.error('[BRANDING SYNC] Failed to mirror branding to tenants table: %s', e)
         settings = _get_tenant_settings_row(conn, tenant_id)
         conn.close()
         return jsonify({'success': True, 'settings': settings})
@@ -19043,7 +19066,13 @@ def admin_update_tenant_settings(tenant_id):
             'compliance_dns_primary', 'compliance_dns_secondary',
             'compliance_ntp', 'compliance_syslog', 'compliance_snmp_community',
             'compliance_radius_primary', 'compliance_radius_secondary',
+            # Branding fields
+            'brand_name', 'logo_url', 'primary_color', 'favicon_url',
         }
+        for url_field in ('logo_url', 'favicon_url'):
+            val = data.get(url_field, '')
+            if val and urlparse(val).scheme not in {'http', 'https', ''}:
+                return jsonify({'success': False, 'error': 'Invalid URL scheme for logo_url or favicon_url'}), 400
         updates = {k: v for k, v in data.items() if k in allowed_fields}
         if not updates:
             return jsonify({'error': 'No valid fields provided'}), 400
@@ -19058,6 +19087,23 @@ def admin_update_tenant_settings(tenant_id):
         params = list(updates.values()) + [tenant_id]
         conn.execute(f'UPDATE tenant_settings SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = ?', params)
         conn.commit()
+        try:
+            branding_col_map = {
+                'brand_name': 'company_name',
+                'logo_url': 'logo_url',
+                'primary_color': 'primary_color',
+                'favicon_url': 'favicon_url',
+            }
+            branding_updates = {branding_col_map[k]: v for k, v in updates.items() if k in branding_col_map}
+            if branding_updates:
+                set_clause_t = ', '.join(f'{col} = ?' for col in branding_updates)
+                conn.execute(
+                    f'UPDATE tenants SET {set_clause_t} WHERE id = ?',
+                    list(branding_updates.values()) + [tenant_id]
+                )
+                conn.commit()
+        except Exception as e:
+            app.logger.error('[BRANDING SYNC] Failed to mirror branding to tenants table: %s', e)
         settings = _get_tenant_settings_row(conn, tenant_id)
         conn.close()
         return jsonify({'success': True, 'settings': settings})
