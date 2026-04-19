@@ -4145,18 +4145,14 @@
             #nokia7250-maker-pane [style*="grid-template-columns:1fr 1fr"] {
                 grid-template-columns: 1fr !important;
             }
-            /* MikroTik Tower / BNG2 */
+            /* MikroTik Tower */
             #tower-pane [style*="grid-template-columns: 1fr 1fr"],
-            #tower-pane [style*="grid-template-columns:1fr 1fr"],
-            #bng2-pane [style*="grid-template-columns: 1fr 1fr"],
-            #bng2-pane [style*="grid-template-columns:1fr 1fr"] {
+            #tower-pane [style*="grid-template-columns:1fr 1fr"] {
                 grid-template-columns: 1fr !important;
             }
-            /* Admin / settings panes */
-            #admin-pane [style*="grid-template-columns: 1fr 1fr"],
-            #admin-pane [style*="grid-template-columns:1fr 1fr"],
-            #settings-pane [style*="grid-template-columns: 1fr 1fr"],
-            #settings-pane [style*="grid-template-columns:1fr 1fr"] {
+            /* Admin panel */
+            #admin-panel-pane [style*="grid-template-columns: 1fr 1fr"],
+            #admin-panel-pane [style*="grid-template-columns:1fr 1fr"] {
                 grid-template-columns: 1fr !important;
             }
             /* Catch remaining 3-col inline grids across all panes */
@@ -4220,11 +4216,6 @@
             .command-vault-tabs button,
             .command-vault-tab { width: 100% !important; text-align: center !important; }
 
-            /* Top-bar pills – hide verbose text, keep icons */
-            #userEmailDisplay { display: none !important; }
-            #roleBadge { display: none !important; }
-            #tenantBadge { display: none !important; }
-
             /* Headings */
             h1 { font-size: 1.25rem !important; }
             h2 { font-size: 1.05rem !important; }
@@ -4247,9 +4238,11 @@
             /* Suppress tooltip pseudo-elements — hover is unreliable on touch */
             .sb-item[data-tooltip]::after { display: none !important; }
 
-            /* Top bar: hide version pill to prevent overflow; tighten gap */
+            /* Top bar: hide verbose pills on mobile (profile dropdown shows this info on tap) */
             .header-status { display: none !important; }
-            .top-bar { gap: 6px; flex-wrap: nowrap; overflow-x: auto; }
+            #userEmailDisplay, #roleBadge, #tenantBadge, #tenantSwitcher { display: none !important; }
+            /* No overflow-x:auto here — it clips the absolutely-positioned profile dropdown */
+            .top-bar { gap: 6px; flex-wrap: nowrap; }
 
             /* Feedback tabs – wrap onto multiple lines instead of overflowing */
             .feedback-tabs { flex-wrap: wrap; }
@@ -4291,6 +4284,61 @@
             .sub-tab-btn { font-size: 14px !important; }
         }
 
+        /* ── Tower: mode selector & upgrade method — stack at tablet width ── */
+        @media (max-width: 768px) {
+            /* "New Device" / "Upgrade Existing" radio buttons → full-width column */
+            #towerModeSelectorSection > div:first-child {
+                flex-direction: column !important;
+                gap: 10px !important;
+            }
+            #towerModeSelectorSection > div:first-child > label {
+                flex: none !important;
+                width: 100% !important;
+                /* border-box so padding doesn't add to width and cause overflow */
+                box-sizing: border-box !important;
+            }
+            /* "Select Method" (SSH / File Upload) radio options → stack */
+            #upgradeMode [style*="display: flex; gap: 20px"],
+            #upgradeMode [style*="display:flex; gap: 20px"] {
+                flex-direction: column !important;
+                gap: 8px !important;
+            }
+        }
+
+        /* ── Feature Flags modal: mobile scroll + grid collapse ─────────── */
+        @media (max-width: 768px) {
+            /* Feature-flags modal only: start from top so tall content doesn't clip above viewport.
+               Other shorter modals (password change, settings, feedback) keep their centered alignment. */
+            #featureFlagsModal.show { align-items: flex-start !important; padding: 16px 0 !important; overflow-y: auto !important; }
+            /* Feature-flags modal: full-width, tighter padding */
+            .feature-flags-modal { width: 96% !important; }
+            .feature-flags-head,
+            .feature-flags-body,
+            .feature-flags-foot { padding-left: 14px !important; padding-right: 14px !important; }
+            /* Collapse 2-col item grid to single column */
+            .ff-grid { grid-template-columns: 1fr !important; }
+            /* Body: remove max-height so the outer modal scroll handles it */
+            .feature-flags-body { max-height: none !important; }
+            /* Footer buttons: full-width stack */
+            .feature-flags-foot { flex-direction: column !important; gap: 8px !important; }
+            .ff-btn { width: 100% !important; box-sizing: border-box; }
+        }
+
+        /* ── Admin panel: fixed-width inputs → fluid on mobile ──────────── */
+        @media (max-width: 640px) {
+            #admin-panel-pane input[style*="width:200px"],
+            #admin-panel-pane input[style*="width: 200px"],
+            #admin-panel-pane input[style*="width:220px"],
+            #admin-panel-pane input[style*="width: 220px"],
+            #admin-panel-pane input[style*="width:140px"],
+            #admin-panel-pane input[style*="width: 140px"],
+            #admin-panel-pane input[style*="width:160px"],
+            #admin-panel-pane input[style*="width: 160px"] {
+                width: 100% !important;
+                box-sizing: border-box;
+            }
+        }
+
         /* ── 640 px: collapse remaining 2-col inline grids ────────────── */
         /* Covers: enterprise, ccr2004, cisco, tarana, switch-maker,
            completed-configs, log-history, enterprise-feeding, and any future pane */
@@ -4306,6 +4354,18 @@
 
             /* Button rows that rely on margin-left:auto to right-align — make them wrap */
             .bulk-mode-content > div:first-child { flex-wrap: wrap !important; }
+
+            /* Global: wrap any inline flex row that has a gap but no explicit wrap.
+               Catches generate/copy button rows, SSH input rows, etc. across all panes. */
+            .content-pane [style*="display: flex; gap"],
+            .content-pane [style*="display:flex; gap"],
+            .content-pane [style*="display: flex;gap"],
+            .content-pane [style*="display:flex;gap"] {
+                flex-wrap: wrap !important;
+            }
+            /* Preserve intentional no-wrap tab bars (they have their own scroll rules) */
+            .bulk-mode-tabs,
+            .field-config-subtabs { flex-wrap: nowrap !important; }
         }
 
         /* ── 480 px: phone-specific pane fixes ─────────────────────────── */
@@ -4319,6 +4379,37 @@
             /* Cisco / Nokia / any pane textarea output: ensure horizontal scroll */
             .content-pane textarea[readonly],
             .content-pane pre { overflow-x: auto !important; white-space: pre !important; max-width: 100%; }
+
+            /* Generate/Copy/Refresh/Search action buttons → full-width stacked */
+            .content-pane [style*="margin-top: 20px"][style*="display: flex"] > button,
+            .content-pane [style*="margin-top:20px"][style*="display: flex"] > button,
+            .content-pane [style*="display:flex; gap:10px"] > button,
+            .content-pane [style*="display: flex; gap: 10px"] > button {
+                flex: 1 1 auto;
+                min-width: 0;
+            }
+
+            /* Large standalone buttons (Search, Refresh etc. with padding: 12px) */
+            .content-pane .section > button[style*="padding: 12px"],
+            .content-pane .section > button[style*="padding:12px"] {
+                display: block !important;
+                width: 100% !important;
+                margin-left: 0 !important;
+                margin-top: 8px;
+                box-sizing: border-box;
+            }
+
+            /* Admin panel inline grid sub-sections */
+            #admin-panel-pane [style*="display:grid"],
+            #admin-panel-pane [style*="display: grid"] {
+                grid-template-columns: 1fr !important;
+            }
+        }
+
+        /* ── Bulk manual-entry rows: 6-col fixed-width grid → horizontal scroll ── */
+        @media (max-width: 768px) {
+            #bulkManualRows { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            .bulk-manual-row { min-width: 580px; }
         }
 
     </style>
@@ -27547,6 +27638,7 @@ Ready for translation!`);
                     setTimeout(() => { if (currentLabel) currentLabel.style.color = 'var(--text-color-secondary)'; }, 2500);
                 }
                 if (typeof nocToast === 'function') nocToast('Platform role updated. User must refresh their page for the new role to take effect.', 'success', 4000);
+                if (typeof loadAdminUsers === 'function') loadAdminUsers();
             } catch (e) {
                 if (typeof nocToast === 'function') nocToast(`Role update failed: ${e.message}`, 'error', 4000);
                 else alert(`Role update failed: ${e.message}`);
@@ -27580,6 +27672,7 @@ Ready for translation!`);
                     setTimeout(() => { if (currentLabel) currentLabel.style.color = 'var(--text-color-secondary)'; }, 2500);
                 }
                 if (typeof nocToast === 'function') nocToast('Tenant role updated. User must refresh their page for the new role to take effect.', 'success', 4000);
+                if (typeof loadAdminUsers === 'function') loadAdminUsers();
             } catch (e) {
                 if (typeof nocToast === 'function') nocToast(`Role update failed: ${e.message}`, 'error', 4000);
                 else alert(`Role update failed: ${e.message}`);
